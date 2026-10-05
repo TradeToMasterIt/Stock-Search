@@ -33,6 +33,46 @@ st.set_page_config(
 )
 
 # -------------------------------------------------------------
+# Cloud Auto-Scanner (Background Telegram Worker)
+# -------------------------------------------------------------
+import threading
+
+@st.cache_resource
+def init_cloud_telegram_scanner():
+    """Starts background Telegram Auto-Scanner thread on Streamlit Cloud."""
+    try:
+        from auto_scanner import run_scan_cycle, is_market_open, send_telegram_alert
+        def worker():
+            time.sleep(15)
+            try:
+                send_telegram_alert(
+                    "🚀 <b>Streamlit Cloud Auto-Scanner Online!</b>\n"
+                    "━━━━━━━━━━━━━━━━━━━━━\n"
+                    "• <b>ક્લાઉડ મોડ:</b> હવે તમારા લેપટોપ વગર સીધું Streamlit Cloud માંથી ઓટોમેટિક એલર્ટ્સ ચાલુ રહેશે!\n"
+                    "• <b>સમયગાળો:</b> સોમ-શુક્ર (09:15 થી 15:30 IST દર ૫ મિનિટે સ્કેન)\n"
+                    "• 🤖 Patel Trading Bot"
+                )
+            except Exception:
+                pass
+            while True:
+                try:
+                    is_open, _ = is_market_open()
+                    if is_open:
+                        run_scan_cycle(force=False)
+                except Exception as ex:
+                    print(f"Cloud scanner error: {ex}")
+                time.sleep(300)
+
+        scanner_thread = threading.Thread(target=worker, daemon=True, name="CloudAutoScanner")
+        scanner_thread.start()
+        return True
+    except Exception as e:
+        print(f"Error initializing cloud scanner: {e}")
+        return False
+
+init_cloud_telegram_scanner()
+
+# -------------------------------------------------------------
 # Global Professional Terminal CSS Styling
 # -------------------------------------------------------------
 st.markdown("""
