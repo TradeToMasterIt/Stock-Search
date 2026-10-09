@@ -838,6 +838,160 @@ def calculate_daily_pivot_points(df_d):
     }
 
 # -------------------------------------------------------------
+# Heikin Ashi & Donchian Channel (Brijesh Bhatia Reversal System)
+# -------------------------------------------------------------
+def calculate_heikin_ashi(df):
+    if df is None or len(df) < 2:
+        return df
+    ha_df = df.copy()
+    ha_close = (df['Open'] + df['High'] + df['Low'] + df['Close']) / 4.0
+    
+    ha_open = np.zeros(len(df))
+    ha_open[0] = (df['Open'].iloc[0] + df['Close'].iloc[0]) / 2.0
+    for i in range(1, len(df)):
+        ha_open[i] = (ha_open[i-1] + ha_close.iloc[i-1]) / 2.0
+        
+    ha_df['HA_Close'] = ha_close
+    ha_df['HA_Open'] = ha_open
+    ha_df['HA_High'] = np.maximum(df['High'], np.maximum(ha_open, ha_close))
+    ha_df['HA_Low'] = np.minimum(df['Low'], np.minimum(ha_open, ha_close))
+    
+    body = np.abs(ha_df['HA_Close'] - ha_df['HA_Open'])
+    rng = np.maximum(ha_df['HA_High'] - ha_df['HA_Low'], 0.001)
+    lower_shadow = np.minimum(ha_df['HA_Open'], ha_df['HA_Close']) - ha_df['HA_Low']
+    upper_shadow = ha_df['HA_High'] - np.maximum(ha_df['HA_Open'], ha_df['HA_Close'])
+    
+    is_bull = (ha_df['HA_Close'] > ha_df['HA_Open'])
+    is_bear = (ha_df['HA_Close'] < ha_df['HA_Open'])
+    
+    # Flat bottom bullish: lower shadow is <= 15% of body (strict flat bottom)
+    ha_df['HA_Is_Bullish'] = is_bull & (lower_shadow <= (body * 0.15))
+    ha_df['HA_Is_Bearish'] = is_bear & (upper_shadow <= (body * 0.15))
+    # Doji / exhaustion: body <= 35% of total range and both shadows exist
+    ha_df['HA_Is_Doji'] = (body / rng <= 0.35) & (upper_shadow > (rng * 0.15)) & (lower_shadow > (rng * 0.15))
+    
+    return ha_df
+
+def calculate_donchian_channel(df, period=11):
+    if df is None or len(df) < 2:
+        return df
+    act_p = period if len(df) >= period else max(2, len(df))
+    df[f'Donchian_High_{period}'] = df['High'].rolling(act_p).max()
+    df[f'Donchian_Low_{period}'] = df['Low'].rolling(act_p).min()
+    return df
+
+def scan_heikin_ashi_stock(sym, min_red_candles=5, timeframe="Daily"):
+    try:
+        clean_sym = sym.strip().upper()
+        if not clean_sym.endswith(".NS") and not clean_sym.endswith(".BO") and not clean_sym.startswith("^"):
+            ticker_sym = f"{clean_sym}.NS"
+        else:
+            ticker_sym = clean_sym
+            
+        ticker = yf.Ticker(ticker_sym)
+        
+        if timeframe == "2-Hour":
+            df = ticker.history(period="1mo", interval="1h").dropna(subset=['Open', 'High', 'Low', 'Close', 'Volume'])
+            donchian_p = 6 # ~3 2-hour bars
+        elif timeframe == "Weekly":
+            df = ticker.history(period="3y", interval="1wk").dropna(subset=['Open', 'High', 'Low', 'Close', 'Volume'])
+            donchian_p = 5 # 5 weekly bars
+        else: # Daily
+            df = ticker.history(period="1y", interval="1d").dropna(subset=['Open', 'High', 'Low', 'Close', 'Volume'])
+            donchian_p = 11 # 11 daily bars
+            
+        if len(df) < 25:
+            return None
+            
+        df = calculate_volume_analysis(df)
+        ha_df = calculate_heikin_ashi(df)
+        ha_df = calculate_donchian_channel(ha_df, period=donchian_p)
+        
+        # Weekly macro trend check
+        weekly_bullish = True
+        if timeframe == "Daily":
+            df_w = ticker.history(period="2y", interval="1wk").dropna(subset=['Open', 'High', 'Low', 'Close', 'Volume'])
+            if len(df_w) >= 10:
+                ha_w = calculate_heikin_ashi(df_w)
+                weekly_bullish = bool((ha_w['HA_Close'].iloc[-1] >= ha_w['HA_Open'].iloc[-1]) or (df_w['Close'].iloc[-1] >= df_w['Close'].tail(15).mean()))
+                
+        curr = ha_df.iloc[-1]
+        prev = ha_df.iloc[-2]
+        
+        curr_p = float(curr['Close'])
+        prev_p = float(prev['Close'])
+        pct_chg = ((curr_p - prev_p) / prev_p) * 100
+        
+        # Count consecutive red / doji candles prior to current
+        red_count = 0
+        for i in range(2, min(16, len(ha_df))):
+            bar = ha_df.iloc[-i]
+            if bar['HA_Close'] < bar['HA_Open'] or bar['HA_Is_Doji']:
+                red_count += 1
+            else:
+                break
+                
+        is_fresh_bull = bool(curr['HA_Is_Bullish'] and (prev['HA_Close'] < prev['HA_Open'] or prev['HA_Is_Doji']) and (red_count >= min_red_candles) and weekly_bullish)
+        is_riding_bull = bool(curr['HA_Is_Bullish'] and not is_fresh_bull)
+        is_doji_watchlist = bool(curr['HA_Is_Doji'] and (red_count >= (min_red_candles - 1)))
+        
+        sl_col = f'Donchian_Low_{donchian_p}'
+        stop_loss = float(curr[sl_col]) if sl_col in curr and pd.notna(curr[sl_col]) else curr_p * 0.95
+        if stop_loss >= curr_p:
+            stop_loss = curr_p * 0.96
+        risk = curr_p - stop_loss
+        risk_pct = (risk / curr_p) * 100
+        
+        vol_ratio = float(curr['Vol_Ratio']) if 'Vol_Ratio' in curr and pd.notna(curr['Vol_Ratio']) else 1.0
+        
+        if is_fresh_bull and vol_ratio >= 1.0:
+            status = "🚀 FRESH REVERSAL BUY (તાજી ખરીદી)"
+            badge_class = "pill-sniper-buy"
+            priority = 1
+        elif is_doji_watchlist:
+            status = "👀 DOJI FORMING (રિવર્સલ વોચલિસ્ટ)"
+            badge_class = "pill-buy-dips"
+            priority = 2
+        elif red_count >= min_red_candles:
+            status = "📉 SELLOFF DEPTH REACHED (વોચલિસ્ટ)"
+            badge_class = "pill-buy-dips"
+            priority = 3
+        elif is_riding_bull:
+            status = "🟢 RIDING THE TREND (ટ્રેન્ડ ચાલુ છે)"
+            badge_class = "pill-bullish"
+            priority = 4
+        else:
+            status = "🔴 IN DOWNTREND / NEUTRAL"
+            badge_class = "pill-sell"
+            priority = 5
+            
+        return {
+            "symbol": sym.replace(".NS", ""),
+            "full_symbol": ticker_sym,
+            "price": round(curr_p, 2),
+            "change": round(pct_chg, 2),
+            "status": status,
+            "badge_class": badge_class,
+            "priority": priority,
+            "red_count": red_count,
+            "is_fresh_bull": is_fresh_bull,
+            "is_doji": is_doji_watchlist,
+            "is_riding": is_riding_bull,
+            "stop_loss": round(stop_loss, 2),
+            "risk_pct": round(risk_pct, 1),
+            "vol_ratio": round(vol_ratio, 2),
+            "weekly_bullish": weekly_bullish,
+            "ha_open": round(float(curr['HA_Open']), 2),
+            "ha_close": round(float(curr['HA_Close']), 2),
+            "ha_high": round(float(curr['HA_High']), 2),
+            "ha_low": round(float(curr['HA_Low']), 2),
+            "timeframe": timeframe,
+            "donchian_p": donchian_p
+        }
+    except Exception:
+        return None
+
+# -------------------------------------------------------------
 # Status Analysis
 # -------------------------------------------------------------
 def analyze_hm_timeframe(df, name="Timeframe"):
@@ -1377,6 +1531,85 @@ def plot_candlestick_triple_chart(df, title_prefix="Daily", lookback=100, is_hou
     )
 
 # -------------------------------------------------------------
+# Heikin Ashi + Donchian Channel Chart
+# -------------------------------------------------------------
+def plot_heikin_ashi_donchian_chart(ha_df, donchian_p=11, lookback=80, title_prefix="Daily"):
+    plot_df = ha_df.tail(lookback).copy().reset_index()
+    if 'Datetime' in plot_df.columns:
+        date_col = 'Datetime'
+    elif 'Date' in plot_df.columns:
+        date_col = 'Date'
+    else:
+        date_col = plot_df.columns[0]
+        
+    sl_col = f'Donchian_Low_{donchian_p}'
+    if sl_col not in plot_df.columns:
+        plot_df[sl_col] = plot_df['Low'].rolling(donchian_p).min()
+        
+    plot_df['HA_Color'] = np.where(
+        plot_df['HA_Is_Doji'], '#38BDF8',
+        np.where(plot_df['HA_Close'] >= plot_df['HA_Open'], '#00E676', '#FF1744')
+    )
+    
+    base = alt.Chart(plot_df).encode(x=alt.X(f'{date_col}:T', title=''))
+    
+    sl_line = base.mark_line(color='#F59E0B', strokeDash=[6, 4], strokeWidth=2.4).encode(
+        y=alt.Y(f'{sl_col}:Q', title='Price (₹)', scale=alt.Scale(zero=False))
+    )
+    
+    ha_wicks = base.mark_rule(strokeWidth=1.4).encode(
+        y=alt.Y('HA_Low:Q', scale=alt.Scale(zero=False)),
+        y2='HA_High:Q',
+        color=alt.Color('HA_Color:N', scale=None)
+    )
+    
+    ha_bodies = base.mark_bar(size=6).encode(
+        y='HA_Open:Q',
+        y2='HA_Close:Q',
+        color=alt.Color('HA_Color:N', scale=None),
+        tooltip=[
+            alt.Tooltip(f'{date_col}:T', title='Date/Time'),
+            alt.Tooltip('HA_Open:Q', title='HA Open', format='.2f'),
+            alt.Tooltip('HA_High:Q', title='HA High', format='.2f'),
+            alt.Tooltip('HA_Low:Q', title='HA Low', format='.2f'),
+            alt.Tooltip('HA_Close:Q', title='HA Close', format='.2f'),
+            alt.Tooltip('Close:Q', title='Price (₹)', format='.2f'),
+            alt.Tooltip(f'{sl_col}:Q', title=f'Donchian SL ({donchian_p})', format='.2f')
+        ]
+    )
+    
+    chart_ha = (ha_wicks + ha_bodies + sl_line).properties(
+        title=f"🕯️ {title_prefix} • Heikin Ashi Candles & Donchian Trailing SL (🟢 Bullish | 🔴 Bearish | 🔵 Doji | 🟡 Donchian SL)",
+        height=320
+    )
+    
+    vol_bars = base.mark_bar(opacity=0.75, size=6).encode(
+        y=alt.Y('Volume:Q', title='Volume', axis=alt.Axis(format='~s')),
+        color=alt.Color('HA_Color:N', scale=None)
+    )
+    vol_line = base.mark_line(color='#FBBF24', strokeWidth=1.8).encode(y='Vol_SMA20:Q') if 'Vol_SMA20' in plot_df.columns else vol_bars
+    chart_vol = (vol_bars + vol_line).properties(
+        title=f"📊 {title_prefix} • Volume & 20 SMA",
+        height=100
+    )
+    
+    combined = alt.vconcat(chart_ha, chart_vol).resolve_scale(x='shared')
+    return combined.configure(
+        background='transparent',
+        view=alt.ViewConfig(strokeWidth=0),
+        title=alt.TitleConfig(color='#F1F5F9', fontSize=13, fontWeight=600, anchor='start'),
+        axis=alt.AxisConfig(
+            domainColor='#334155',
+            gridColor='rgba(255, 255, 255, 0.05)',
+            labelColor='#94A3B8',
+            tickColor='#334155',
+            titleColor='#CBD5E1',
+            labelFontSize=11,
+            titleFontSize=11
+        )
+    )
+
+# -------------------------------------------------------------
 # Function: Scan a Single Stock for Screener
 # -------------------------------------------------------------
 def scan_stock(sym):
@@ -1646,8 +1879,9 @@ header_html = f'<div class="brand-container"><div><div style="display: flex; ali
 st.html(header_html)
 
 # Navigation Tabs
-nav_tab_screener, nav_tab_single, nav_tab_guardian, nav_tab_melting = st.tabs([
+nav_tab_screener, nav_tab_ha, nav_tab_single, nav_tab_guardian, nav_tab_melting = st.tabs([
     "📊 Market Screener (ઓટોમેટિક સ્કેનર)",
+    "🚀 Heikin Ashi Trend Rider (બ્રિજેશ ભાટિયા)",
     "🕯️ Single Stock (ડીપ કેન્ડલસ્ટિક ચાર્ટ્સ)",
     "🛡️ Risk Guardian (લાઈવ પોઝિશન & મોનિટર)",
     "🎯 Melting Straddles (ડૉ. ગાંગુલી 0DTE)"
@@ -2162,8 +2396,308 @@ with nav_tab_screener:
                         c_d = plot_candlestick_triple_chart(q_df_d, title_prefix=f"{inspect_sym} Daily", lookback=100, is_hourly=False)
                         st.altair_chart(c_d, width="stretch")
 
+
 # =============================================================
-# TAB 2: SINGLE STOCK DEEP CANDLESTICK ANALYSIS
+# TAB 2: HEIKIN ASHI TREND RIDER (BRIJESH BHATIA REVERSAL SYSTEM)
+# =============================================================
+with nav_tab_ha:
+    ha_header_html = (
+        '<div style="background: linear-gradient(135deg, rgba(30, 41, 59, 0.85) 0%, rgba(15, 23, 42, 0.95) 100%); '
+        'border: 1px solid rgba(255,255,255,0.08); border-radius: 16px; padding: 22px 26px; margin-bottom: 22px; '
+        'box-shadow: 0 8px 25px rgba(0,0,0,0.3);">'
+        '<div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 14px;">'
+        '<div>'
+        '<div style="font-size: 22px; font-weight: 800; color: #FFFFFF; display: flex; align-items: center; gap: 10px;">'
+        '🚀 BRIJESH BHATIA HEIKIN ASHI REVERSAL & DONCHIAN TREND RIDER'
+        '<span style="font-size: 11px; font-weight: 700; background: rgba(56, 189, 248, 0.2); color: #38BDF8; '
+        'border: 1px solid #38BDF8; padding: 3px 10px; border-radius: 9999px;">PODCAST PRO SYSTEM</span>'
+        '</div>'
+        '<div style="font-size: 13.5px; color: #94A3B8; margin-top: 6px;">'
+        '૫-૮ લાલ કેન્ડલ પછી તળિયે ડોજી પોઝ • પ્રથમ ફ્લેટ બોટમ ગ્રીન કેન્ડલ એન્ટ્રી • ડોન્ચિયન ચેનલ ટ્રેઇલિંગ સ્ટોપલોસ (નો ફિક્સ ટાર્ગેટ - રાઇડ ધ ટ્રેન્ડ)'
+        '</div>'
+        '</div>'
+        '<div style="text-align: right;">'
+        '<span style="font-size: 12px; font-weight: 700; color: #10B981; background: rgba(16, 185, 129, 0.12); '
+        'border: 1px solid rgba(16, 185, 129, 0.3); padding: 6px 14px; border-radius: 10px;">'
+        '🎯 1:10 થી 1:30+ Big Wave Hunting'
+        '</span>'
+        '</div>'
+        '</div>'
+        '</div>'
+    )
+    st.html(ha_header_html)
+    
+    # Golden Rules Expander
+    with st.expander("📖 બ્રિજેશ ભાટિયા સિસ્ટમના ૬ સુવર્ણ નિયમો (Strategy Rules & How To Trade)", expanded=False):
+        st.markdown("""
+        1. 🔻 **૫ થી ૮ લાલ કેન્ડલ્સનો ઘટાડો (Oversold Correction):** સ્ટોકમાં ઓછામાં ઓછી 5 થી 8 સતત લાલ (Bearish) Heikin Ashi કેન્ડલ્સ બનેલી હોવી જોઈએ જેથી વીક હેન્ડ્સ નીકળી ગયા હોય.
+        2. ⏸️ **ડોજી ટ્રાન્ઝિશન (Bottom Doji / Exhaustion):** તળિયે નાની બોડી અને બંને બાજુ શેડો વાળી Doji કેન્ડલ બને જે વેચાણ અટકી ગયું હોવાનો સંકેત આપે છે.
+        3. 🟢 **પ્રથમ ફ્લેટ બોટમ ગ્રીન કેન્ડલ (First Flat Bottom Bullish HA):** રિવર્સલની પ્રથમ ગ્રીન કેન્ડલ બનવી જોઈએ જેમાં **નીચે કોઈ શેડો (Lower Wick) ન હોવી જોઈએ** (`Open == Low`). આ સંકેત આપે છે કે ખરીદદારો સંપૂર્ણ કંટ્રોલમાં છે.
+        4. 📈 **વીકલી ટ્રેન્ડ સપોર્ટ (Weekly Macro Filter):** વીકલી ચાર્ટ પોઝિટિવ હોવો જોઈએ જેથી આપણે કોઈ મરી ગયેલા કે કંગાળ સ્ટોકમાં ના ફસાઈએ.
+        5. 🛡️ **ડોન્ચિયન ચેનલ ટ્રેઇલિંગ સ્ટોપલોસ (Trailing Stop Loss):**
+           - **Daily Timeframe:** ૧૧-દિવસનો સૌથી નીચો ભાવ (11-Day Lowest Low)
+           - **2-Hour Timeframe:** ૩-બારનો સૌથી નીચો ભાવ (3-Bar Lowest Low)
+           - **Weekly Timeframe:** ૫-અઠવાડિયાનો સૌથી નીચો ભાવ (5-Week Lowest Low)
+        6. 💰 **કોઈ ફિક્સ ટાર્ગેટ નહીં (Pure Trend Following):** કોઈ 1:2 કે 1:3 પર વેચવાનું નથી! જ્યાં સુધી કેન્ડલ ડોન્ચિયન સ્ટોપલોસ નીચે બંધ ન થાય ત્યાં સુધી ટ્રેડને પકડી રાખો અને ૧:૧૦ થી ૧:૩૦+ નો મહાનફો લૂંટો.
+        """)
+    
+    # Scanner Controls
+    with st.container():
+        c_ha_b1, c_ha_b2, c_ha_b3, c_ha_btn = st.columns([2.2, 1.4, 1.4, 1.4])
+        with c_ha_b1:
+            ha_selected_basket = st.selectbox(
+                "સ્કેન કરવા માટે બાસ્કેટ પસંદ કરો:",
+                options=list(BASKETS.keys()) + ["✍️ Custom Watchlist (પોતાની લિસ્ટ નાખો)"],
+                index=1 if len(BASKETS) > 1 else 0,
+                key="ha_basket_select"
+            )
+        with c_ha_b2:
+            ha_timeframe = st.selectbox(
+                "ટાઈમફ્રેમ પસંદ કરો:",
+                options=["Daily (11-Day Donchian)", "2-Hour (3-Bar Donchian)", "Weekly (5-Week Donchian)"],
+                index=0,
+                key="ha_timeframe_select"
+            )
+        with c_ha_b3:
+            ha_min_red = st.slider(
+                "મિનિમમ Red Candles:",
+                min_value=4,
+                max_value=10,
+                value=5,
+                help="રિવર્સલ પહેલાં ઓછામાં ઓછી કેટલી લાલ Heikin Ashi કેન્ડલ્સ હોવી જોઈએ (5-8 શ્રેષ્ઠ છે)",
+                key="ha_min_red_slider"
+            )
+        with c_ha_btn:
+            st.markdown("<div style='height: 28px;'></div>", unsafe_allow_html=True)
+            start_ha_scan = st.button("🚀 Scan Reversals", type="primary", use_container_width=True, key="btn_run_ha_scan")
+            
+        ha_custom_text = ""
+        if "Custom Watchlist" in ha_selected_basket:
+            ha_custom_text = st.text_area(
+                "તમારી પસંદના સ્ટોક નામો લખો (અલ્પવિરામ / Comma વડે અલગ કરો):",
+                value="BHEL, ZYDUSLIFE, COALINDIA, RELIANCE, ADANIPOWER, TCS, BEL, SUZLON, TATASTEEL, SBIN",
+                key="ha_custom_text"
+            )
+
+    tf_str = "Daily"
+    if "2-Hour" in ha_timeframe:
+        tf_str = "2-Hour"
+    elif "Weekly" in ha_timeframe:
+        tf_str = "Weekly"
+
+    if "ha_screener_results" not in st.session_state:
+        st.session_state.ha_screener_results = None
+        st.session_state.ha_screener_filter = "ALL"
+
+    if start_ha_scan:
+        if "Custom Watchlist" in ha_selected_basket:
+            ha_symbols_to_scan = [s.strip().upper() for s in ha_custom_text.split(",") if s.strip()]
+        else:
+            ha_symbols_to_scan = BASKETS.get(ha_selected_basket, [])
+
+        if not ha_symbols_to_scan:
+            st.warning("કોઈ સિમ્બોલ મળ્યા નથી!")
+        else:
+            progress_bar = st.progress(0, text="🔍 હાઇકિન-આશી અને ડોન્ચિયન સ્કેનિંગ ચાલુ છે...")
+            results_ha = []
+            from concurrent.futures import ThreadPoolExecutor, as_completed
+            
+            with ThreadPoolExecutor(max_workers=10) as executor:
+                future_map = {
+                    executor.submit(scan_heikin_ashi_stock, s, ha_min_red, tf_str): s 
+                    for s in ha_symbols_to_scan
+                }
+                completed_count = 0
+                total_s = len(future_map)
+                for f in as_completed(future_map):
+                    res = f.result()
+                    if res:
+                        results_ha.append(res)
+                    completed_count += 1
+                    progress_bar.progress(completed_count / total_s, text=f"🔍 સ્કેનિંગ: {completed_count}/{total_s} પૂર્ણ...")
+                    
+            progress_bar.empty()
+            
+            if results_ha:
+                results_ha.sort(key=lambda x: (x['priority'], -x['red_count']))
+                st.session_state.ha_screener_results = results_ha
+                st.toast(f"✅ {len(results_ha)} સ્ટોક્સનું હાઇકિન-આશી સ્કેનિંગ પૂર્ણ થયું!", icon="🚀")
+            else:
+                st.error("કોઈ સ્ટોકનો ડેટા મળ્યો નથી.")
+
+    # Render Results if available
+    if st.session_state.ha_screener_results:
+        all_ha_res = st.session_state.ha_screener_results
+        
+        c_fresh = [r for r in all_ha_res if r['priority'] == 1]
+        c_doji = [r for r in all_ha_res if r['priority'] == 2]
+        c_selloff = [r for r in all_ha_res if r['priority'] == 3]
+        c_riding = [r for r in all_ha_res if r['priority'] == 4]
+        
+        # 4 Interactive Filter Cards
+        kpi_ha_cols = st.columns(5)
+        curr_ha_filter = st.session_state.ha_screener_filter
+        
+        with kpi_ha_cols[0]:
+            if st.button(
+                f"🚀 FRESH REVERSAL BUY  \n**{len(c_fresh)}**  \n*Flat Bottom Green Trigger*",
+                type="primary" if curr_ha_filter == "FRESH" else "secondary",
+                use_container_width=True,
+                key="btn_ha_kpi_fresh"
+            ):
+                st.session_state.ha_screener_filter = "ALL" if curr_ha_filter == "FRESH" else "FRESH"
+                st.rerun()
+                
+        with kpi_ha_cols[1]:
+            if st.button(
+                f"👀 DOJI FORMING  \n**{len(c_doji)}**  \n*Exhaustion Reversal Watch*",
+                type="primary" if curr_ha_filter == "DOJI" else "secondary",
+                use_container_width=True,
+                key="btn_ha_kpi_doji"
+            ):
+                st.session_state.ha_screener_filter = "ALL" if curr_ha_filter == "DOJI" else "DOJI"
+                st.rerun()
+                
+        with kpi_ha_cols[2]:
+            if st.button(
+                f"📉 5+ REDS SELLOFF  \n**{len(c_selloff)}**  \n*Deep Correction Watch*",
+                type="primary" if curr_ha_filter == "SELLOFF" else "secondary",
+                use_container_width=True,
+                key="btn_ha_kpi_selloff"
+            ):
+                st.session_state.ha_screener_filter = "ALL" if curr_ha_filter == "SELLOFF" else "SELLOFF"
+                st.rerun()
+
+        with kpi_ha_cols[3]:
+            if st.button(
+                f"🟢 RIDING THE TREND  \n**{len(c_riding)}**  \n*Hold with Trailing SL*",
+                type="primary" if curr_ha_filter == "RIDING" else "secondary",
+                use_container_width=True,
+                key="btn_ha_kpi_riding"
+            ):
+                st.session_state.ha_screener_filter = "ALL" if curr_ha_filter == "RIDING" else "RIDING"
+                st.rerun()
+
+        with kpi_ha_cols[4]:
+            if st.button(
+                f"📋 ALL STOCKS  \n**{len(all_ha_res)}**  \n*બધા સ્ટોક્સ બતાવો*",
+                type="primary" if curr_ha_filter == "ALL" else "secondary",
+                use_container_width=True,
+                key="btn_ha_kpi_all"
+            ):
+                st.session_state.ha_screener_filter = "ALL"
+                st.rerun()
+
+        # Filter the dataset
+        if curr_ha_filter == "FRESH":
+            filtered_ha = c_fresh
+        elif curr_ha_filter == "DOJI":
+            filtered_ha = c_doji
+        elif curr_ha_filter == "SELLOFF":
+            filtered_ha = c_selloff
+        elif curr_ha_filter == "RIDING":
+            filtered_ha = c_riding
+        else:
+            filtered_ha = all_ha_res
+
+        st.markdown("<div style='height: 14px;'></div>", unsafe_allow_html=True)
+        
+        # Display Stock Cards & Summary Table
+        if not filtered_ha:
+            st.info(f"પસંદ કરેલ ફિલ્ટર ({curr_ha_filter}) માટે કોઈ સ્ટોક્સ મળ્યા નથી.")
+        else:
+            # Table View
+            table_data = []
+            for item in filtered_ha:
+                table_data.append({
+                    "Stock": item['symbol'],
+                    "LTP (₹)": f"₹{item['price']:.2f}",
+                    "Change %": f"{item['change']:+.2f}%",
+                    "Status": item['status'],
+                    "Red Candles": f"{item['red_count']} Bars",
+                    "Donchian SL (₹)": f"₹{item['stop_loss']:.2f}",
+                    "Risk %": f"{item['risk_pct']:.1f}%",
+                    "Vol Ratio": f"{item['vol_ratio']:.1f}x",
+                    "Weekly Trend": "🟢 Bullish" if item['weekly_bullish'] else "🔴 Bearish"
+                })
+            df_display = pd.DataFrame(table_data)
+            st.dataframe(df_display, use_container_width=True, hide_index=True)
+
+        # Interactive Chart Section
+        st.divider()
+        st.subheader("🕯️ ઇન્ટરેક્ટિવ Heikin Ashi કેન્ડલસ્ટિક & Donchian Trailing SL ચાર્ટ:")
+        
+        stock_options = [r['symbol'] for r in all_ha_res]
+        default_idx = 0
+        if c_fresh:
+            default_idx = stock_options.index(c_fresh[0]['symbol']) if c_fresh[0]['symbol'] in stock_options else 0
+            
+        c_sel_sym, c_sel_p = st.columns([3, 1])
+        with c_sel_sym:
+            selected_chart_sym = st.selectbox(
+                "ચાર્ટ જોવા માટે સ્ટોક પસંદ કરો:",
+                options=stock_options,
+                index=default_idx,
+                key="ha_chart_sym_select"
+            )
+        with c_sel_p:
+            donchian_lookback = st.selectbox(
+                "ચાર્ટ લૂકબેક (કેન્ડલ્સ):",
+                options=[60, 90, 120, 180],
+                index=1,
+                key="ha_chart_lookback_select"
+            )
+
+        if selected_chart_sym:
+            # Fetch full history for chart
+            t_chart = yf.Ticker(f"{selected_chart_sym}.NS")
+            if tf_str == "2-Hour":
+                df_chart_raw = t_chart.history(period="1mo", interval="1h").dropna(subset=['Open', 'High', 'Low', 'Close', 'Volume'])
+                p_chart = 6
+            elif tf_str == "Weekly":
+                df_chart_raw = t_chart.history(period="3y", interval="1wk").dropna(subset=['Open', 'High', 'Low', 'Close', 'Volume'])
+                p_chart = 5
+            else:
+                df_chart_raw = t_chart.history(period="1y", interval="1d").dropna(subset=['Open', 'High', 'Low', 'Close', 'Volume'])
+                p_chart = 11
+
+            if not df_chart_raw.empty and len(df_chart_raw) >= 15:
+                df_chart_raw = calculate_volume_analysis(df_chart_raw)
+                ha_chart_df = calculate_heikin_ashi(df_chart_raw)
+                ha_chart_df = calculate_donchian_channel(ha_chart_df, period=p_chart)
+                
+                # Render the Altair chart
+                ha_altair = plot_heikin_ashi_donchian_chart(
+                    ha_chart_df, 
+                    donchian_p=p_chart, 
+                    lookback=donchian_lookback, 
+                    title_prefix=f"{selected_chart_sym} • {tf_str}"
+                )
+                st.altair_chart(ha_altair, width="stretch")
+                
+                # Trade Execution Card for Selected Stock
+                curr_bar = ha_chart_df.iloc[-1]
+                prev_bar = ha_chart_df.iloc[-2]
+                sl_val = curr_bar.get(f'Donchian_Low_{p_chart}', curr_bar['Close'] * 0.95)
+                cur_close = float(curr_bar['Close'])
+                risk_amt = max(0.01, cur_close - sl_val)
+                risk_p = (risk_amt / cur_close) * 100
+                
+                c_card1, c_card2, c_card3, c_card4 = st.columns(4)
+                with c_card1:
+                    st.metric("LTP (હાલનો ભાવ)", f"₹{cur_close:.2f}")
+                with c_card2:
+                    st.metric(f"🛡️ Donchian SL ({p_chart} Bar)", f"₹{sl_val:.2f}", delta=f"-{risk_p:.1f}% Risk", delta_color="inverse")
+                with c_card3:
+                    ha_type = "🟢 Flat Bottom Bullish" if curr_bar['HA_Is_Bullish'] else ("🔵 Doji / Pause" if curr_bar['HA_Is_Doji'] else ("🔴 Bearish" if curr_bar['HA_Close'] < curr_bar['HA_Open'] else "🟢 Green with Wick"))
+                    st.metric("🕯️ Heikin Ashi State", ha_type)
+                with c_card4:
+                    st.metric("🎯 Target Strategy", "OPEN (Trend Following)", help="ડોન્ચિયન ટ્રેઇલિંગ સ્ટોપલોસ હિટ ન થાય ત્યાં સુધી રાઇડ કરો")
+            else:
+                st.warning(f"{selected_chart_sym} માટે ચાર્ટ ડેટા લોડ થઈ શક્યો નહીં.")
+
+# =============================================================
+# TAB 3: SINGLE STOCK DEEP CANDLESTICK ANALYSIS
 # =============================================================
 with nav_tab_single:
     st.subheader("🕯️ સિંગલ સ્ટોક ડીપ કેન્ડલસ્ટિક એનાલિસિસ (Cockpit View)")
@@ -2421,11 +2955,12 @@ with nav_tab_single:
                         # Interactive 3-Panel Candlestick Charts
                         st.divider()
                         st.subheader("🕯️ ઇન્ટરેક્ટિવ કેન્ડલસ્ટિક ચાર્ટ્સ (3 Panels Synchronized):")
-                        t1, t2, t3, t4 = st.tabs([
+                        t1, t2, t3, t4, t5 = st.tabs([
                             "⚡ 1-Hour Candlestick View",
                             "⏰ Daily Candlestick View",
                             "📆 Weekly Candlestick View",
-                            "📅 Monthly Candlestick View"
+                            "📅 Monthly Candlestick View",
+                            "🚀 Heikin Ashi + Donchian SL (બ્રિજેશ ભાટિયા)"
                         ])
                         with t1:
                             chart_1h = plot_candlestick_triple_chart(df_1h, title_prefix="1-Hour", lookback=100, is_hourly=True)
@@ -2439,6 +2974,29 @@ with nav_tab_single:
                         with t4:
                             chart_m = plot_candlestick_triple_chart(df_monthly, title_prefix="Monthly", lookback=60, is_hourly=False)
                             st.altair_chart(chart_m, width="stretch")
+                        with t5:
+                            ha_single = calculate_volume_analysis(df_daily.copy())
+                            ha_single = calculate_heikin_ashi(ha_single)
+                            ha_single = calculate_donchian_channel(ha_single, period=11)
+                            chart_ha = plot_heikin_ashi_donchian_chart(ha_single, donchian_p=11, lookback=100, title_prefix=f"{sym} Daily")
+                            st.altair_chart(chart_ha, width="stretch")
+                            
+                            c_ha_s = ha_single.iloc[-1]
+                            sl_val = c_ha_s.get('Donchian_Low_11', c_ha_s['Close'] * 0.95)
+                            cur_p = float(c_ha_s['Close'])
+                            r_pct = max(0.1, ((cur_p - sl_val) / cur_p) * 100)
+                            
+                            st.markdown(
+                                f'<div style="background: rgba(15, 23, 42, 0.7); border: 1px solid rgba(255,255,255,0.08); border-radius: 12px; padding: 14px 18px; margin-top: 10px;">'
+                                f'<div style="display: flex; gap: 24px; flex-wrap: wrap; align-items: center;">'
+                                f'<div><b>LTP:</b> ₹{cur_p:.2f}</div>'
+                                f'<div><b>🛡️ 11-Day Donchian SL:</b> <span style="color: #F59E0B; font-weight: 700;">₹{sl_val:.2f}</span> (-{r_pct:.1f}%)</div>'
+                                f'<div><b>🎯 Target:</b> <span style="color: #10B981; font-weight: 700;">OPEN / NO TARGET (Ride Multi-Bagger Waves)</span></div>'
+                                f'<div><b>Candle Type:</b> {"🟢 Bullish Flat Bottom" if c_ha_s["HA_Is_Bullish"] else ("🔵 Doji / Reversal Watch" if c_ha_s["HA_Is_Doji"] else "🔴 Bearish / In Correction")}</div>'
+                                f'</div>'
+                                f'</div>',
+                                unsafe_allow_html=True
+                            )
                 except Exception as e:
                     st.error(f"ક્ષતિ આવી: {e}")
 

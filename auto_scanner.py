@@ -162,6 +162,43 @@ def calculate_daily_pivot_points(df_d):
         "prev_close": round(c, 2)
     }
 
+def calculate_heikin_ashi(df):
+    if df is None or len(df) < 2:
+        return df
+    ha_df = df.copy()
+    ha_close = (df['Open'] + df['High'] + df['Low'] + df['Close']) / 4.0
+    
+    ha_open = np.zeros(len(df))
+    ha_open[0] = (df['Open'].iloc[0] + df['Close'].iloc[0]) / 2.0
+    for i in range(1, len(df)):
+        ha_open[i] = (ha_open[i-1] + ha_close.iloc[i-1]) / 2.0
+        
+    ha_df['HA_Close'] = ha_close
+    ha_df['HA_Open'] = ha_open
+    ha_df['HA_High'] = np.maximum(df['High'], np.maximum(ha_open, ha_close))
+    ha_df['HA_Low'] = np.minimum(df['Low'], np.minimum(ha_open, ha_close))
+    
+    body = np.abs(ha_df['HA_Close'] - ha_df['HA_Open'])
+    rng = np.maximum(ha_df['HA_High'] - ha_df['HA_Low'], 0.001)
+    lower_shadow = np.minimum(ha_df['HA_Open'], ha_df['HA_Close']) - ha_df['HA_Low']
+    upper_shadow = ha_df['HA_High'] - np.maximum(ha_df['HA_Open'], ha_df['HA_Close'])
+    
+    is_bull = (ha_df['HA_Close'] > ha_df['HA_Open'])
+    is_bear = (ha_df['HA_Close'] < ha_df['HA_Open'])
+    
+    ha_df['HA_Is_Bullish'] = is_bull & (lower_shadow <= (body * 0.15))
+    ha_df['HA_Is_Bearish'] = is_bear & (upper_shadow <= (body * 0.15))
+    ha_df['HA_Is_Doji'] = (body / rng <= 0.35) & (upper_shadow > (rng * 0.15)) & (lower_shadow > (rng * 0.15))
+    return ha_df
+
+def calculate_donchian_channel(df, period=11):
+    if df is None or len(df) < 2:
+        return df
+    act_p = period if len(df) >= period else max(2, len(df))
+    df[f'Donchian_High_{period}'] = df['High'].rolling(act_p).max()
+    df[f'Donchian_Low_{period}'] = df['Low'].rolling(act_p).min()
+    return df
+
 def analyze_stock(sym):
     try:
         t = yf.Ticker(sym)
@@ -321,6 +358,31 @@ def analyze_stock(sym):
                 (d_hm_bull or pct_chg >= 2.0)
             )
 
+        # Heikin Ashi Brijesh Bhatia System Analysis
+        ha_d = calculate_heikin_ashi(df_d)
+        ha_d = calculate_donchian_channel(ha_d, period=11)
+        curr_ha = ha_d.iloc[-1]
+        prev_ha = ha_d.iloc[-2]
+        
+        ha_red_count = 0
+        for i in range(2, min(16, len(ha_d))):
+            bar = ha_d.iloc[-i]
+            if bar['HA_Close'] < bar['HA_Open'] or bar.get('HA_Is_Doji', False):
+                ha_red_count += 1
+            else:
+                break
+                
+        ha_reversal_buy = bool(
+            curr_ha['HA_Is_Bullish'] and 
+            (prev_ha['HA_Close'] < prev_ha['HA_Open'] or prev_ha['HA_Is_Doji']) and 
+            (ha_red_count >= 5) and
+            w_bull
+        )
+        ha_donchian_sl = float(curr_ha['Donchian_Low_11']) if 'Donchian_Low_11' in curr_ha and pd.notna(curr_ha['Donchian_Low_11']) else curr_p * 0.95
+        if ha_donchian_sl >= curr_p:
+            ha_donchian_sl = curr_p * 0.96
+        ha_risk_pct = ((curr_p - ha_donchian_sl) / curr_p) * 100
+
         return {
             "symbol": sym.replace(".NS", ""),
             "price": curr_p,
@@ -342,7 +404,11 @@ def analyze_stock(sym):
             "r1": r1_val,
             "r2": r2_val,
             "r3": r3_val,
-            "pivot_p": p_val
+            "pivot_p": p_val,
+            "ha_reversal_buy": ha_reversal_buy,
+            "ha_red_count": ha_red_count,
+            "ha_donchian_sl": ha_donchian_sl,
+            "ha_risk_pct": ha_risk_pct
         }
     except Exception as e:
         print(f"Error scanning {sym}: {e}")
@@ -748,6 +814,30 @@ def run_scan_cycle(force=False):
             send_telegram_alert(confirmed_alert_text)
             state[r3_confirmed_key] = True
             new_alerts.append(f"{s_name}: 100% CONFIRMED BUY")
+
+        # 0.2 Alert for BRIJESH BHATIA HEIKIN ASHI REVERSAL BUY
+        ha_alert_key = f"{s_name}_HA_REVERSAL_{today_str}"
+        if res.get('ha_reversal_buy') and not state.get(ha_alert_key):
+            ha_alert_text = (
+                f"🚀 <b>BRIJESH BHATIA HEIKIN ASHI REVERSAL!</b> 🚀\n"
+                f"━━━━━━━━━━━━━━━━━━━━━\n"
+                f"📌 <b>સ્ટોક:</b> {s_name} (LTP: ₹{res['price']:.2f}, {res['change']:+.2f}%)\n"
+                f"📉 <b>સેટઅપ:</b> {res['ha_red_count']} Red Candles ઘટાડા પછી તળિયેથી તાજું Reversal!\n"
+                f"🟢 <b>Heikin Ashi:</b> પ્રથમ Flat Bottom Green Candle (No Lower Shadow - શુદ્ધ તેજી)\n"
+                f"📈 <b>વીકલી ફિલ્ટર:</b> Weekly Macro Trend Bullish કન્ફર્મ\n"
+                f"━━━━━━━━━━━━━━━━━━━━━\n"
+                f"🎯 <b>Actionable Trade Setup (Pure Trend Following):</b>\n"
+                f"• <b>Buy Entry:</b> ₹{res['price']:.2f}\n"
+                f"• <b>🛡️ 11-Day Donchian Trailing SL:</b> ₹{res['ha_donchian_sl']:.2f} (-{res['ha_risk_pct']:.1f}%)\n"
+                f"• <b>🎯 ટાર્ગેટ:</b> કોઈ ફિક્સ ટાર્ગેટ નથી! (૧:૧૦ થી ૧:૩૦+ Big Wave Ride)\n"
+                f"• <b>💡 એક્ઝિટ નિયમ:</b> જ્યાં સુધી Daily Candle Donchian SL નીચે બંધ ન થાય ત્યાં સુધી નફો રાઇડ કરો!\n"
+                f"━━━━━━━━━━━━━━━━━━━━━\n"
+                f"⏰ <i>{get_ist_now().strftime('%d %b %Y | %H:%M:%S IST')}</i> | 🤖 Patel Trading Bot"
+            )
+            print(f"Sending HEIKIN ASHI REVERSAL alert for {s_name}")
+            send_telegram_alert(ha_alert_text)
+            state[ha_alert_key] = True
+            new_alerts.append(f"{s_name}: HEIKIN ASHI REVERSAL")
 
         # 1. Alert for FRESH SNIPER SHORT SELL setups
         if is_sniper_short and (prev_sig != curr_sig):
