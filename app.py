@@ -844,17 +844,26 @@ def analyze_hm_timeframe(df, name="Timeframe"):
     if 'Red_WMA21' not in df.columns or df['Red_WMA21'].dropna().empty or len(df.dropna(subset=['Red_WMA21'])) < 2:
         return {
             "name": name, "status": "ડેટા અપૂરતો છે", "bullish": False,
-            "crossover": False, "above_water": False, "green": 0.0, "red": 0.0, "rsi": 0.0
+            "crossover": False, "crossover_bull": False, "crossover_bear": False, "above_water": False,
+            "green": 50.0, "red": 50.0, "rsi": 50.0, "spread": 0.0,
+            "prev_green": 50.0, "prev_red": 50.0,
+            "green_slope": 0.0, "two_bar_green_slope": 0.0,
+            "prev_spread": 0.0
         }
     
     curr = df.iloc[-1]
     prev = df.iloc[-2]
+    prev2 = df.iloc[-3] if len(df) >= 3 else prev
     
     c_green = curr['Green_EMA3']
     p_green = prev['Green_EMA3']
+    p2_green = prev2['Green_EMA3']
     c_red = curr['Red_WMA21']
     p_red = prev['Red_WMA21']
     c_rsi = curr['RSI_9']
+    
+    green_slope = c_green - p_green
+    two_bar_green_slope = c_green - p2_green
     
     is_above_water = c_green >= 50.0 and c_red >= 50.0
     is_partly_above_water = c_green >= 50.0 or c_red >= 50.0
@@ -886,7 +895,9 @@ def analyze_hm_timeframe(df, name="Timeframe"):
         "crossover": is_fresh_cross_bull, "crossover_bull": is_fresh_cross_bull,
         "crossover_bear": is_fresh_cross_bear, "above_water": is_above_water,
         "green": c_green, "red": c_red, "rsi": c_rsi, "spread": round(c_green - c_red, 2),
-        "prev_green": p_green, "prev_red": p_red
+        "prev_green": p_green, "prev_red": p_red,
+        "green_slope": green_slope, "two_bar_green_slope": two_bar_green_slope,
+        "prev_spread": round(p_green - p_red, 2)
     }
 
 def analyze_trend_craft_timeframe(df, name="Timeframe"):
@@ -1053,52 +1064,74 @@ def calculate_master_confluence_vpa(m_hm, w_hm, d_hm, h1_hm, m_tc, w_tc, d_tc, h
     score += min(vol_pts, 25)
     score = min(score, 100)
 
-    is_1h_confirmed_bullish = h1_hm['crossover'] or (h1_hm['bullish'] and h1_tc['bullish'])
-    is_inside_tc = (d_tc['close'] >= d_tc['tc_low'] * 0.985) and (d_tc['close'] <= d_tc['tc_high'] * 1.015)
-    is_range_bound = is_inside_tc and (36 <= score <= 64) and (36 <= d_hm['rsi'] <= 64)
-    
+    # Daily HM & TC (Macro Trend Filter)
+    d_hm_bull = (d_hm['green'] > d_hm['red']) and (d_hm['green'] >= 50.0)
+    d_hm_bear = (d_hm['green'] < d_hm['red']) and (d_hm['green'] <= 50.0)
     d_bull_gap = d_hm['green'] - d_hm['red']
     d_bear_gap = d_hm['red'] - d_hm['green']
+    d_is_positive = d_hm_bull and (d_bull_gap >= 2.5) and d_tc['bullish']
+    d_is_negative = d_hm_bear and (d_bear_gap >= 2.5) and (not d_tc['bullish'])
     
-    h1_fresh_bull_cross = h1_hm.get('crossover_bull', False)
-    h1_bull_rebound = (h1_hm['green'] > h1_hm['red']) and (h1_hm['green'] > h1_hm.get('prev_green', h1_hm['green'])) and (h1_hm['green'] - h1_hm['red'] >= 1.5)
-    h1_fresh_bear_cross = h1_hm.get('crossover_bear', False)
-    h1_bear_rebound = (h1_hm['green'] < h1_hm['red']) and (h1_hm['green'] < h1_hm.get('prev_green', h1_hm['green'])) and (h1_hm['red'] - h1_hm['green'] >= 1.5)
+    # 1-Hour Rocket / Avalanche Trigger (Strict Confluence)
+    h1_green_slope = h1_hm.get('green_slope', h1_hm['green'] - h1_hm.get('prev_green', h1_hm['green']))
+    h1_two_bar_green_slope = h1_hm.get('two_bar_green_slope', h1_green_slope)
+    h1_bull_gap = h1_hm['green'] - h1_hm['red']
+    h1_prev_bull_gap = h1_hm.get('prev_green', h1_hm['green']) - h1_hm.get('prev_red', h1_hm['red'])
+    h1_bear_gap = h1_hm['red'] - h1_hm['green']
+    h1_prev_bear_gap = h1_hm.get('prev_red', h1_hm['red']) - h1_hm.get('prev_green', h1_hm['green'])
+    
+    h1_vol_ratio = h1_vol.get('ratio', 1.0)
+    h1_vol_confirmed = h1_vol_ratio >= 1.2
+    
+    # Image 5: Bullish Rocket Confluence (Daily Positive + 1H Vertical, Gap Expanding, Above Water 50, Vol >= 1.2x)
+    h1_is_vertical_up = (h1_green_slope >= 1.8) or (h1_two_bar_green_slope >= 3.0)
+    h1_gap_expanding_up = (h1_bull_gap >= 2.5) and (h1_bull_gap >= h1_prev_bull_gap)
+    h1_above_water = (h1_hm['rsi'] >= 51.5) and (h1_hm['green'] >= 50.0)
+    h1_hierarchy_bull = (h1_hm['rsi'] >= h1_hm['green'] - 1.5) and (h1_hm['green'] > h1_hm['red'])
+    h1_tc_confirmed_bull = h1_tc.get('bullish', False)
     
     is_sniper_buy = (
-        (d_hm['green'] > d_hm['red']) and
-        (d_bull_gap >= 3.0) and
-        (d_hm['rsi'] >= 48.0) and
-        (h1_fresh_bull_cross or h1_bull_rebound or is_1h_confirmed_bullish)
+        d_is_positive and
+        h1_is_vertical_up and
+        h1_hierarchy_bull and
+        h1_gap_expanding_up and
+        h1_above_water and
+        h1_tc_confirmed_bull and
+        h1_vol_confirmed
     )
     
-    is_buy_pullback = (
-        (d_hm['green'] > d_hm['red']) and
-        (d_bull_gap >= 3.0) and
-        (not h1_hm['bullish'] or not is_1h_confirmed_bullish)
-    )
+    # Image 4: Bearish Avalanche Confluence (Daily Negative + 1H Vertical, Gap Expanding, Below Water 50, Vol >= 1.2x)
+    h1_is_vertical_down = (h1_green_slope <= -1.8) or (h1_two_bar_green_slope <= -3.0)
+    h1_gap_expanding_down = (h1_bear_gap >= 2.5) and (h1_gap_expanding_down := (h1_bear_gap >= h1_prev_bear_gap))
+    h1_below_water = (h1_hm['rsi'] <= 48.5) and (h1_hm['green'] <= 50.0)
+    h1_hierarchy_bear = (h1_hm['rsi'] <= h1_hm['green'] + 1.5) and (h1_hm['green'] < h1_hm['red'])
+    h1_tc_confirmed_bear = not h1_tc.get('bullish', True)
     
     is_sniper_short = (
-        (d_hm['green'] < d_hm['red']) and
-        (d_bear_gap >= 3.0) and
-        (d_hm['rsi'] <= 53.0) and
-        (h1_fresh_bear_cross or h1_bear_rebound or (h1_tc['trend'] == 'BEARISH' and not h1_hm['bullish']))
+        d_is_negative and
+        h1_is_vertical_down and
+        h1_hierarchy_bear and
+        h1_gap_expanding_down and
+        h1_below_water and
+        h1_tc_confirmed_bear and
+        h1_vol_confirmed
     )
     
-    is_relief_bounce = (
-        (d_hm['green'] < d_hm['red']) and
-        (d_bear_gap >= 3.0) and
-        (h1_hm['bullish'] or h1_tc['trend'] in ['PULLBACK_SUPPORT', 'CONSOLIDATION'])
-    )
+    is_buy_pullback = d_is_positive and not is_sniper_buy
+    is_relief_bounce = d_is_negative and not is_sniper_short
+    
+    is_1h_confirmed_bullish = h1_is_vertical_up and h1_gap_expanding_up and h1_above_water and h1_tc_confirmed_bull
+    is_inside_tc = (d_tc['close'] >= d_tc['tc_low'] * 0.985) and (d_tc['close'] <= d_tc['tc_high'] * 1.015)
+    is_range_bound = is_inside_tc and (36 <= score <= 64) and (36 <= d_hm['rsi'] <= 64)
 
-    if is_sniper_buy and score >= 65:
+    if is_sniper_buy:
         verdict = "🎯 SNIPER DIP BUY (તાત્કાલિક ખરીદી સેટઅપ)"
         verdict_type = "success"
         pill_class = "pill-sniper-buy"
         explanation = (
-            "Daily ચાર્ટ પર Hilega-Milega 50 ની ઉપર મજબૂત તેજીમાં છે (Green > Red + Gap Expanding Rocket). "
-            "1-Hour ચાર્ટ પર પુલબેક (Dip) પૂરું થઈને Green લાઈને Red લાઈનને ઊર્ધ્વ ક્રોસ (Bull Cross Trigger) કર્યો છે! "
-            "ઓછામાં ઓછા સ્ટોપલોસ સાથે નવી તેજીમાં પ્રવેશવા માટે આ આદર્શ સ્નાઈપર બાય સેટઅપ છે."
+            "Daily ચાર્ટ પર ટ્રેન્ડ સુપર પોઝિટિવ છે (Green > Red + Gap Expanding). "
+            "1-Hour ચાર્ટ પર Black (RSI) અને Green (EMA) બંને Red લાઈનથી એકદમ વર્ટિકલ ઉપર છૂટી પડ્યા છે (Rocket Launch) "
+            "અને સંસ્થાકીય વોલ્યુમ (>=1.2x) સાથે પાણી (50) ની ઉપર સંપૂર્ણ કન્ફર્મ થઈ ગયા છે!"
         )
         stars = "⭐⭐⭐⭐⭐"
     elif is_buy_pullback:
@@ -1106,21 +1139,30 @@ def calculate_master_confluence_vpa(m_hm, w_hm, d_hm, h1_hm, m_tc, w_tc, d_tc, h
         verdict_type = "info"
         pill_class = "pill-buy-dips"
         explanation = (
-            "Daily ચાર્ટ પર મોટો ટ્રેન્ડ મજબૂત તેજીમાં છે (Green > Red Rocket), પરંતુ 1-Hour ચાર્ટ પર હાલમાં કરેક્શન/પુલબેક (Dip) ચાલે છે. "
-            "પડતી કેન્ડલમાં ઉતાવળે ખરીદવાને બદલે 1-Hour માં Green લાઈન Red લાઈન ઉપર ક્રોસ (Bull Cross) કરે ત્યારે જ સ્નાઈપર એન્ટ્રી કરવી!"
+            "Daily ચાર્ટ પર મોટો ટ્રેન્ડ મજબૂત તેજીમાં છે (Positive Trend), પરંતુ 1-Hour ચાર્ટ પર હજુ સુધી સ્નાઈપર રોકેટ ટ્રિગર નથી થયું. "
+            "પડતી કેન્ડલમાં ઉતાવળે ખરીદવાને બદલે 1-Hour માં Green અને Black લાઇન Red થી વર્ટિકલ છૂટી પડે અને વોલ્યુમ આવે ત્યારે જ એન્ટ્રી કરવી!"
         )
         stars = "⭐⭐⭐⭐"
-    elif is_sniper_short and score <= 40:
+    elif is_sniper_short:
         verdict = "🩸 SNIPER SHORT SELL (ઉછાળે વેચો / શોર્ટ એન્ટ્રી)"
         verdict_type = "error"
         pill_class = "pill-sniper-short"
         explanation = (
-            "Daily ચાર્ટ પર Hilega-Milega 50 ની નીચે ઊંધી ડાઇવ મારી રહ્યો છે (Bearish Avalanche). "
-            "1-Hour ચાર્ટ પર હળવો ઉછાળો પૂરો થઈને Green લાઇન Red લાઇન નીચે પાછી ફરી ગઈ છે (Rejection Trigger). "
-            "ઓછા જોખમે ફ્યુચર શોર્ટ કરવા, Put (PE) ખરીદવા અથવા Call (CE) સેલ કરવા માટે આ આદર્શ સ્નાઈપર શોર્ટ સેટઅપ છે!"
+            "Daily ચાર્ટ પર ટ્રેન્ડ નેગેટિવ છે (Green < Red + Bear Gap Expanding). "
+            "1-Hour ચાર્ટ પર Black (RSI) અને Green (EMA) બંને Red લાઈનથી વર્ટિકલ નીચે ડૂબી ગયા છે (Avalanche Dump) "
+            "અને ભારે સેલિંગ વોલ્યુમ (>=1.2x) સાથે પાણી (50) ની નીચે સંપૂર્ણ કન્ફર્મ થઈ ગયા છે!"
         )
         stars = "⭐⭐⭐⭐⭐"
-    elif score >= 80 and is_1h_confirmed_bullish:
+    elif is_relief_bounce:
+        verdict = "⚠️ SHORT ON BOUNCE (ઉછાળો પૂરો થવાની રાહ જુઓ)"
+        verdict_type = "warning"
+        pill_class = "pill-sell"
+        explanation = (
+            "Daily મોટા ટ્રેન્ડમાં મંદી છે, પરંતુ 1-Hour ચાર્ટ પર હજુ શોર્ટ માટે સંપૂર્ણ કન્ફર્મેશન નથી મળ્યું. "
+            "તળિયે વેચવાને બદલે 1-Hour માં વર્ટિકલ ડાઉનવર્ડ સ્લોપ અને વોલ્યુમ સાથે એન્ટ્રી મળશે!"
+        )
+        stars = "⭐⭐⭐⭐"
+    elif score >= 80 and is_1h_confirmed_bullish and h1_vol_confirmed:
         verdict = "🚀 PERFECT STRONG BUY (તાત્કાલિક એન્ટ્રી સેટઅપ)"
         verdict_type = "success"
         pill_class = "pill-strong-buy"
@@ -1466,6 +1508,9 @@ def scan_stock(sym):
         elif is_buy_pullback or (conf['score'] >= 65 and not is_1h_bull):
             signal_cat = "⏳ Buy on Dips"
             pill_class = "pill-buy-dips"
+        elif is_relief_bounce:
+            signal_cat = "⚠️ Short on Bounce"
+            pill_class = "pill-sell"
         elif conf['score'] >= 80 and is_1h_bull:
             signal_cat = "🚀 Strong Buy"
             pill_class = "pill-strong-buy"
@@ -1475,9 +1520,6 @@ def scan_stock(sym):
         elif is_option_selling:
             signal_cat = "⚖️ Option Selling (Range)"
             pill_class = "pill-option-sell"
-        elif is_relief_bounce:
-            signal_cat = "⚠️ Short on Bounce"
-            pill_class = "pill-sell"
         elif conf['score'] <= 35:
             signal_cat = "🔴 Strong Sell"
             pill_class = "pill-sell"

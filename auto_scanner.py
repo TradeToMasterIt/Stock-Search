@@ -186,45 +186,74 @@ def analyze_stock(sym):
         w_curr = df_w.iloc[-1]
         w_bull = (w_curr['Green_EMA3'] > w_curr['Red_WMA21']) and (w_curr['Green_EMA3'] >= 50)
         
-        # Daily HM & TC
+        # Daily HM & TC (Macro Trend Filter)
         d_curr = df_d.iloc[-1]
         d_prev = df_d.iloc[-2]
-        d_hm_bull = d_curr['Green_EMA3'] > d_curr['Red_WMA21']
+        d_hm_bull = (d_curr['Green_EMA3'] > d_curr['Red_WMA21']) and (d_curr['Green_EMA3'] >= 50.0)
+        d_hm_bear = (d_curr['Green_EMA3'] < d_curr['Red_WMA21']) and (d_curr['Green_EMA3'] <= 50.0)
         d_bull_gap = d_curr['Green_EMA3'] - d_curr['Red_WMA21']
         d_bear_gap = d_curr['Red_WMA21'] - d_curr['Green_EMA3']
-        d_tc_bull = d_curr['Close'] > d_curr['TC_SMA_High']
-        d_tc_dip = d_curr['Close'] >= d_curr['TC_SMA_Low'] and d_curr['Close'] <= d_curr['TC_SMA_High']
+        d_tc_bull = d_curr['Close'] >= d_curr['TC_SMA_Low']
+        d_tc_super_bull = d_curr['Close'] > d_curr['TC_SMA_High']
+        d_tc_dip = (d_curr['Close'] >= d_curr['TC_SMA_Low']) and (d_curr['Close'] <= d_curr['TC_SMA_High'])
+        d_is_positive = d_hm_bull and (d_bull_gap >= 2.5) and d_tc_bull
+        d_is_negative = d_hm_bear and (d_bear_gap >= 2.5) and (d_curr['Close'] <= d_curr['TC_SMA_High'])
         
-        # 1-Hour Trigger
+        # 1-Hour Trigger (Image 4 & Image 5 Strict Confluence)
         h1_curr = df_1h.iloc[-1]
         h1_prev = df_1h.iloc[-2]
-        h1_bull_cross = (h1_prev['Green_EMA3'] <= h1_prev['Red_WMA21']) and (h1_curr['Green_EMA3'] > h1_curr['Red_WMA21'])
-        h1_bull_rebound = (h1_curr['Green_EMA3'] > h1_curr['Red_WMA21']) and (h1_curr['Green_EMA3'] > h1_prev['Green_EMA3']) and (h1_prev['Green_EMA3'] <= h1_prev['Red_WMA21'] + 2.5)
-        h1_bear_cross = (h1_prev['Green_EMA3'] >= h1_prev['Red_WMA21']) and (h1_curr['Green_EMA3'] < h1_curr['Red_WMA21'])
-        h1_bear_rejection = (h1_curr['Green_EMA3'] < h1_curr['Red_WMA21']) and (h1_curr['Green_EMA3'] < h1_prev['Green_EMA3']) and (h1_prev['Red_WMA21'] - h1_prev['Green_EMA3'] <= 2.5)
+        h1_prev2 = df_1h.iloc[-3] if len(df_1h) >= 3 else h1_prev
         
-        h1_hm_bull = h1_curr['Green_EMA3'] > h1_curr['Red_WMA21']
-        h1_tc_bull = h1_curr['Close'] > h1_curr['TC_SMA_High']
+        # 1H Slopes (Vertical Steep Angle)
+        h1_green_slope = h1_curr['Green_EMA3'] - h1_prev['Green_EMA3']
+        h1_two_bar_green_slope = h1_curr['Green_EMA3'] - h1_prev2['Green_EMA3']
+        
+        # 1H Gap & Expansion from Red Line
+        h1_bull_gap = h1_curr['Green_EMA3'] - h1_curr['Red_WMA21']
+        h1_prev_bull_gap = h1_prev['Green_EMA3'] - h1_prev['Red_WMA21']
+        h1_bear_gap = h1_curr['Red_WMA21'] - h1_curr['Green_EMA3']
+        h1_prev_bear_gap = h1_prev['Red_WMA21'] - h1_prev['Green_EMA3']
+        
+        # 1H Institutional Volume (VPA) - Strictly Require >= 1.2x (Eliminates low-volume traps)
         h1_vol_ratio = h1_curr['Vol_Ratio'] if pd.notna(h1_curr['Vol_Ratio']) else 1.0
-        h1_vol_spike = h1_vol_ratio >= 1.5
+        h1_vol_confirmed = h1_vol_ratio >= 1.2
+        
+        # Image 5: Bullish Rocket Confluence (Daily Positive + 1H Vertical, Gap Expanding, Above Water 50, Vol >= 1.2x)
+        h1_is_vertical_up = (h1_green_slope >= 1.8) or (h1_two_bar_green_slope >= 3.0)
+        h1_gap_expanding_up = (h1_bull_gap >= 2.5) and (h1_bull_gap >= h1_prev_bull_gap)
+        h1_above_water = (h1_curr['RSI_9'] >= 51.5) and (h1_curr['Green_EMA3'] >= 50.0)
+        h1_hierarchy_bull = (h1_curr['RSI_9'] >= h1_curr['Green_EMA3'] - 1.5) and (h1_curr['Green_EMA3'] > h1_curr['Red_WMA21'])
+        h1_tc_confirmed_bull = (h1_curr['Close'] >= h1_curr['TC_SMA_Low']) and (h1_curr['Close'] >= h1_prev['Close'])
+        
+        is_sniper_buy = (
+            d_is_positive and
+            h1_is_vertical_up and
+            h1_hierarchy_bull and
+            h1_gap_expanding_up and
+            h1_above_water and
+            h1_tc_confirmed_bull and
+            h1_vol_confirmed
+        )
+        
+        # Image 4: Bearish Avalanche Confluence (Daily Negative + 1H Vertical, Gap Expanding, Below Water 50, Vol >= 1.2x)
+        h1_is_vertical_down = (h1_green_slope <= -1.8) or (h1_two_bar_green_slope <= -3.0)
+        h1_gap_expanding_down = (h1_bear_gap >= 2.5) and (h1_bear_gap >= h1_prev_bear_gap)
+        h1_below_water = (h1_curr['RSI_9'] <= 48.5) and (h1_curr['Green_EMA3'] <= 50.0)
+        h1_hierarchy_bear = (h1_curr['RSI_9'] <= h1_curr['Green_EMA3'] + 1.5) and (h1_curr['Green_EMA3'] < h1_curr['Red_WMA21'])
+        h1_tc_confirmed_bear = (h1_curr['Close'] <= h1_curr['TC_SMA_High']) and (h1_curr['Close'] <= h1_prev['Close'])
+        
+        is_sniper_short = (
+            d_is_negative and
+            h1_is_vertical_down and
+            h1_hierarchy_bear and
+            h1_gap_expanding_down and
+            h1_below_water and
+            h1_tc_confirmed_bear and
+            h1_vol_confirmed
+        )
         
         curr_p = d_curr['Close']
         pct_chg = ((curr_p - d_prev['Close']) / d_prev['Close']) * 100
-        
-        is_sniper_buy = (
-            (d_curr['Green_EMA3'] > d_curr['Red_WMA21']) and
-            (d_bull_gap >= 3.0) and
-            (d_curr['RSI_9'] >= 48.0) and
-            (h1_bull_cross or h1_bull_rebound)
-        )
-        
-        is_sniper_short = (
-            (d_curr['Green_EMA3'] < d_curr['Red_WMA21']) and
-            (d_bear_gap >= 3.0) and
-            (d_curr['RSI_9'] <= 52.0) and
-            (h1_bear_cross or h1_bear_rejection)
-        )
-        
         strike_step = 20 if curr_p < 500 else (50 if curr_p < 2500 else 100)
         
         if is_sniper_short:
@@ -253,16 +282,16 @@ def analyze_stock(sym):
             ce_strike = round(curr_p * 1.005 / strike_step) * strike_step
             pe_strike = min(d_curr['TC_SMA_Low'], curr_p * 0.975)
             
-            is_1h_bull = h1_bull_cross or (h1_hm_bull and h1_tc_bull)
+            is_1h_bull = (h1_curr['Green_EMA3'] > h1_curr['Red_WMA21']) and (h1_curr['Close'] > h1_curr['TC_SMA_High'])
             if is_sniper_buy:
                 signal = "🎯 SNIPER DIP BUY (Confirmed)"
-            elif m_bull and w_bull and (d_tc_bull or d_tc_dip) and is_1h_bull and h1_vol_spike:
-                signal = "🚀 STRONG BUY (Confirmed)"
-            elif m_bull and w_bull and not is_1h_bull:
+            elif d_is_positive and not is_sniper_buy:
                 signal = "🎯 BUY ON DIPS (Wait for 1H)"
-            elif m_bull and w_bull and is_1h_bull:
-                signal = "🟢 BULLISH SWING"
-            elif not m_bull and not w_bull and not d_tc_bull:
+            elif d_is_negative and not is_sniper_short:
+                signal = "⚠️ SHORT ON BOUNCE (Wait for 1H)"
+            elif m_bull and w_bull and (d_tc_super_bull or d_tc_dip) and is_1h_bull and h1_vol_confirmed:
+                signal = "🚀 STRONG BUY (Confirmed)"
+            elif not d_hm_bull and not d_tc_bull and not m_bull and not w_bull:
                 signal = "🔴 STRONG SELL / AVOID"
             else:
                 signal = "⏳ WAIT / CONSOLIDATION"
@@ -298,7 +327,7 @@ def analyze_stock(sym):
             "change": pct_chg,
             "signal": signal,
             "is_short": is_sniper_short,
-            "h1_cross": h1_bull_cross or h1_bear_cross,
+            "h1_cross": is_sniper_buy or is_sniper_short,
             "vol_ratio": h1_vol_ratio,
             "stop_loss": stop_loss,
             "t1": t1,
