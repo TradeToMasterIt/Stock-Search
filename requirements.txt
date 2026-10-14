@@ -5,3 +5,4 @@ numpy
 altair
 requests
 streamlit-autorefresh
+python-dotenv

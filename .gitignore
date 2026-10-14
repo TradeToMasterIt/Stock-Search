@@ -1,0 +1,23 @@
+# Environment Variables & Secrets
+.env
+.env.local
+.streamlit/secrets.toml
+
+# Python artifacts
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv/
+
+# Caches and runtime state
+alert_state.json
+screener_cache.json
+active_trades.json
+trades.db
+*.db
+*.sqlite
+

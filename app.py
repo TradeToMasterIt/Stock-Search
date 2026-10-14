@@ -9,6 +9,34 @@ import numpy as np
 import altair as alt
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
+from core.config import get_ist_now, is_market_open, DEFAULT_WATCHLIST
+from core.alerts import send_telegram_alert
+from core.scanner import run_scan_cycle
+from core.database import load_active_trades, save_active_trades, load_all_trades, delete_trade
+from core.charts import (
+    render_tradingview_widget,
+    plot_candlestick_triple_chart,
+    plot_heikin_ashi_donchian_chart,
+    plot_equity_curve_chart
+)
+from core.option_chain import fetch_live_option_chain, get_strike_step
+from core.backtester import run_backtest, STRATEGIES
+from core.indicators import (
+    format_volume,
+    calculate_trade_levels,
+    calculate_hilega_milega,
+    calculate_trend_craft_ict,
+    calculate_volume_analysis,
+    calculate_daily_pivot_points,
+    calculate_heikin_ashi,
+    calculate_donchian_channel,
+    calculate_camarilla_levels,
+    analyze_hm_timeframe,
+    analyze_trend_craft_timeframe,
+    analyze_volume_timeframe,
+    calculate_master_confluence_vpa
+)
+
 try:
     from streamlit_autorefresh import st_autorefresh
 except ImportError:
@@ -612,69 +640,10 @@ div[class*="st-key-btn_kpi_"] > button em {
 # -------------------------------------------------------------
 # Active Trades & Risk Guardian Data Layer
 # -------------------------------------------------------------
-TRADES_FILE = "active_trades.json"
+# Note: load_active_trades, save_active_trades, load_all_trades, delete_trade
+# are imported directly from core.database with SQLite thread-safe storage
 
-def load_active_trades():
-    if not os.path.exists(TRADES_FILE):
-        return []
-    try:
-        with open(TRADES_FILE, "r", encoding="utf-8") as f:
-            return json.load(f)
-    except Exception:
-        return []
-
-def save_active_trades(trades):
-    try:
-        with open(TRADES_FILE, "w", encoding="utf-8") as f:
-            json.dump(trades, f, indent=2)
-        return True
-    except Exception:
-        return False
-
-def format_volume(vol):
-    if pd.isna(vol) or vol == 0:
-        return "0"
-    if vol >= 10_000_000:
-        return f"{vol / 10_000_000:.2f} Cr"
-    elif vol >= 100_000:
-        return f"{vol / 100_000:.2f} L"
-    elif vol >= 1_000:
-        return f"{vol / 1_000:.1f} K"
-    return f"{vol:,.0f}"
-
-def calculate_trade_levels(entry_price, stop_loss, is_short=False):
-    if is_short:
-        risk = stop_loss - entry_price if stop_loss > entry_price else entry_price * 0.015
-        if risk <= 0 or risk > (entry_price * 0.12):
-            risk = entry_price * 0.015
-            stop_loss = entry_price + risk
-        t1 = entry_price - (1.5 * risk)
-        t2 = entry_price - (2.5 * risk)
-        risk_pct = (risk / entry_price) * 100
-        t1_pct = ((entry_price - t1) / entry_price) * 100
-        t2_pct = ((entry_price - t2) / entry_price) * 100
-    else:
-        risk = entry_price - stop_loss
-        if risk <= 0 or risk > (entry_price * 0.12):
-            risk = entry_price * 0.015 # default 1.5% tight risk
-            stop_loss = entry_price - risk
-            
-        t1 = entry_price + (1.5 * risk)
-        t2 = entry_price + (2.5 * risk)
-        risk_pct = (risk / entry_price) * 100
-        t1_pct = ((t1 - entry_price) / entry_price) * 100
-        t2_pct = ((t2 - entry_price) / entry_price) * 100
-    
-    return {
-        "entry": entry_price,
-        "stop_loss": stop_loss,
-        "risk_pct": risk_pct,
-        "t1": t1,
-        "t1_pct": t1_pct,
-        "t2": t2,
-        "t2_pct": t2_pct,
-        "is_short": is_short
-    }
+# Note: format_volume and calculate_trade_levels are imported from core.indicators
 
 @st.cache_data(ttl=120)
 def get_nifty_sentiment():
@@ -751,134 +720,9 @@ BASKETS = {
     ]
 }
 
-# -------------------------------------------------------------
-# Indicators
-# -------------------------------------------------------------
-def calculate_hilega_milega(df, rsi_period=9, ema_period=3, wma_period=21):
-    if len(df) < (rsi_period + wma_period):
-        return df
-
-    delta = df['Close'].diff()
-    gain = delta.clip(lower=0)
-    loss = -delta.clip(upper=0)
-    avg_gain = gain.ewm(alpha=1/rsi_period, adjust=False).mean()
-    avg_loss = loss.ewm(alpha=1/rsi_period, adjust=False).mean()
-    rs = avg_gain / avg_loss.replace(0, np.nan)
-    rsi = 100 - (100 / (1 + rs))
-    rsi = rsi.fillna(50)
-    
-    green_ema3 = rsi.ewm(span=ema_period, adjust=False).mean()
-    weights = np.arange(1, wma_period + 1)
-    wma21 = rsi.rolling(wma_period).apply(lambda s: np.dot(s, weights) / weights.sum(), raw=True)
-    
-    df['RSI_9'] = rsi
-    df['Green_EMA3'] = green_ema3
-    df['Red_WMA21'] = wma21
-    df['Water_50'] = 50.0
-    return df
-
-def calculate_trend_craft_ict(df, default_period=45):
-    if len(df) < 10:
-        return df
-    
-    period = default_period if len(df) >= (default_period + 5) else max(8, len(df) // 2)
-    df['TC_SMA_High'] = df['High'].rolling(period).mean()
-    df['TC_SMA_Low'] = df['Low'].rolling(period).mean()
-    df['TC_Period'] = period
-    return df
-
-def calculate_volume_analysis(df, sma_period=20):
-    if 'Volume' not in df.columns or len(df) < 5:
-        return df
-        
-    actual_period = sma_period if len(df) >= sma_period else max(3, len(df) // 2)
-    df['Vol_SMA20'] = df['Volume'].rolling(actual_period).mean()
-    df['Vol_Ratio'] = df['Volume'] / df['Vol_SMA20'].replace(0, np.nan)
-    
-    if 'Open' in df.columns:
-        df['Candle_Color'] = np.where(df['Close'] >= df['Open'], '#00E676', '#FF1744')
-        df['Vol_Color'] = df['Candle_Color']
-    else:
-        df['Candle_Color'] = np.where(df['Close'] >= df['Close'].shift(1).fillna(df['Close']), '#00E676', '#FF1744')
-        df['Vol_Color'] = df['Candle_Color']
-        
-    return df
-
-def calculate_daily_pivot_points(df_d):
-    """
-    Standard Daily Pivot Points calculated from previous trading session's High, Low, Close.
-    P = (H + L + C) / 3
-    R1 = 2P - L, S1 = 2P - H
-    R2 = P + (H - L), S2 = P - (H - L)
-    R3 = H + 2*(P - L), S3 = L - 2*(H - P)
-    """
-    if len(df_d) < 2:
-        return None
-    prev = df_d.iloc[-2]
-    h, l, c = float(prev['High']), float(prev['Low']), float(prev['Close'])
-    p = (h + l + c) / 3.0
-    r1 = (2.0 * p) - l
-    s1 = (2.0 * p) - h
-    r2 = p + (h - l)
-    s2 = p - (h - l)
-    r3 = h + 2.0 * (p - l)
-    s3 = l - 2.0 * (h - p)
-    
-    return {
-        "p": round(p, 2),
-        "r1": round(r1, 2),
-        "r2": round(r2, 2),
-        "r3": round(r3, 2),
-        "s1": round(s1, 2),
-        "s2": round(s2, 2),
-        "s3": round(s3, 2),
-        "prev_high": round(h, 2),
-        "prev_low": round(l, 2),
-        "prev_close": round(c, 2)
-    }
-
-# -------------------------------------------------------------
-# Heikin Ashi & Donchian Channel (Brijesh Bhatia Reversal System)
-# -------------------------------------------------------------
-def calculate_heikin_ashi(df):
-    if df is None or len(df) < 2:
-        return df
-    ha_df = df.copy()
-    ha_close = (df['Open'] + df['High'] + df['Low'] + df['Close']) / 4.0
-    
-    ha_open = np.zeros(len(df))
-    ha_open[0] = (df['Open'].iloc[0] + df['Close'].iloc[0]) / 2.0
-    for i in range(1, len(df)):
-        ha_open[i] = (ha_open[i-1] + ha_close.iloc[i-1]) / 2.0
-        
-    ha_df['HA_Close'] = ha_close
-    ha_df['HA_Open'] = ha_open
-    ha_df['HA_High'] = np.maximum(df['High'], np.maximum(ha_open, ha_close))
-    ha_df['HA_Low'] = np.minimum(df['Low'], np.minimum(ha_open, ha_close))
-    
-    body = np.abs(ha_df['HA_Close'] - ha_df['HA_Open'])
-    rng = np.maximum(ha_df['HA_High'] - ha_df['HA_Low'], 0.001)
-    lower_shadow = np.minimum(ha_df['HA_Open'], ha_df['HA_Close']) - ha_df['HA_Low']
-    upper_shadow = ha_df['HA_High'] - np.maximum(ha_df['HA_Open'], ha_df['HA_Close'])
-    
-    is_bull = (ha_df['HA_Close'] > ha_df['HA_Open'])
-    is_bear = (ha_df['HA_Close'] < ha_df['HA_Open'])
-    
-    # Flat bottom bullish: lower shadow is <= 15% of body (strict flat bottom)
-    ha_df['HA_Is_Bullish'] = is_bull & (lower_shadow <= (body * 0.15))
-    ha_df['HA_Is_Bearish'] = is_bear & (upper_shadow <= (body * 0.15))
-    # Doji / exhaustion: body <= 35% of total range and both shadows exist
-    ha_df['HA_Is_Doji'] = (body / rng <= 0.35) & (upper_shadow > (rng * 0.15)) & (lower_shadow > (rng * 0.15))
-    
-    return ha_df
-
-def calculate_donchian_channel(df, period=11):
-    if df is None or len(df) < 2:
-        return df
-    act_p = period if len(df) >= period else max(2, len(df))
-    df[f'Donchian_High_{period}'] = df['High'].rolling(act_p).max()
-    df[f'Donchian_Low_{period}'] = df['Low'].rolling(act_p).min()
-    return df
+# Note: calculate_hilega_milega, calculate_trend_craft_ict, calculate_volume_analysis,
+# calculate_daily_pivot_points, calculate_heikin_ashi, and calculate_donchian_channel
+# are imported directly from core.indicators
 
 def scan_heikin_ashi_stock(sym, min_red_candles=5, timeframe="Daily"):
     try:
@@ -991,623 +835,12 @@ def scan_heikin_ashi_stock(sym, min_red_candles=5, timeframe="Daily"):
     except Exception:
         return None
 
-# -------------------------------------------------------------
-# Status Analysis
-# -------------------------------------------------------------
-def analyze_hm_timeframe(df, name="Timeframe"):
-    if 'Red_WMA21' not in df.columns or df['Red_WMA21'].dropna().empty or len(df.dropna(subset=['Red_WMA21'])) < 2:
-        return {
-            "name": name, "status": "ડેટા અપૂરતો છે", "bullish": False,
-            "crossover": False, "crossover_bull": False, "crossover_bear": False, "above_water": False,
-            "green": 50.0, "red": 50.0, "rsi": 50.0, "spread": 0.0,
-            "prev_green": 50.0, "prev_red": 50.0,
-            "green_slope": 0.0, "two_bar_green_slope": 0.0,
-            "prev_spread": 0.0
-        }
-    
-    curr = df.iloc[-1]
-    prev = df.iloc[-2]
-    prev2 = df.iloc[-3] if len(df) >= 3 else prev
-    
-    c_green = curr['Green_EMA3']
-    p_green = prev['Green_EMA3']
-    p2_green = prev2['Green_EMA3']
-    c_red = curr['Red_WMA21']
-    p_red = prev['Red_WMA21']
-    c_rsi = curr['RSI_9']
-    
-    green_slope = c_green - p_green
-    two_bar_green_slope = c_green - p2_green
-    
-    is_above_water = c_green >= 50.0 and c_red >= 50.0
-    is_partly_above_water = c_green >= 50.0 or c_red >= 50.0
-    is_green_above_red = c_green > c_red
-    is_fresh_cross_bull = (p_green <= p_red) and (c_green > c_red)
-    is_fresh_cross_bear = (p_green >= p_red) and (c_green < c_red)
-    
-    if is_fresh_cross_bull:
-        status_text = "🟢 તાજો ગોલ્ડન ક્રોસઓવર (Fresh Buy Cross)"
-        bullish = True
-    elif is_fresh_cross_bear:
-        status_text = "🔴 તાજો બેરિશ ક્રોસઓવર (Fresh Bear Cross)"
-        bullish = False
-    elif is_green_above_red and is_above_water:
-        status_text = "🟢 સુપર તેજી (Bullish - પાણીની ઉપર)"
-        bullish = True
-    elif is_green_above_red and not is_above_water:
-        status_text = "🟡 રિવર્સલ શરૂ (પાણીની નીચે ક્રોસ)"
-        bullish = True
-    elif not is_green_above_red and is_partly_above_water:
-        status_text = "🟠 પ્રોફિટ બુકિંગ / પુલબેક (Pullback)"
-        bullish = False
-    else:
-        status_text = "🔴 સંપૂર્ણ મંદી (Bearish - પાણીની નીચે)"
-        bullish = False
-        
-    return {
-        "name": name, "status": status_text, "bullish": bullish,
-        "crossover": is_fresh_cross_bull, "crossover_bull": is_fresh_cross_bull,
-        "crossover_bear": is_fresh_cross_bear, "above_water": is_above_water,
-        "green": c_green, "red": c_red, "rsi": c_rsi, "spread": round(c_green - c_red, 2),
-        "prev_green": p_green, "prev_red": p_red,
-        "green_slope": green_slope, "two_bar_green_slope": two_bar_green_slope,
-        "prev_spread": round(p_green - p_red, 2)
-    }
+# Note: analyze_hm_timeframe, analyze_trend_craft_timeframe, analyze_volume_timeframe,
+# and calculate_master_confluence_vpa are imported directly from core.indicators
 
-def analyze_trend_craft_timeframe(df, name="Timeframe"):
-    if 'TC_SMA_High' not in df.columns or len(df.dropna(subset=['TC_SMA_High'])) < 2:
-        return {
-            "name": name, "status": "ડેટા અપૂરતો છે", "trend": "NEUTRAL",
-            "bullish": False, "color": "gray", "close": 0.0, "tc_high": 0.0, "tc_low": 0.0, "is_pullback": False
-        }
-    
-    curr = df.iloc[-1]
-    prev = df.iloc[-2]
-    c = curr['Close']
-    h = curr['TC_SMA_High']
-    l = curr['TC_SMA_Low']
-    
-    if c > h:
-        trend = "BULLISH"
-        color = "green"
-        bullish = True
-        is_pullback = curr['Low'] <= (h * 1.012) and c >= h
-        status_text = "🟢 ગ્રીન ચેનલની ઉપર (Bullish Trend)"
-    elif c < l:
-        trend = "BEARISH"
-        color = "red"
-        bullish = False
-        is_pullback = False
-        status_text = "🔴 રેડ ચેનલની નીચે (Bearish Trend)"
-    else:
-        if prev['Close'] > prev['TC_SMA_High']:
-            trend = "PULLBACK_SUPPORT"
-            color = "orange"
-            bullish = True
-            is_pullback = True
-            status_text = "🎯 પુલબેક સપોર્ટ ટેસ્ટ (Inside Band Support)"
-        else:
-            trend = "CONSOLIDATION"
-            color = "gray"
-            bullish = False
-            is_pullback = False
-            status_text = "⚪ રેન્જ બાઉન્ડ / બેન્ડની અંદર (Consolidation)"
-            
-    return {
-        "name": name, "status": status_text, "trend": trend, "bullish": bullish,
-        "color": color, "close": c, "tc_high": h, "tc_low": l, "is_pullback": is_pullback
-    }
+# Note: plot_candlestick_triple_chart is imported directly from core.charts
 
-def analyze_volume_timeframe(df, name="Timeframe"):
-    if 'Vol_SMA20' not in df.columns or len(df.dropna(subset=['Vol_SMA20'])) < 2:
-        return {
-            "name": name, "status": "ડેટા અપૂરતો છે", "curr_vol": 0, "vol_sma": 0,
-            "ratio": 1.0, "is_spike": False, "is_healthy_dip": False, "verdict": "Neutral"
-        }
-        
-    curr = df.iloc[-1]
-    prev = df.iloc[-2]
-    
-    v = curr['Volume']
-    v_sma = curr['Vol_SMA20']
-    ratio = curr['Vol_Ratio'] if pd.notna(curr['Vol_Ratio']) else 1.0
-    price_up = curr['Close'] >= prev['Close']
-    
-    is_spike = ratio >= 1.5
-    is_healthy_dip = (not price_up) and (ratio < 0.85)
-    
-    if price_up and is_spike:
-        status_text = f"🔥 ભારે ઇન્સ્ટિટ્યૂશનલ ખરીદી ({ratio:.1f}x Avg Volume)"
-        verdict = "High Volume Bullish"
-    elif price_up and ratio >= 1.0:
-        status_text = f"🟢 સરેરાશથી વધુ વૉલ્યુમ સાથે તેજી ({ratio:.1f}x)"
-        verdict = "Healthy Bullish"
-    elif price_up and ratio < 1.0:
-        status_text = f"⚠️ લો-વૉલ્યુમ તેજી / ફેકઆઉટ જોખમ ({ratio:.1f}x Avg)"
-        verdict = "Weak Volume Bullish"
-    elif not price_up and is_healthy_dip:
-        status_text = f"🎯 લો-વૉલ્યુમ હેલ્ધી પુલબેક ({ratio:.1f}x - કોઈ મોટો સેલર નથી)"
-        verdict = "Healthy Low-Volume Dip"
-    elif not price_up and is_spike:
-        status_text = f"🔴 પેનિક સેલિંગ / ઇન્સ્ટિટ્યૂશનલ ડિસ્ટ્રિબ્યુશન ({ratio:.1f}x Avg)"
-        verdict = "Heavy Volume Selling"
-    else:
-        status_text = f"🟠 સરેરાશ વૉલ્યુમ સાથે ઘટાડો ({ratio:.1f}x)"
-        verdict = "Moderate Selling"
-        
-    return {
-        "name": name, "status": status_text, "curr_vol": v, "vol_sma": v_sma,
-        "ratio": ratio, "is_spike": is_spike, "is_healthy_dip": is_healthy_dip,
-        "price_up": price_up, "verdict": verdict
-    }
-
-def calculate_master_confluence_vpa(m_hm, w_hm, d_hm, h1_hm, m_tc, w_tc, d_tc, h1_tc, m_vol, w_vol, d_vol, h1_vol):
-    score = 0
-    checks = []
-    
-    # 1. Monthly Mega Trend (15 pts)
-    if m_hm['bullish'] and m_hm['above_water'] and m_tc['bullish']:
-        score += 15
-        checks.append("✅ Monthly: HM + Trend Craft બંને 100% તેજીમાં (+15)")
-    elif m_hm['bullish'] or m_tc['bullish']:
-        score += 10
-        checks.append("🟡 Monthly: લાંબો ગાળો આંશિક તેજી (+10)")
-    else:
-        checks.append("❌ Monthly: મંદી / પાણીની અંદર (0)")
-
-    # 2. Weekly Swing Trend (20 pts)
-    if w_hm['bullish'] and w_hm['above_water'] and w_tc['bullish']:
-        score += 20
-        checks.append("✅ Weekly: HM + Trend Craft મજબૂત સ્વિંગ તેજીમાં (+20)")
-    elif w_hm['bullish'] or w_tc['bullish']:
-        score += 12
-        checks.append("🟡 Weekly: સ્વિંગ ટ્રેન્ડ આંશિક તેજી (+12)")
-    else:
-        checks.append("❌ Weekly: સ્વિંગ મંદી (0)")
-
-    # 3. Daily Structure & Support (20 pts)
-    if d_hm['bullish'] and d_tc['bullish']:
-        score += 20
-        checks.append("✅ Daily: ડેઇલી ચેનલ અને મોમેન્ટમ બંને બુલિશ (+20)")
-    elif d_tc['is_pullback'] or d_tc['trend'] == "PULLBACK_SUPPORT":
-        score += 18
-        checks.append("🎯 Daily: ડેઇલી બેન્ડ સપોર્ટ પાસે પુલબેક (+18)")
-    elif d_hm['bullish'] or d_tc['bullish']:
-        score += 12
-        checks.append("🟡 Daily: ડેઇલી ટ્રેન્ડ સારો (+12)")
-    else:
-        checks.append("❌ Daily: ડેઇલી કરેક્શન / મંદી (0)")
-
-    # 4. 1-Hour Sniper Trigger (20 pts)
-    if h1_hm['crossover'] and (h1_tc['trend'] in ["BULLISH", "PULLBACK_SUPPORT"]):
-        score += 20
-        checks.append("🚀 1-Hour: તાજો સ્નાઈપર ગોલ્ડન ક્રોસ + ગ્રીન બેન્ડ સપોર્ટ! (+20)")
-    elif h1_hm['bullish'] and h1_tc['bullish']:
-        score += 16
-        checks.append("✅ 1-Hour: મોમેન્ટમ અને પ્રાઈસ બંને તેજીમાં (+16)")
-    elif h1_tc['is_pullback']:
-        score += 14
-        checks.append("🎯 1-Hour: 1-Hour બેન્ડ સપોર્ટ પર બાઉન્સ (+14)")
-    elif h1_hm['bullish']:
-        score += 10
-        checks.append("🟡 1-Hour: મોમેન્ટમ તેજી તરફી (+10)")
-    else:
-        checks.append("❌ 1-Hour: શોર્ટ-ટર્મ કરેક્શન / મંદી (0)")
-
-    # 5. Volume (VPA) Confirmation (25 pts)
-    vol_pts = 0
-    if h1_vol['price_up'] and h1_vol['is_spike']:
-        vol_pts += 15
-        checks.append(f"🔥 1-Hour Volume: ઇન્સ્ટિટ્યૂશનલ સ્નાઈપર વૉલ્યુમ સ્પાઇક ({h1_vol['ratio']:.1f}x Avg) (+15)")
-    elif h1_vol['is_healthy_dip']:
-        vol_pts += 15
-        checks.append(f"🎯 1-Hour Volume: પરફેક્ટ લો-વૉલ્યુમ ડીપ ({h1_vol['ratio']:.1f}x - કોઈ સેલર નથી) (+15)")
-    elif h1_vol['price_up'] and h1_vol['ratio'] >= 1.0:
-        vol_pts += 10
-        checks.append(f"🟢 1-Hour Volume: એવરેજથી વધુ વૉલ્યુમ (+10)")
-    elif h1_vol['price_up'] and h1_vol['ratio'] < 0.7:
-        checks.append(f"⚠️ 1-Hour Volume: લો-વૉલ્યુમ ફેકઆઉટ જોખમ ({h1_vol['ratio']:.1f}x) (0)")
-        
-    if d_vol['price_up'] and d_vol['ratio'] >= 1.0:
-        vol_pts += 10
-        checks.append(f"✅ Daily Volume: ડેઇલી વૉલ્યુમ સપોર્ટેડ (+10)")
-    elif d_vol['is_healthy_dip']:
-        vol_pts += 10
-        checks.append(f"🎯 Daily Volume: ડેઇલી લો-વૉલ્યુમ પુલબેક (+10)")
-        
-    score += min(vol_pts, 25)
-    score = min(score, 100)
-
-    # Daily HM & TC (Macro Trend Filter)
-    d_hm_bull = (d_hm['green'] > d_hm['red']) and (d_hm['green'] >= 50.0)
-    d_hm_bear = (d_hm['green'] < d_hm['red']) and (d_hm['green'] <= 50.0)
-    d_bull_gap = d_hm['green'] - d_hm['red']
-    d_bear_gap = d_hm['red'] - d_hm['green']
-    d_is_positive = d_hm_bull and (d_bull_gap >= 2.5) and d_tc['bullish']
-    d_is_negative = d_hm_bear and (d_bear_gap >= 2.5) and (not d_tc['bullish'])
-    
-    # 1-Hour Rocket / Avalanche Trigger (Strict Confluence)
-    h1_green_slope = h1_hm.get('green_slope', h1_hm['green'] - h1_hm.get('prev_green', h1_hm['green']))
-    h1_two_bar_green_slope = h1_hm.get('two_bar_green_slope', h1_green_slope)
-    h1_bull_gap = h1_hm['green'] - h1_hm['red']
-    h1_prev_bull_gap = h1_hm.get('prev_green', h1_hm['green']) - h1_hm.get('prev_red', h1_hm['red'])
-    h1_bear_gap = h1_hm['red'] - h1_hm['green']
-    h1_prev_bear_gap = h1_hm.get('prev_red', h1_hm['red']) - h1_hm.get('prev_green', h1_hm['green'])
-    
-    h1_vol_ratio = h1_vol.get('ratio', 1.0)
-    h1_vol_confirmed = h1_vol_ratio >= 1.2
-    
-    # Image 5: Bullish Rocket Confluence (Daily Positive + 1H Vertical, Gap Expanding, Above Water 50, Vol >= 1.2x)
-    h1_is_vertical_up = (h1_green_slope >= 1.8) or (h1_two_bar_green_slope >= 3.0)
-    h1_gap_expanding_up = (h1_bull_gap >= 2.5) and (h1_bull_gap >= h1_prev_bull_gap)
-    h1_above_water = (h1_hm['rsi'] >= 51.5) and (h1_hm['green'] >= 50.0)
-    h1_hierarchy_bull = (h1_hm['rsi'] >= h1_hm['green'] - 1.5) and (h1_hm['green'] > h1_hm['red'])
-    h1_tc_confirmed_bull = h1_tc.get('bullish', False)
-    
-    is_sniper_buy = (
-        d_is_positive and
-        h1_is_vertical_up and
-        h1_hierarchy_bull and
-        h1_gap_expanding_up and
-        h1_above_water and
-        h1_tc_confirmed_bull and
-        h1_vol_confirmed
-    )
-    
-    # Image 4: Bearish Avalanche Confluence (Daily Negative + 1H Vertical, Gap Expanding, Below Water 50, Vol >= 1.2x)
-    h1_is_vertical_down = (h1_green_slope <= -1.8) or (h1_two_bar_green_slope <= -3.0)
-    h1_gap_expanding_down = (h1_bear_gap >= 2.5) and (h1_gap_expanding_down := (h1_bear_gap >= h1_prev_bear_gap))
-    h1_below_water = (h1_hm['rsi'] <= 48.5) and (h1_hm['green'] <= 50.0)
-    h1_hierarchy_bear = (h1_hm['rsi'] <= h1_hm['green'] + 1.5) and (h1_hm['green'] < h1_hm['red'])
-    h1_tc_confirmed_bear = not h1_tc.get('bullish', True)
-    
-    is_sniper_short = (
-        d_is_negative and
-        h1_is_vertical_down and
-        h1_hierarchy_bear and
-        h1_gap_expanding_down and
-        h1_below_water and
-        h1_tc_confirmed_bear and
-        h1_vol_confirmed
-    )
-    
-    is_buy_pullback = d_is_positive and not is_sniper_buy
-    is_relief_bounce = d_is_negative and not is_sniper_short
-    
-    is_1h_confirmed_bullish = h1_is_vertical_up and h1_gap_expanding_up and h1_above_water and h1_tc_confirmed_bull
-    is_inside_tc = (d_tc['close'] >= d_tc['tc_low'] * 0.985) and (d_tc['close'] <= d_tc['tc_high'] * 1.015)
-    is_range_bound = is_inside_tc and (36 <= score <= 64) and (36 <= d_hm['rsi'] <= 64)
-
-    if is_sniper_buy:
-        verdict = "🎯 SNIPER DIP BUY (તાત્કાલિક ખરીદી સેટઅપ)"
-        verdict_type = "success"
-        pill_class = "pill-sniper-buy"
-        explanation = (
-            "Daily ચાર્ટ પર ટ્રેન્ડ સુપર પોઝિટિવ છે (Green > Red + Gap Expanding). "
-            "1-Hour ચાર્ટ પર Black (RSI) અને Green (EMA) બંને Red લાઈનથી એકદમ વર્ટિકલ ઉપર છૂટી પડ્યા છે (Rocket Launch) "
-            "અને સંસ્થાકીય વોલ્યુમ (>=1.2x) સાથે પાણી (50) ની ઉપર સંપૂર્ણ કન્ફર્મ થઈ ગયા છે!"
-        )
-        stars = "⭐⭐⭐⭐⭐"
-    elif is_buy_pullback:
-        verdict = "⏳ BUY ON DIPS (પુલબેક ચાલુ • 1H ક્રોસની રાહ જુઓ)"
-        verdict_type = "info"
-        pill_class = "pill-buy-dips"
-        explanation = (
-            "Daily ચાર્ટ પર મોટો ટ્રેન્ડ મજબૂત તેજીમાં છે (Positive Trend), પરંતુ 1-Hour ચાર્ટ પર હજુ સુધી સ્નાઈપર રોકેટ ટ્રિગર નથી થયું. "
-            "પડતી કેન્ડલમાં ઉતાવળે ખરીદવાને બદલે 1-Hour માં Green અને Black લાઇન Red થી વર્ટિકલ છૂટી પડે અને વોલ્યુમ આવે ત્યારે જ એન્ટ્રી કરવી!"
-        )
-        stars = "⭐⭐⭐⭐"
-    elif is_sniper_short:
-        verdict = "🩸 SNIPER SHORT SELL (ઉછાળે વેચો / શોર્ટ એન્ટ્રી)"
-        verdict_type = "error"
-        pill_class = "pill-sniper-short"
-        explanation = (
-            "Daily ચાર્ટ પર ટ્રેન્ડ નેગેટિવ છે (Green < Red + Bear Gap Expanding). "
-            "1-Hour ચાર્ટ પર Black (RSI) અને Green (EMA) બંને Red લાઈનથી વર્ટિકલ નીચે ડૂબી ગયા છે (Avalanche Dump) "
-            "અને ભારે સેલિંગ વોલ્યુમ (>=1.2x) સાથે પાણી (50) ની નીચે સંપૂર્ણ કન્ફર્મ થઈ ગયા છે!"
-        )
-        stars = "⭐⭐⭐⭐⭐"
-    elif is_relief_bounce:
-        verdict = "⚠️ SHORT ON BOUNCE (ઉછાળો પૂરો થવાની રાહ જુઓ)"
-        verdict_type = "warning"
-        pill_class = "pill-sell"
-        explanation = (
-            "Daily મોટા ટ્રેન્ડમાં મંદી છે, પરંતુ 1-Hour ચાર્ટ પર હજુ શોર્ટ માટે સંપૂર્ણ કન્ફર્મેશન નથી મળ્યું. "
-            "તળિયે વેચવાને બદલે 1-Hour માં વર્ટિકલ ડાઉનવર્ડ સ્લોપ અને વોલ્યુમ સાથે એન્ટ્રી મળશે!"
-        )
-        stars = "⭐⭐⭐⭐"
-    elif score >= 80 and is_1h_confirmed_bullish and h1_vol_confirmed:
-        verdict = "🚀 PERFECT STRONG BUY (તાત્કાલિક એન્ટ્રી સેટઅપ)"
-        verdict_type = "success"
-        pill_class = "pill-strong-buy"
-        explanation = (
-            "Monthly, Weekly, Daily અને 1-Hour ચારેય ટાઇમફ્રેમ્સ પર સંપૂર્ણ કન્ફર્મ તેજી છે અને 1-Hour માં પણ બાય ટ્રિગર થઈ ગયું છે! "
-            "મોટું ઇન્સ્ટિટ્યૂશનલ વૉલ્યુમ અને પ્રાઈસ બ્રેકઆઉટ સાથે આ સુપર હાઈ-પ્રોબેબિલિટી બાય સેટઅપ છે."
-        )
-        stars = "⭐⭐⭐⭐⭐"
-    elif score >= 65:
-        if not is_1h_confirmed_bullish or h1_vol['is_healthy_dip'] or d_tc['is_pullback']:
-            verdict = "⏳ BUY ON DIPS (પુલબેક ચાલુ • 1H ક્રોસની રાહ જુઓ)"
-            verdict_type = "info"
-            pill_class = "pill-buy-dips"
-            explanation = (
-                "Monthly, Weekly અને Daily મોટા ટ્રેન્ડ ખૂબ મજબૂત છે, પરંતુ 1-Hour ચાર્ટ પર હાલમાં કરેક્શન/પુલબેક (Dip) ચાલે છે. "
-                "પડતી કેન્ડલમાં ખરીદવાને બદલે 1-Hour માં ગ્રીન લાઇન રેડ લાઇનને ક્રોસ કરીને ઉપર વળે ત્યારે સૌથી ઓછા રિસ્કે ઉત્તમ એન્ટ્રી મળશે!"
-            )
-            stars = "⭐⭐⭐⭐"
-        else:
-            verdict = "🟢 MODERATE BULLISH (સ્વિંગ બાય સેટઅપ)"
-            verdict_type = "success"
-            pill_class = "pill-bullish"
-            explanation = "મોટાભાગના ટાઇમફ્રેમ્સ તેજીમાં છે. સ્ટોપ-લોસ સાથે પોઝિશન રાખી શકાય છે."
-            stars = "⭐⭐⭐"
-    elif is_range_bound:
-        verdict = "⚖️ RANGE-BOUND / OPTION SELLING (ઓપ્શન સેલિંગ)"
-        verdict_type = "info"
-        pill_class = "pill-option-sell"
-        explanation = (
-            f"સ્ટોક Daily Trend Craft ચેનલમાં ₹{d_tc['tc_low']:.1f} થી ₹{d_tc['tc_high']:.1f} વચ્ચે સજ્જડ રેન્જ-બાઉન્ડ કન્સોલિડેટ થાય છે. "
-            f"મોટા ડાયરેક્શનલ ટ્રેન્ડના અભાવે બંને બાજુ OTM Call (>{d_tc['tc_high']:.1f}) અને OTM Put (<{d_tc['tc_low']:.1f}) વેચીને થીટા ડીકે (Theta Decay) "
-            f"કમાવા માટે આ આદર્શ સેટઅપ છે (Short Strangle / Iron Condor)."
-        )
-        stars = "⭐⭐⭐"
-    elif is_relief_bounce and score <= 45:
-        verdict = "⚠️ SHORT ON BOUNCE (ઉછાળો પૂરો થવાની રાહ જુઓ)"
-        verdict_type = "warning"
-        pill_class = "pill-sell"
-        explanation = (
-            "Daily મોટા ટ્રેન્ડમાં ભારે મંદી છે, પરંતુ 1-Hour ચાર્ટ પર હાલમાં ટેમ્પરરી ઉછાળો (Relief Bounce) ચાલે છે. "
-            "તળિયે વેચવાને બદલે 1-Hour માં Green લાઇન Red લાઇન નીચે ક્રોસ થાય (Bear Cross) ત્યારે શ્રેષ્ઠ સ્નાઈપર શોર્ટ એન્ટ્રી મળશે!"
-        )
-        stars = "⭐⭐⭐⭐"
-    elif score >= 40:
-        verdict = "⏳ WAIT FOR CONFIRMATION (રાહ જુઓ)"
-        verdict_type = "warning"
-        pill_class = "pill-neutral"
-        explanation = "સિગ્નલો મિશ્ર છે અથવા વૉલ્યુમ સપોર્ટ નથી. 1-Hour અથવા Daily માં વૉલ્યુમ સાથે સ્પષ્ટ ક્રોસઓવર થાય ત્યાં સુધી રાહ જુઓ."
-        stars = "⭐⭐"
-    else:
-        verdict = "🔴 STRONG AVOID / BEARISH (સંપૂર્ણ મંદી - ખરીદી ટાળો)"
-        verdict_type = "error"
-        pill_class = "pill-sell"
-        explanation = "સ્ટોક તમામ ટાઈમફ્રેમ્સમાં મંદીમાં છે અને વૉલ્યુમ સાથે સેલિંગ પ્રેશર દેખાય છે. અત્યારે આ સ્ટોકમાં ખરીદી કરવી જોખમી છે."
-        stars = "⭐"
-
-    stoploss_1h = h1_tc['tc_low'] if h1_tc['tc_low'] > 0 else d_tc['tc_low']
-    stoploss_1h_short = h1_tc['tc_high'] if h1_tc['tc_high'] > 0 else d_tc['tc_high']
-
-    return {
-        "score": score,
-        "stars": stars,
-        "verdict": verdict,
-        "verdict_type": verdict_type,
-        "pill_class": pill_class,
-        "explanation": explanation,
-        "checks": checks,
-        "stoploss_1h": stoploss_1h,
-        "stoploss_1h_short": stoploss_1h_short,
-        "stoploss_daily": d_tc['tc_low'],
-        "stoploss_daily_short": d_tc['tc_high'],
-        "is_1h_confirmed": is_1h_confirmed_bullish,
-        "is_sniper_buy": is_sniper_buy,
-        "is_buy_pullback": is_buy_pullback,
-        "is_sniper_short": is_sniper_short,
-        "is_relief_bounce": is_relief_bounce,
-        "d_bull_gap": d_bull_gap,
-        "d_bear_gap": d_bear_gap
-    }
-
-# -------------------------------------------------------------
-# 3-Panel Synchronized Candlestick Chart (Dark Terminal Themed)
-# -------------------------------------------------------------
-def plot_candlestick_triple_chart(df, title_prefix="Daily", lookback=100, is_hourly=False):
-    plot_df = df.dropna(subset=['Red_WMA21', 'TC_SMA_High', 'Vol_SMA20', 'Open', 'High', 'Low', 'Close']).tail(lookback).copy().reset_index()
-    
-    if 'Datetime' in plot_df.columns:
-        date_col = 'Datetime'
-    elif 'Date' in plot_df.columns:
-        date_col = 'Date'
-    else:
-        date_col = plot_df.columns[0]
-        
-    date_axis_format = '%d %b %H:%M' if is_hourly else '%d %b %Y'
-    bar_width = 5 if is_hourly else 6
-    
-    base = alt.Chart(plot_df).encode(x=alt.X(f'{date_col}:T', title=''))
-    
-    # PANEL 1: Candlestick + Trend Craft Envelopes
-    band = base.mark_area(opacity=0.18, color='#00E676').encode(
-        y=alt.Y('TC_SMA_High:Q', title='Price (₹)', scale=alt.Scale(zero=False)),
-        y2='TC_SMA_Low:Q'
-    )
-    line_high = base.mark_line(color='#00E676', strokeWidth=1.8).encode(y='TC_SMA_High:Q')
-    line_low = base.mark_line(color='#FF5252', strokeWidth=1.8).encode(y='TC_SMA_Low:Q')
-    
-    wicks = base.mark_rule(strokeWidth=1.2).encode(
-        y=alt.Y('Low:Q', scale=alt.Scale(zero=False)),
-        y2='High:Q',
-        color=alt.Color('Candle_Color:N', scale=None)
-    )
-    
-    bodies = base.mark_bar(size=bar_width).encode(
-        y='Open:Q',
-        y2='Close:Q',
-        color=alt.Color('Candle_Color:N', scale=None),
-        tooltip=[
-            alt.Tooltip(f'{date_col}:T', title='Date/Time'),
-            alt.Tooltip('Open:Q', title='Open (₹)', format='.2f'),
-            alt.Tooltip('High:Q', title='High (₹)', format='.2f'),
-            alt.Tooltip('Low:Q', title='Low (₹)', format='.2f'),
-            alt.Tooltip('Close:Q', title='Close (₹)', format='.2f'),
-            alt.Tooltip('TC_SMA_High:Q', title='TC High Band', format='.2f'),
-            alt.Tooltip('TC_SMA_Low:Q', title='TC Low Band', format='.2f')
-        ]
-    )
-    
-    chart_candlestick = (band + line_high + line_low + wicks + bodies).properties(
-        title=f"🕯️ {title_prefix} • Candlestick & Trend Craft ICT Channel (🟢 High Band | 🔴 Low Band)",
-        height=270
-    )
-    
-    # PANEL 2: Institutional Volume & 20 SMA
-    vol_bars = base.mark_bar(opacity=0.8, size=bar_width).encode(
-        y=alt.Y('Volume:Q', title='Volume', axis=alt.Axis(format='~s')),
-        color=alt.Color('Vol_Color:N', scale=None),
-        tooltip=[
-            alt.Tooltip(f'{date_col}:T', title='Date/Time'),
-            alt.Tooltip('Volume:Q', title='Volume', format=',.0f'),
-            alt.Tooltip('Vol_SMA20:Q', title='20 SMA Vol', format=',.0f'),
-            alt.Tooltip('Vol_Ratio:Q', title='Vol Ratio', format='.2f')
-        ]
-    )
-    vol_line = base.mark_line(color='#FBBF24', strokeWidth=2).encode(y='Vol_SMA20:Q')
-    chart_vol = (vol_bars + vol_line).properties(
-        title=f"📊 {title_prefix} • Volume & 20 SMA (🟢 Bullish / 🔴 Bearish | 🟡 20-SMA)",
-        height=110
-    )
-    
-    # PANEL 3: NK Sir Hilega Milega
-    water_rule = alt.Chart(pd.DataFrame({'y': [50.0]})).mark_rule(
-        color='#38BDF8', strokeDash=[6, 4], strokeWidth=1.8, opacity=0.8
-    ).encode(y='y:Q')
-    
-    melt_df = plot_df.melt(
-        id_vars=[date_col, 'Close'],
-        value_vars=['Green_EMA3', 'Red_WMA21', 'RSI_9'],
-        var_name='Indicator',
-        value_name='Value'
-    )
-    name_map = {
-        'Green_EMA3': '🟢 Green (3 EMA - Price)',
-        'Red_WMA21': '🔴 Red (21 WMA - Strength)',
-        'RSI_9': '🟡 Yellow (RSI 9 - Momentum)'
-    }
-    melt_df['Indicator'] = melt_df['Indicator'].map(name_map)
-    
-    lines_hm = alt.Chart(melt_df).mark_line(strokeWidth=2.2).encode(
-        x=alt.X(f'{date_col}:T', title='', axis=alt.Axis(format=date_axis_format, labelAngle=-30)),
-        y=alt.Y('Value:Q', scale=alt.Scale(domain=[10, 95]), title='Hilega Milega'),
-        color=alt.Color('Indicator:N', scale=alt.Scale(
-            domain=[
-                '🟢 Green (3 EMA - Price)',
-                '🔴 Red (21 WMA - Strength)',
-                '🟡 Yellow (RSI 9 - Momentum)'
-            ],
-            range=['#00E676', '#FF1744', '#FFD600']
-        ), legend=alt.Legend(
-            title="", orient="top", titleFontSize=11, labelFontSize=11, symbolStrokeWidth=3, symbolSize=80
-        )),
-        tooltip=[
-            alt.Tooltip(f'{date_col}:T', title='Date/Time'),
-            alt.Tooltip('Close:Q', title='Price (₹)', format='.2f'),
-            alt.Tooltip('Indicator:N', title='Line'),
-            alt.Tooltip('Value:Q', title='Value', format='.2f')
-        ]
-    )
-    chart_hm = (water_rule + lines_hm).properties(
-        title=f"🎯 {title_prefix} • NK Sir Hilega Milega (🟢 3 EMA | 🔴 21 WMA | 🟡 RSI 9 | 🌊 50 Water)",
-        height=180
-    )
-    
-    combined = alt.vconcat(chart_candlestick, chart_vol, chart_hm).resolve_scale(x='shared')
-    return combined.configure(
-        background='transparent',
-        view=alt.ViewConfig(strokeWidth=0),
-        title=alt.TitleConfig(color='#F1F5F9', fontSize=13, fontWeight=600, anchor='start'),
-        axis=alt.AxisConfig(
-            domainColor='#334155',
-            gridColor='rgba(255, 255, 255, 0.05)',
-            labelColor='#94A3B8',
-            tickColor='#334155',
-            titleColor='#CBD5E1',
-            labelFontSize=11,
-            titleFontSize=11
-        ),
-        legend=alt.LegendConfig(
-            labelColor='#CBD5E1',
-            titleColor='#F1F5F9',
-            labelFontSize=11
-        )
-    )
-
-# -------------------------------------------------------------
-# Heikin Ashi + Donchian Channel Chart
-# -------------------------------------------------------------
-def plot_heikin_ashi_donchian_chart(ha_df, donchian_p=11, lookback=80, title_prefix="Daily"):
-    plot_df = ha_df.tail(lookback).copy().reset_index()
-    if 'Datetime' in plot_df.columns:
-        date_col = 'Datetime'
-    elif 'Date' in plot_df.columns:
-        date_col = 'Date'
-    else:
-        date_col = plot_df.columns[0]
-        
-    sl_col = f'Donchian_Low_{donchian_p}'
-    if sl_col not in plot_df.columns:
-        plot_df[sl_col] = plot_df['Low'].rolling(donchian_p).min()
-        
-    plot_df['HA_Color'] = np.where(
-        plot_df['HA_Is_Doji'], '#38BDF8',
-        np.where(plot_df['HA_Close'] >= plot_df['HA_Open'], '#00E676', '#FF1744')
-    )
-    
-    base = alt.Chart(plot_df).encode(x=alt.X(f'{date_col}:T', title=''))
-    
-    sl_line = base.mark_line(color='#F59E0B', strokeDash=[6, 4], strokeWidth=2.4).encode(
-        y=alt.Y(f'{sl_col}:Q', title='Price (₹)', scale=alt.Scale(zero=False))
-    )
-    
-    ha_wicks = base.mark_rule(strokeWidth=1.4).encode(
-        y=alt.Y('HA_Low:Q', scale=alt.Scale(zero=False)),
-        y2='HA_High:Q',
-        color=alt.Color('HA_Color:N', scale=None)
-    )
-    
-    ha_bodies = base.mark_bar(size=6).encode(
-        y='HA_Open:Q',
-        y2='HA_Close:Q',
-        color=alt.Color('HA_Color:N', scale=None),
-        tooltip=[
-            alt.Tooltip(f'{date_col}:T', title='Date/Time'),
-            alt.Tooltip('HA_Open:Q', title='HA Open', format='.2f'),
-            alt.Tooltip('HA_High:Q', title='HA High', format='.2f'),
-            alt.Tooltip('HA_Low:Q', title='HA Low', format='.2f'),
-            alt.Tooltip('HA_Close:Q', title='HA Close', format='.2f'),
-            alt.Tooltip('Close:Q', title='Price (₹)', format='.2f'),
-            alt.Tooltip(f'{sl_col}:Q', title=f'Donchian SL ({donchian_p})', format='.2f')
-        ]
-    )
-    
-    chart_ha = (ha_wicks + ha_bodies + sl_line).properties(
-        title=f"🕯️ {title_prefix} • Heikin Ashi Candles & Donchian Trailing SL (🟢 Bullish | 🔴 Bearish | 🔵 Doji | 🟡 Donchian SL)",
-        height=320
-    )
-    
-    vol_bars = base.mark_bar(opacity=0.75, size=6).encode(
-        y=alt.Y('Volume:Q', title='Volume', axis=alt.Axis(format='~s')),
-        color=alt.Color('HA_Color:N', scale=None)
-    )
-    vol_line = base.mark_line(color='#FBBF24', strokeWidth=1.8).encode(y='Vol_SMA20:Q') if 'Vol_SMA20' in plot_df.columns else vol_bars
-    chart_vol = (vol_bars + vol_line).properties(
-        title=f"📊 {title_prefix} • Volume & 20 SMA",
-        height=100
-    )
-    
-    combined = alt.vconcat(chart_ha, chart_vol).resolve_scale(x='shared')
-    return combined.configure(
-        background='transparent',
-        view=alt.ViewConfig(strokeWidth=0),
-        title=alt.TitleConfig(color='#F1F5F9', fontSize=13, fontWeight=600, anchor='start'),
-        axis=alt.AxisConfig(
-            domainColor='#334155',
-            gridColor='rgba(255, 255, 255, 0.05)',
-            labelColor='#94A3B8',
-            tickColor='#334155',
-            titleColor='#CBD5E1',
-            labelFontSize=11,
-            titleFontSize=11
-        )
-    )
+# Note: plot_heikin_ashi_donchian_chart is imported directly from core.charts
 
 # -------------------------------------------------------------
 # Function: Scan a Single Stock for Screener
@@ -1879,13 +1112,15 @@ header_html = f'<div class="brand-container"><div><div style="display: flex; ali
 st.html(header_html)
 
 # Navigation Tabs
-nav_tab_screener, nav_tab_ha, nav_tab_single, nav_tab_guardian, nav_tab_melting = st.tabs([
+nav_tab_screener, nav_tab_ha, nav_tab_single, nav_tab_guardian, nav_tab_melting, nav_tab_backtest = st.tabs([
     "📊 Market Screener (ઓટોમેટિક સ્કેનર)",
     "🚀 Heikin Ashi Trend Rider (બ્રિજેશ ભાટિયા)",
     "🕯️ Single Stock (ડીપ કેન્ડલસ્ટિક ચાર્ટ્સ)",
     "🛡️ Risk Guardian (લાઈવ પોઝિશન & મોનિટર)",
-    "🎯 Melting Straddles (ડૉ. ગાંગુલી 0DTE)"
+    "🎯 Melting Straddles (ડૉ. ગાંગુલી 0DTE)",
+    "🧪 Strategy Backtester (વિન-રેટ ચકાસો)"
 ])
+
 
 # =============================================================
 # TAB 1: LIVE MULTI-TIMEFRAME STOCK SCREENER
@@ -2386,7 +1621,13 @@ with nav_tab_screener:
                 q_df_1h = calculate_volume_analysis(calculate_trend_craft_ict(calculate_hilega_milega(t.history(period="1mo", interval="1h").dropna(subset=['Close', 'High', 'Low', 'Volume']))))
                 q_df_d = calculate_volume_analysis(calculate_trend_craft_ict(calculate_hilega_milega(t.history(period="1y", interval="1d").dropna(subset=['Close', 'High', 'Low', 'Volume']))))
                 
-                chart_col1, chart_col2 = st.tabs(["⚡ 1-Hour Candlestick Chart", "⏰ Daily Candlestick Chart"])
+                chart_col_tv, chart_col1, chart_col2 = st.tabs([
+                    "📊 GGPATEL VIEW (ઇન્ટરેક્ટિવ)",
+                    "⚡ 1-Hour Confluence Chart",
+                    "⏰ Daily Confluence Chart"
+                ])
+                with chart_col_tv:
+                    render_tradingview_widget(inspect_sym, df=q_df_d, height=520)
                 with chart_col1:
                     if not q_df_1h.empty:
                         c_1h = plot_candlestick_triple_chart(q_df_1h, title_prefix=f"{inspect_sym} 1-Hour", lookback=80, is_hourly=True)
@@ -2666,14 +1907,20 @@ with nav_tab_ha:
                 ha_chart_df = calculate_heikin_ashi(df_chart_raw)
                 ha_chart_df = calculate_donchian_channel(ha_chart_df, period=p_chart)
                 
-                # Render the Altair chart
-                ha_altair = plot_heikin_ashi_donchian_chart(
-                    ha_chart_df, 
-                    donchian_p=p_chart, 
-                    lookback=donchian_lookback, 
-                    title_prefix=f"{selected_chart_sym} • {tf_str}"
-                )
-                st.altair_chart(ha_altair, width="stretch")
+                ha_tab_custom, ha_tab_tv = st.tabs([
+                    "🚀 Heikin Ashi + Donchian Trailing SL (Custom Engine)",
+                    "📊 GGPATEL VIEW (લાઈવ ચાર્ટ્સ)"
+                ])
+                with ha_tab_custom:
+                    ha_altair = plot_heikin_ashi_donchian_chart(
+                        ha_chart_df, 
+                        donchian_p=p_chart, 
+                        lookback=donchian_lookback, 
+                        title_prefix=f"{selected_chart_sym} • {tf_str}"
+                    )
+                    st.altair_chart(ha_altair, width="stretch")
+                with ha_tab_tv:
+                    render_tradingview_widget(selected_chart_sym, df=ha_chart_df, height=520)
                 
                 # Trade Execution Card for Selected Stock
                 curr_bar = ha_chart_df.iloc[-1]
@@ -2955,13 +2202,17 @@ with nav_tab_single:
                         # Interactive 3-Panel Candlestick Charts
                         st.divider()
                         st.subheader("🕯️ ઇન્ટરેક્ટિવ કેન્ડલસ્ટિક ચાર્ટ્સ (3 Panels Synchronized):")
-                        t1, t2, t3, t4, t5 = st.tabs([
+                        t_tv, t1, t2, t3, t4, t5, t_oc = st.tabs([
+                            "📊 GGPATEL VIEW (ઇન્ટરેક્ટિવ)",
                             "⚡ 1-Hour Candlestick View",
                             "⏰ Daily Candlestick View",
                             "📆 Weekly Candlestick View",
                             "📅 Monthly Candlestick View",
-                            "🚀 Heikin Ashi + Donchian SL (બ્રિજેશ ભાટિયા)"
+                            "🚀 Heikin Ashi + Donchian SL (બ્રિજેશ ભાટિયા)",
+                            "⚡ Option Chain & OI Matrix"
                         ])
+                        with t_tv:
+                            render_tradingview_widget(sym, df=df_daily, height=600)
                         with t1:
                             chart_1h = plot_candlestick_triple_chart(df_1h, title_prefix="1-Hour", lookback=100, is_hourly=True)
                             st.altair_chart(chart_1h, width="stretch")
@@ -2997,6 +2248,41 @@ with nav_tab_single:
                                 f'</div>',
                                 unsafe_allow_html=True
                             )
+                        with t_oc:
+                            st.markdown(f"#### ⚡ {sym} Live Option Chain & Open Interest (OI) Analysis")
+                            st_opt = fetch_live_option_chain(symbol=sym, spot_price=curr_p)
+                            if st_opt:
+                                s_pcr = st_opt["pcr"]
+                                s_col = st_opt["pcr_badge_color"]
+                                
+                                oc_c1, oc_c2, oc_c3, oc_c4 = st.columns(4)
+                                with oc_c1:
+                                    st.metric("Put-Call Ratio (PCR)", f"{s_pcr:.2f}", st_opt["pcr_sentiment"])
+                                with oc_c2:
+                                    st.metric("🎯 Max Pain Strike", f"₹{st_opt['max_pain']:,}")
+                                with oc_c3:
+                                    st.metric("🧱 Call Wall (Resistance)", f"₹{st_opt['resistance']:,}", f"OI: {st_opt['resistance_oi']:,}")
+                                with oc_c4:
+                                    st.metric("🛡️ Put Wall (Support)", f"₹{st_opt['support']:,}", f"OI: {st_opt['support_oi']:,}")
+                                
+                                df_so = st_opt.get("df_chain")
+                                if df_so is not None and not df_so.empty:
+                                    atm_s = st_opt["atm_strike"]
+                                    step_s = get_strike_step(sym, curr_p)
+                                    min_s = atm_s - (step_s * 7)
+                                    max_s = atm_s + (step_s * 7)
+                                    sub_so = df_so[(df_so["Strike"] >= min_s) & (df_so["Strike"] <= max_s)].copy()
+                                    
+                                    disp_so = pd.DataFrame()
+                                    disp_so["Call OI"] = sub_so["Call_OI"].apply(lambda v: f"{v:,.0f}")
+                                    disp_so["Call Chg OI"] = sub_so["Call_Chg_OI"].apply(lambda v: f"{v:+,.0f}")
+                                    disp_so["Call LTP"] = sub_so["Call_LTP"].apply(lambda v: f"₹{v:,.2f}")
+                                    disp_so["STRIKE"] = sub_so["Strike"].apply(lambda v: f"🎯 {v:.0f} (ATM)" if v == atm_s else (f"🧱 {v:.0f} (CW)" if v == st_opt['resistance'] else (f"🛡️ {v:.0f} (PW)" if v == st_opt['support'] else f"{v:.0f}")))
+                                    disp_so["Put LTP"] = sub_so["Put_LTP"].apply(lambda v: f"₹{v:,.2f}")
+                                    disp_so["Put Chg OI"] = sub_so["Put_Chg_OI"].apply(lambda v: f"{v:+,.0f}")
+                                    disp_so["Put OI"] = sub_so["Put_OI"].apply(lambda v: f"{v:,.0f}")
+                                    st.dataframe(disp_so, use_container_width=True, hide_index=True)
+
                 except Exception as e:
                     st.error(f"ક્ષતિ આવી: {e}")
 
@@ -3470,37 +2756,7 @@ with nav_tab_guardian:
 # =============================================================
 # TAB 4: DR. SHUBHENDU GANGULY'S MELTING STRADDLES COCKPIT
 # =============================================================
-def calculate_camarilla_levels(df_d):
-    """
-    Camarilla Pivot Points calculation:
-    Range = High - Low
-    H4 = Close + Range * 1.1 / 2
-    H3 = Close + Range * 1.1 / 4
-    L3 = Close - Range * 1.1 / 4
-    L4 = Close - Range * 1.1 / 2
-    H5 = (High / Low) * Close
-    L5 = Close - (H5 - Close)
-    """
-    if df_d is None or df_d.empty or len(df_d) < 2:
-        return None
-    prev = df_d.iloc[-2]
-    h, l, c = float(prev['High']), float(prev['Low']), float(prev['Close'])
-    rng = h - l
-    h4 = c + (rng * 1.1 / 2.0)
-    h3 = c + (rng * 1.1 / 4.0)
-    h2 = c + (rng * 1.1 / 6.0)
-    h1 = c + (rng * 1.1 / 12.0)
-    l1 = c - (rng * 1.1 / 12.0)
-    l2 = c - (rng * 1.1 / 6.0)
-    l3 = c - (rng * 1.1 / 4.0)
-    l4 = c - (rng * 1.1 / 2.0)
-    h5 = (h / l) * c if l > 0 else h4 * 1.01
-    l5 = c - (h5 - c)
-    return {
-        "prev_h": h, "prev_l": l, "prev_c": c, "range": rng,
-        "h5": h5, "h4": h4, "h3": h3, "h2": h2, "h1": h1,
-        "l1": l1, "l2": l2, "l3": l3, "l4": l4, "l5": l5
-    }
+# Note: calculate_camarilla_levels is imported from core.indicators
 
 @st.cache_data(ttl=60)
 def fetch_index_data_for_melting(symbol):
@@ -3647,8 +2903,91 @@ with nav_tab_melting:
         )
         st.html(regime_card_html)
 
+        # 1.1 Live Option Chain & OI Buildup Radar
+        st.markdown("### ⚡ Live Option Chain & OI Buildup (ઓપન ઇન્ટરેસ્ટ વિશ્લેષણ)")
+        opt_data = fetch_live_option_chain(symbol=inst_title, spot_price=curr_p)
+        
+        if opt_data:
+            pcr_val = opt_data["pcr"]
+            pcr_badge = opt_data["pcr_sentiment"]
+            pcr_col = opt_data["pcr_badge_color"]
+            max_pain = opt_data["max_pain"]
+            call_wall = opt_data["resistance"]
+            call_wall_oi = opt_data["resistance_oi"]
+            put_wall = opt_data["support"]
+            put_wall_oi = opt_data["support_oi"]
+            source_tag = "🟢 Live NSE Exchange Data" if opt_data.get("is_live_nse") else "🔵 Calibrated Real-Time Analytical Chain (Black-Scholes)"
+
+            st.caption(f"ડેટા સ્ત્રોત: **{source_tag}** | Expiry: **{opt_data.get('expiry', 'Current')}** | ATM Combined Straddle: **₹{opt_data.get('atm_straddle_price', 0):.2f}**")
+
+            op1, op2, op3, op4 = st.columns(4)
+            with op1:
+                st.markdown(
+                    f'<div style="background: rgba(22, 31, 48, 0.95); border-top: 3px solid {pcr_col}; border-radius: 12px; padding: 14px 16px;">'
+                    f'<div style="font-size: 11px; font-weight: 700; color: #94A3B8; text-transform: uppercase;">📊 PUT-CALL RATIO (PCR)</div>'
+                    f'<div style="font-size: 26px; font-weight: 800; color: {pcr_col}; font-family: monospace; margin: 4px 0;">{pcr_val:.2f}</div>'
+                    f'<div style="font-size: 11px; font-weight: 700; color: {pcr_col};">{pcr_badge}</div>'
+                    f'</div>',
+                    unsafe_allow_html=True
+                )
+            with op2:
+                st.markdown(
+                    f'<div style="background: rgba(22, 31, 48, 0.95); border-top: 3px solid #F59E0B; border-radius: 12px; padding: 14px 16px;">'
+                    f'<div style="font-size: 11px; font-weight: 700; color: #94A3B8; text-transform: uppercase;">🎯 MAX PAIN STRIKE</div>'
+                    f'<div style="font-size: 26px; font-weight: 800; color: #FCD34D; font-family: monospace; margin: 4px 0;">₹{max_pain:,}</div>'
+                    f'<div style="font-size: 11px; color: #CBD5E1;">સેલર્સનું સૌથી સુરક્ષિત એક્સપાયરી ઝોન</div>'
+                    f'</div>',
+                    unsafe_allow_html=True
+                )
+            with op3:
+                st.markdown(
+                    f'<div style="background: rgba(22, 31, 48, 0.95); border-top: 3px solid #EF4444; border-radius: 12px; padding: 14px 16px;">'
+                    f'<div style="font-size: 11px; font-weight: 700; color: #94A3B8; text-transform: uppercase;">🧱 CALL WALL (RESISTANCE)</div>'
+                    f'<div style="font-size: 26px; font-weight: 800; color: #F87171; font-family: monospace; margin: 4px 0;">₹{call_wall:,}</div>'
+                    f'<div style="font-size: 11px; color: #CBD5E1;">મહત્તમ Call OI: {call_wall_oi:,}</div>'
+                    f'</div>',
+                    unsafe_allow_html=True
+                )
+            with op4:
+                st.markdown(
+                    f'<div style="background: rgba(22, 31, 48, 0.95); border-top: 3px solid #10B981; border-radius: 12px; padding: 14px 16px;">'
+                    f'<div style="font-size: 11px; font-weight: 700; color: #94A3B8; text-transform: uppercase;">🛡️ PUT WALL (SUPPORT)</div>'
+                    f'<div style="font-size: 26px; font-weight: 800; color: #34D399; font-family: monospace; margin: 4px 0;">₹{put_wall:,}</div>'
+                    f'<div style="font-size: 11px; color: #CBD5E1;">મહત્તમ Put OI: {put_wall_oi:,}</div>'
+                    f'</div>',
+                    unsafe_allow_html=True
+                )
+
+            with st.expander(f"📋 {inst_title} Detailed Option Chain Matrix (ATM ± 8 Strikes)", expanded=False):
+                df_oc = opt_data.get("df_chain")
+                if df_oc is not None and not df_oc.empty:
+                    atm_s = opt_data["atm_strike"]
+                    step_s = get_strike_step(inst_title, curr_p)
+                    min_s = atm_s - (step_s * 8)
+                    max_s = atm_s + (step_s * 8)
+                    sub_oc = df_oc[(df_oc["Strike"] >= min_s) & (df_oc["Strike"] <= max_s)].copy()
+
+                    display_df = pd.DataFrame()
+                    display_df["Call OI"] = sub_oc["Call_OI"].apply(lambda v: f"{v:,.0f}")
+                    display_df["Call Chg OI"] = sub_oc["Call_Chg_OI"].apply(lambda v: f"{v:+,.0f}")
+                    display_df["Call LTP (₹)"] = sub_oc["Call_LTP"].apply(lambda v: f"₹{v:,.2f}")
+                    display_df["STRIKE"] = sub_oc["Strike"].apply(
+                        lambda v: f"🎯 {v:.0f} (ATM)" if v == atm_s else (
+                            f"🧱 {v:.0f} (CW)" if v == call_wall else (
+                                f"🛡️ {v:.0f} (PW)" if v == put_wall else f"{v:.0f}"
+                            )
+                        )
+                    )
+                    display_df["Put LTP (₹)"] = sub_oc["Put_LTP"].apply(lambda v: f"₹{v:,.2f}")
+                    display_df["Put Chg OI"] = sub_oc["Put_Chg_OI"].apply(lambda v: f"{v:+,.0f}")
+                    display_df["Put OI"] = sub_oc["Put_OI"].apply(lambda v: f"{v:,.0f}")
+                    st.dataframe(display_df, use_container_width=True, hide_index=True)
+
+        st.markdown("<div style='height: 14px;'></div>", unsafe_allow_html=True)
+
         # 2. 3-Straddle Cockpit Radar (Visual KPI Cards)
         st.markdown("### 🎛️ 3-Straddle Cockpit Setup (ડૉ. ગાંગુલીના ૩ સ્ટ્રેડલ્સ)")
+
         sc1, sc2, sc3 = st.columns(3)
 
         with sc1:
@@ -3865,4 +3204,161 @@ with nav_tab_melting:
             6. 🔄 **Shift Straddles Like Trains:** જો બજાર S3 કે R3 તોડે તો પાટા બદલો—ATM છોડીને Higher કે Lower Straddle પકડો.
             7. ⚡ **બાસ્કેટ ઓર્ડર્સ (Basket Orders):** સ્લિપેજ ઘટાડવા માટે એક જ ક્લિકમાં CE અને PE સેલ અને એક્ઝિટ માટે બાસ્કેટ ઓર્ડર વાપરવા.
             """)
+
+# =============================================================
+# TAB 6: HISTORICAL STRATEGY BACKTESTER & WIN-RATE VERIFIER
+# =============================================================
+with nav_tab_backtest:
+    backtest_header_html = (
+        '<div style="background: linear-gradient(135deg, rgba(30, 41, 59, 0.9) 0%, rgba(15, 23, 42, 0.95) 100%); '
+        'border: 1px solid rgba(255,255,255,0.08); border-radius: 14px; padding: 18px 24px; margin-bottom: 20px;">'
+        '<div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">'
+        '<div>'
+        '<div style="font-size: 24px; font-weight: 800; color: #FFFFFF; display: flex; align-items: center; gap: 12px;">'
+        '🧪 HISTORICAL STRATEGY BACKTESTER'
+        '<span style="font-size: 11px; font-weight: 700; background: linear-gradient(135deg, #8B5CF6, #6D28D9); '
+        'color: #FFFFFF; padding: 4px 10px; border-radius: 6px;">WIN-RATE VERIFIER</span>'
+        '</div>'
+        '<div style="color: #94A3B8; font-size: 13px; margin-top: 6px;">'
+        'કોઈપણ લાઈવ ટ્રેડ લેતા પહેલાં ઐતિહાસિક કેન્ડલ્સ પર સચોટ ગણતરી: વાસ્તવિક વિન-રેટ %, પ્રોફિટ ફેક્ટર, મેક્સ ડ્રોડાઉન અને ઇક્વિટી ગ્રોથ ગ્રાફ.'
+        '</div>'
+        '</div>'
+        '</div>'
+        '</div>'
+    )
+    st.html(backtest_header_html)
+
+    # Configuration Form
+    with st.container(border=True):
+        st.markdown("#### ⚙️ બેકટેસ્ટ પરિમાણો સેટ કરો (Backtest Parameters)")
+        c_bk1, c_bk2, c_bk3, c_bk4, c_bk5 = st.columns([1.5, 2.5, 1.2, 1.3, 1.0])
+        
+        with c_bk1:
+            bk_symbol = st.text_input(
+                "NSE સ્ટોક સિમ્બોલ:",
+                value="WAAREEENER",
+                help="દા.ત. WAAREEENER, TRENT, BHARTIARTL, BEL, RELIANCE, TATAMOTORS",
+                key="bk_custom_sym"
+            ).strip().upper()
+            if not bk_symbol:
+                bk_symbol = "WAAREEENER"
+            st.caption("💡 દા.ત. WAAREEENER • TRENT • BEL")
+
+        with c_bk2:
+            strat_options = list(STRATEGIES.keys())
+            bk_strat = st.selectbox(
+                "ટ્રેડિંગ સ્ટ્રેટેજી પસંદ કરો:",
+                options=strat_options,
+                format_func=lambda k: STRATEGIES[k],
+                key="bk_strat_select"
+            )
+
+        with c_bk3:
+            bk_period = st.selectbox(
+                "સમયગાળો (Period):",
+                options=["6mo", "1y", "2y", "3mo"],
+                index=1,
+                format_func=lambda p: {"3mo": "3 મહિના (3M)", "6mo": "6 મહિના (6M)", "1y": "1 વર્ષ (1Y)", "2y": "2 વર્ષ (2Y)"}.get(p, p),
+                key="bk_period_select"
+            )
+
+        with c_bk4:
+            bk_capital = st.number_input(
+                "પ્રારંભિક મૂડી (₹):",
+                min_value=10000.0,
+                max_value=10000000.0,
+                value=100000.0,
+                step=10000.0,
+                key="bk_capital_input"
+            )
+
+        with c_bk5:
+            bk_risk_pct = st.number_input(
+                "રિસ્ક % / ટ્રેડ:",
+                min_value=0.5,
+                max_value=10.0,
+                value=2.0,
+                step=0.5,
+                key="bk_risk_input"
+            )
+
+        st.markdown("<div style='height: 6px;'></div>", unsafe_allow_html=True)
+        run_bk_btn = st.button("🚀 રન બેકટેસ્ટ (Run Backtest Engine)", use_container_width=True, type="primary", key="btn_run_backtest")
+
+    # Session State for Backtest
+    if run_bk_btn:
+        with st.spinner(f"⏳ {bk_symbol} પર {STRATEGIES[bk_strat]} નું ઐતિહાસિક સિમ્યુલેશન થઈ રહ્યું છે..."):
+            bk_result = run_backtest(
+                symbol=bk_symbol,
+                strategy=bk_strat,
+                period=bk_period,
+                initial_capital=float(bk_capital),
+                risk_per_trade_pct=float(bk_risk_pct)
+            )
+            st.session_state["last_backtest_result"] = bk_result
+
+    # Display Results
+    if "last_backtest_result" in st.session_state:
+        res = st.session_state["last_backtest_result"]
+
+        if "error" in res:
+            st.error(f"❌ {res['error']}")
+        elif res.get("total_trades", 0) == 0:
+            st.warning("⚠️ આ પસંદ કરેલ સમયગાળામાં અને નિયમો મુજબ કોઈ ટ્રેડ સિગ્નલ મળ્યા નથી. સમયગાળો લંબાવો અથવા અન્ય સ્ટોક પસંદ કરો.")
+        else:
+            win_r = res["win_rate"]
+            win_color = "#10B981" if win_r >= 60 else ("#F59E0B" if win_r >= 45 else "#EF4444")
+            pnl_color = "#10B981" if res["net_pnl"] >= 0 else "#EF4444"
+            pf_val = res["profit_factor"]
+            dd_val = res["max_drawdown"]
+
+            # KPI Grid Cards
+            st.markdown("### 📊 પરફોર્મન્સ મેટ્રિક્સ (Performance Report)")
+            kpi_bk_html = (
+                f'<div class="kpi-grid">'
+                f'<div class="kpi-card" style="border-top: 3px solid {win_color};">'
+                f'<div class="kpi-title" style="color: {win_color};">🎯 WIN RATE (વિન-રેટ %)</div>'
+                f'<div class="kpi-value" style="color: {win_color};">{win_r:.1f}%</div>'
+                f'<div class="kpi-subtitle" style="color: #94A3B8;">{res["win_trades"]} Wins / {res["loss_trades"]} Losses ({res["total_trades"]} Trades)</div>'
+                f'</div>'
+                f'<div class="kpi-card" style="border-top: 3px solid {pnl_color};">'
+                f'<div class="kpi-title" style="color: {pnl_color};">💰 NET P&L (ચોખ્ખો નફો)</div>'
+                f'<div class="kpi-value" style="color: {pnl_color};">₹{res["net_pnl"]:,.2f}</div>'
+                f'<div class="kpi-subtitle" style="color: {pnl_color}; font-weight: 700;">{res["return_pct"]:+.2f}% ROI (Return on Capital)</div>'
+                f'</div>'
+                f'<div class="kpi-card" style="border-top: 3px solid #38BDF8;">'
+                f'<div class="kpi-title" style="color: #38BDF8;">⚖️ PROFIT FACTOR</div>'
+                f'<div class="kpi-value" style="color: #38BDF8;">{pf_val:.2f}</div>'
+                f'<div class="kpi-subtitle" style="color: #94A3B8;">Gross Profit / Gross Loss</div>'
+                f'</div>'
+                f'<div class="kpi-card" style="border-top: 3px solid #F87171;">'
+                f'<div class="kpi-title" style="color: #F87171;">🛡️ MAX DRAWDOWN</div>'
+                f'<div class="kpi-value" style="color: #F87171;">-{dd_val:.1f}%</div>'
+                f'<div class="kpi-subtitle" style="color: #94A3B8;">સૌથી મોટો ઘટાડો (Peak to Valley)</div>'
+                f'</div>'
+                f'</div>'
+            )
+            st.html(kpi_bk_html)
+
+            # Interactive Altair Equity Curve
+            st.markdown("#### 📈 પોર્ટફોલિયો ઈક્વિટી ગ્રોથ ગ્રાફ (Portfolio Equity Curve)")
+            df_eq = res.get("df_equity")
+            if df_eq is not None and not df_eq.empty:
+                chart_equity = plot_equity_curve_chart(df_eq, title=f"{res['symbol']} • {res['strategy']}")
+                if chart_equity:
+                    st.altair_chart(chart_equity, width="stretch")
+
+            # Trade Log Table
+            st.markdown("#### 📋 ઐતિહાસિક ટ્રેડ લોગ (Executed Trades Log)")
+            df_tr = res.get("df_trades")
+            if df_tr is not None and not df_tr.empty:
+                st.dataframe(df_tr, use_container_width=True, hide_index=True)
+
+            st.markdown("<div style='height: 10px;'></div>", unsafe_allow_html=True)
+            st.info(
+                "💡 **પ્રોફેશનલ ટ્રેડિંગ નિયમ:** બ્રિજેશ ભાટિયા સિસ્ટમ એ **અપટ્રેન્ડ પુલબેક સ્ટ્રેટેજી** છે. "
+                "જ્યારે કોઈ સ્ટોક પાછલા ૧ વર્ષથી સતત મંદીમાં હોય (દા.ત. RELIANCE ૧૫૬૦ થી ૧૧૬૦ ઘટતો રહ્યો), ત્યારે કેપિટલ પ્રોટેક્શન ફિલ્ટર ફોલિંગ નાઈફ ખરીદવાનું અટકાવે છે. "
+                "આ સ્ટ્રેટેજીને અપટ્રેન્ડ ધરાવતા શેર્સ (જેમ કે TATAMOTORS, BHARTIARTL, BEL, TATASTEEL) પર ટેસ્ટ કરવાથી સાચો વિન-રેટ જોવા મળશે."
+            )
+
 
