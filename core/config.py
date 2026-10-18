@@ -36,6 +36,21 @@ TELEGRAM_BOT_TOKEN = get_config_val("TELEGRAM_BOT_TOKEN", "")
 TELEGRAM_CHAT_ID = get_config_val("TELEGRAM_CHAT_ID", "")
 SCAN_INTERVAL_SECONDS = int(get_config_val("SCAN_INTERVAL_SECONDS", 300))
 
+# Fyers API Configuration
+FYERS_CLIENT_ID = get_config_val("FYERS_CLIENT_ID", "")
+FYERS_PIN = get_config_val("FYERS_PIN", "")
+FYERS_TOTP_KEY = get_config_val("FYERS_TOTP_KEY", "")
+FYERS_APP_ID = get_config_val("FYERS_APP_ID", "")
+FYERS_SECRET_KEY = get_config_val("FYERS_SECRET_KEY", "")
+FYERS_REDIRECT_URI = get_config_val("FYERS_REDIRECT_URI", "https://trade.fyers.in/api-login/redirect-uri/index.html")
+FYERS_TOKEN_FILE = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "fyers_token.json")
+
+# Security & Authentication Configuration
+APP_ACCESS_PIN = get_config_val("APP_ACCESS_PIN", "4082")
+GMAIL_USER = get_config_val("GMAIL_USER", "")
+GMAIL_APP_PASSWORD = get_config_val("GMAIL_APP_PASSWORD", "")
+GMAIL_RECIPIENT = get_config_val("GMAIL_RECIPIENT", "ggp305ggp@gmail.com")
+
 # State & Cache files
 STATE_FILE = "alert_state.json"
 ACTIVE_TRADES_FILE = "active_trades.json"

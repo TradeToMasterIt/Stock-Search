@@ -1100,6 +1100,13 @@ def scan_stock(sym):
         return None
 
 # =============================================================
+# SECURITY & AUTHENTICATION PIN GATE
+# =============================================================
+from core.auth_gate import check_auth_gate, render_logout_button
+check_auth_gate()
+render_logout_button()
+
+# =============================================================
 # TOP HEADER & LIVE TICKER RIBBON
 # =============================================================
 nifty_data = get_nifty_sentiment()
@@ -1114,7 +1121,24 @@ else:
 
 telegram_html = '<div class="ticker-chip ticker-chip-bot"><div class="pulse-dot"></div><span><b>TELEGRAM BOT:</b> @patel_stock_bot</span><span style="opacity: 0.5">•</span><span>⚡ 5-Min Auto-Scanner Active</span></div>'
 
-header_html = f'<div class="brand-container"><div><div style="display: flex; align-items: center; gap: 12px;"><span class="brand-title">🎯 CONFLUENCE PRO</span><span class="brand-badge">INSTITUTIONAL v3.2 | TRADINGVIEW PRO & 10-DAY FORWARD TRACKER</span></div><div class="brand-subtitle">Candlestick Price Channels • Hilega-Milega • Brijesh Bhatia Heikin Ashi • Institutional Volume VPA • Precision Targets & Stop-Loss</div></div></div><div class="ticker-bar">{nifty_html}{telegram_html}</div>'
+# Fyers API Live Status Check
+fyers_connected = False
+fyers_user_name = ""
+try:
+    from core.fyers_auth import test_fyers_connection
+    ok_fyers, prof_fyers = test_fyers_connection()
+    if ok_fyers and isinstance(prof_fyers, dict):
+        fyers_connected = True
+        fyers_user_name = prof_fyers.get("name", "Connected")
+except Exception:
+    pass
+
+if fyers_connected:
+    fyers_html = f'<div class="ticker-chip" style="background: rgba(16, 185, 129, 0.15); border: 1px solid rgba(16, 185, 129, 0.4);"><div class="pulse-dot" style="background: #10B981;"></div><span>⚡ <b>FYERS API v3:</b> LIVE ({fyers_user_name})</span></div>'
+else:
+    fyers_html = '<div class="ticker-chip" style="background: rgba(245, 158, 11, 0.12); border: 1px solid rgba(245, 158, 11, 0.35);"><span style="color: #F59E0B;">⚠️ FYERS API: Offline</span></div>'
+
+header_html = f'<div class="brand-container"><div><div style="display: flex; align-items: center; gap: 12px;"><span class="brand-title">🎯 CONFLUENCE PRO</span><span class="brand-badge">INSTITUTIONAL v3.3 | FYERS API v3 LIVE INTEGRATION</span></div><div class="brand-subtitle">Candlestick Price Channels • Hilega-Milega • Brijesh Bhatia Heikin Ashi • Institutional Volume VPA • Precision Targets & Stop-Loss</div></div></div><div class="ticker-bar">{nifty_html}{telegram_html}{fyers_html}</div>'
 st.html(header_html)
 
 # Navigation Tabs
