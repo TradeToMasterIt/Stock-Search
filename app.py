@@ -2423,6 +2423,13 @@ with nav_tab_guardian:
                         help="આ ભાવથી નીચે પડે તો પુટમાંથી એક્ઝિટ સાયરન વાગશે.",
                         key="trd_pe"
                     )
+                t_opt_tf = st.selectbox(
+                    "🎯 ઓપ્શન સેલિંગ મોનિટરિંગ ટાઇમફ્રેમ (Exit Monitoring TF):",
+                    options=["60m (1-Hour - સ્મૂથ અને સેફ્ટી માટે ભલામણ કરેલ)", "30m (ઇન્ટ્રાડે ઝડપી મોમેન્ટમ એક્ઝિટ)"],
+                    index=0,
+                    help="આ ટાઇમફ્રેમ પર RSI, ADX અને +DI/-DI તપાસવામાં આવશે જેથી ભાવ સ્ટ્રાઈક તોડે તે પહેલાં જ અર્લી એક્ઝિટ એલર્ટ મળી જાય.",
+                    key="trd_opt_tf"
+                )
                 t_sl = None
                 t_t1 = None
                 t_t2 = None
@@ -2438,6 +2445,7 @@ with nav_tab_guardian:
             clean_s = t_sym_input.replace(".NS", "").replace(".BO", "").strip()
             full_s = f"{clean_s}.NS"
             actual_type = "BUY" if "BUY" in t_type_selected else ("SHORT" if "SHORT" in t_type_selected else "OPTION_SELLING")
+            chosen_tf = "30m" if (actual_type == "OPTION_SELLING" and "30m" in t_opt_tf) else "60m"
             new_trd = {
                 "id": f"TRD_{int(time.time())}",
                 "symbol": clean_s,
@@ -2451,6 +2459,7 @@ with nav_tab_guardian:
                 "target_2": float(t_t2) if t_t2 else None,
                 "ce_strike": float(t_ce_strike) if t_ce_strike else None,
                 "pe_strike": float(t_pe_strike) if t_pe_strike else None,
+                "timeframe": chosen_tf,
                 "status": "ACTIVE",
                 "notes": t_notes
             }
@@ -2468,22 +2477,38 @@ with nav_tab_guardian:
     if not active_positions:
         st.info("💡 તમારી પાસે હાલમાં કોઈ સક્રિય ટ્રેડ મોનિટરિંગમાં નથી. ઉપરના ફોર્મમાંથી તમારો **Buy** અથવા **Option Selling** ટ્રેડ ઉમેરો.")
     else:
-        # Fetch live prices for active positions in parallel
-        unique_syms = list(set([t.get("full_symbol", f"{t['symbol']}.NS") for t in active_positions]))
+        # Fetch live prices & indicators for active positions in parallel
+        # Note: OPTION_SELLING trades fetch their specified timeframe (30m or 60m)
+        pos_tasks = list(set([
+            (t.get("full_symbol", f"{t['symbol']}.NS"), t.get("timeframe", "60m") if t.get("trade_type") == "OPTION_SELLING" else "60m")
+            for t in active_positions
+        ]))
         live_prices = {}
         
-        def fetch_live_p(s):
+        def fetch_live_pos(item):
+            s, tf = item
             try:
                 tkr = yf.Ticker(s)
                 h = tkr.history(period="2d", interval="1d")
-                df_1h = tkr.history(period="1mo", interval="1h").dropna(subset=['Close', 'High', 'Low', 'Volume'])
+                interval_str = "30m" if tf == "30m" else "1h"
+                df_tf = tkr.history(period="1mo", interval=interval_str).dropna(subset=['Close', 'High', 'Low', 'Volume'])
+                
                 hm_info = {"status": "સામાન્ય", "is_bear": False, "green": 50.0, "red": 50.0}
-                if not df_1h.empty and len(df_1h) >= 25:
-                    df_1h = calculate_hilega_milega(df_1h)
-                    cg = float(df_1h['Green_EMA3'].iloc[-1])
-                    cr = float(df_1h['Red_WMA21'].iloc[-1])
-                    pg = float(df_1h['Green_EMA3'].iloc[-2])
-                    pr = float(df_1h['Red_WMA21'].iloc[-2])
+                opt_info = {
+                    "rsi": 50.0, "rsi_slope": 0.0, "adx": 15.0, "prev_adx": 15.0,
+                    "plus_di": 20.0, "minus_di": 20.0, "tf": tf,
+                    "is_call_threat": False, "is_put_threat": False
+                }
+                
+                if not df_tf.empty and len(df_tf) >= 25:
+                    df_tf = calculate_hilega_milega(df_tf)
+                    df_tf = calculate_adx_dmi(df_tf)
+                    
+                    # Hilega-Milega (for BUY/SHORT)
+                    cg = float(df_tf['Green_EMA3'].iloc[-1])
+                    cr = float(df_tf['Red_WMA21'].iloc[-1])
+                    pg = float(df_tf['Green_EMA3'].iloc[-2])
+                    pr = float(df_tf['Red_WMA21'].iloc[-2])
                     is_bear = (pg >= pr and cg < cr) or (cg < cr and cg < 50.0)
                     if pg >= pr and cg < cr:
                         st_txt = "🔴 તાજો બેરિશ ક્રોસ"
@@ -2495,18 +2520,50 @@ with nav_tab_guardian:
                         st_txt = "🟡 રિવર્સલ / પુલબેક"
                     hm_info = {"status": st_txt, "is_bear": is_bear, "green": cg, "red": cr}
                     
+                    # Dedicated Option Selling Exit Engine (RSI + ADX + DI)
+                    rsi_now = float(df_tf['RSI_9'].iloc[-1]) if 'RSI_9' in df_tf.columns else 50.0
+                    rsi_p2 = float(df_tf['RSI_9'].iloc[-3]) if len(df_tf) >= 3 else rsi_now
+                    rsi_slope = rsi_now - rsi_p2
+                    adx_now = float(df_tf['ADX_14'].iloc[-1]) if 'ADX_14' in df_tf.columns else 15.0
+                    adx_prev = float(df_tf['ADX_14'].iloc[-2]) if len(df_tf) >= 2 and 'ADX_14' in df_tf.columns else adx_now
+                    p_di = float(df_tf['Plus_DI_14'].iloc[-1]) if 'Plus_DI_14' in df_tf.columns else 20.0
+                    m_di = float(df_tf['Minus_DI_14'].iloc[-1]) if 'Minus_DI_14' in df_tf.columns else 20.0
+                    
+                    call_threat = bool(
+                        (rsi_now >= 60.0 and rsi_slope >= 2.5) or
+                        (p_di >= 25.0 and p_di > (m_di + 3.0) and adx_now >= 20.0 and adx_now >= adx_prev)
+                    )
+                    put_threat = bool(
+                        (rsi_now <= 40.0 and rsi_slope <= -2.5) or
+                        (m_di >= 25.0 and m_di > (p_di + 3.0) and adx_now >= 20.0 and adx_now >= adx_prev)
+                    )
+                    
+                    opt_info = {
+                        "rsi": round(rsi_now, 1),
+                        "rsi_slope": round(rsi_slope, 1),
+                        "adx": round(adx_now, 1),
+                        "prev_adx": round(adx_prev, 1),
+                        "plus_di": round(p_di, 1),
+                        "minus_di": round(m_di, 1),
+                        "tf": tf,
+                        "is_call_threat": call_threat,
+                        "is_put_threat": put_threat
+                    }
+                    
                 if not h.empty:
                     c_p = float(h['Close'].iloc[-1])
                     p_p = float(h['Close'].iloc[-2]) if len(h) > 1 else c_p
-                    return s, c_p, p_p, hm_info
+                    return (s, tf), c_p, p_p, hm_info, opt_info
             except Exception:
                 pass
-            return s, None, None, {"status": "અપૂરતો ડેટા", "is_bear": False, "green": 50, "red": 50}
+            return (s, tf), None, None, {"status": "અપૂરતો ડેટા", "is_bear": False, "green": 50, "red": 50}, {"rsi": 50.0, "rsi_slope": 0.0, "adx": 15.0, "prev_adx": 15.0, "plus_di": 20.0, "minus_di": 20.0, "tf": tf, "is_call_threat": False, "is_put_threat": False}
             
         with ThreadPoolExecutor(max_workers=5) as executor:
-            for s, c_price, p_price, hm_info in executor.map(lambda sym: fetch_live_p(sym), unique_syms):
+            for (s, tf), c_price, p_price, hm_info, opt_info in executor.map(fetch_live_pos, pos_tasks):
                 if c_price is not None:
-                    live_prices[s] = {"curr": c_price, "prev": p_price, "hm": hm_info}
+                    live_prices[(s, tf)] = {"curr": c_price, "prev": p_price, "hm": hm_info, "opt": opt_info}
+                    if s not in live_prices:
+                        live_prices[s] = {"curr": c_price, "prev": p_price, "hm": hm_info, "opt": opt_info}
 
         # Calculate Portfolio Overview KPIs
         total_pnl = 0.0
@@ -2516,7 +2573,8 @@ with nav_tab_guardian:
         
         for trd in active_positions:
             s_full = trd.get("full_symbol", f"{trd['symbol']}.NS")
-            p_data = live_prices.get(s_full, {"curr": trd["entry_price"], "prev": trd["entry_price"]})
+            tf_used = trd.get("timeframe", "60m") if trd.get("trade_type") == "OPTION_SELLING" else "60m"
+            p_data = live_prices.get((s_full, tf_used), live_prices.get(s_full, {"curr": trd["entry_price"], "prev": trd["entry_price"]}))
             curr_p = p_data["curr"]
             entry_p = trd["entry_price"]
             qty = trd.get("qty", 1)
@@ -2547,7 +2605,10 @@ with nav_tab_guardian:
             else: # OPTION_SELLING
                 ce = trd.get("ce_strike", entry_p * 1.03)
                 pe = trd.get("pe_strike", entry_p * 0.97)
-                if curr_p >= ce or curr_p <= pe:
+                opt_d = p_data.get("opt", {})
+                is_c_threat = opt_d.get("is_call_threat", False)
+                is_p_threat = opt_d.get("is_put_threat", False)
+                if curr_p >= ce or curr_p <= pe or is_c_threat or is_p_threat:
                     danger_count += 1
                 elif curr_p >= ce * 0.99 or curr_p <= pe * 1.01:
                     danger_count += 1
@@ -2618,11 +2679,23 @@ with nav_tab_guardian:
                     hm_badge_html = f'<span style="background: {hm_pill_bg}; color: {hm_pill_color}; border: 1px solid {hm_pill_color}; padding: 2px 8px; border-radius: 6px; font-size: 11px; font-weight: 700;">⚡ 1H HM: {hm_meta["status"]}</span>'
                     if t_type == "BUY":
                         type_pill = '<span style="background: rgba(16, 185, 129, 0.2); color: #34D399; border: 1px solid #10B981; padding: 2px 8px; border-radius: 6px; font-size: 11px; font-weight: 700;">📈 BUY POSITION</span>'
+                        sub_badges = hm_badge_html
                     elif t_type == "SHORT":
                         type_pill = '<span style="background: rgba(239, 68, 68, 0.2); color: #F87171; border: 1px solid #EF4444; padding: 2px 8px; border-radius: 6px; font-size: 11px; font-weight: 700;">📉 SHORT POSITION</span>'
+                        sub_badges = hm_badge_html
                     else:
                         type_pill = '<span style="background: rgba(168, 85, 247, 0.2); color: #C084FC; border: 1px solid #A855F7; padding: 2px 8px; border-radius: 6px; font-size: 11px; font-weight: 700;">⚖️ OPTION SELLING</span>'
-                    st.html(f'<div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;"><span style="font-size: 24px; font-weight: 800; font-family: monospace; color: #FFFFFF;">{sym}</span>{type_pill}{hm_badge_html}</div><div style="font-size: 11px; color: #94A3B8; margin-top: 2px;">એન્ટ્રી તારીખ: {entry_dt} • Qty: {qty}</div>')
+                        opt_meta = p_data.get("opt", {})
+                        opt_tf = opt_meta.get("tf", trd.get("timeframe", "60m"))
+                        opt_radar = f'<span style="background: rgba(168, 85, 247, 0.15); color: #C084FC; border: 1px solid #A855F7; padding: 2px 8px; border-radius: 6px; font-size: 11px; font-weight: 700;">⏱️ {opt_tf} RADAR</span>'
+                        if opt_meta.get("is_call_threat"):
+                            opt_status_pill = '<span style="background: rgba(239, 68, 68, 0.25); color: #F87171; border: 1px solid #EF4444; padding: 2px 8px; border-radius: 6px; font-size: 11px; font-weight: 800;">🚨 CALL EXIT WARNING</span>'
+                        elif opt_meta.get("is_put_threat"):
+                            opt_status_pill = '<span style="background: rgba(239, 68, 68, 0.25); color: #F87171; border: 1px solid #EF4444; padding: 2px 8px; border-radius: 6px; font-size: 11px; font-weight: 800;">🚨 PUT EXIT WARNING</span>'
+                        else:
+                            opt_status_pill = f'<span style="background: rgba(16, 185, 129, 0.15); color: #34D399; border: 1px solid #10B981; padding: 2px 8px; border-radius: 6px; font-size: 11px; font-weight: 700;">🟢 RSI {opt_meta.get("rsi", 50.0):.1f} • ADX {opt_meta.get("adx", 15.0):.1f}</span>'
+                        sub_badges = f"{opt_radar} {opt_status_pill}"
+                    st.html(f'<div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;"><span style="font-size: 24px; font-weight: 800; font-family: monospace; color: #FFFFFF;">{sym}</span>{type_pill}{sub_badges}</div><div style="font-size: 11px; color: #94A3B8; margin-top: 2px;">એન્ટ્રી તારીખ: {entry_dt} • Qty: {qty} • મોનિટરિંગ: {trd.get("timeframe", "60m") if t_type == "OPTION_SELLING" else "1-Hour"}</div>')
                 
                 with head_col2:
                     st.html(f'<div><span style="font-size: 20px; font-weight: 800; font-family: monospace; color: #F8FAFC;">₹{curr_p:.2f}</span> <span style="font-size: 12px; font-weight: 700; color: {day_color};">{day_arrow} {day_chg:+.2f} ({day_pct:+.2f}%)</span></div><div style="font-size: 11px; color: #94A3B8;">એન્ટ્રી ભાવ: <b style="color: #F1F5F9;">₹{entry_p:.2f}</b></div>')
@@ -2724,27 +2797,73 @@ with nav_tab_guardian:
                 else: # OPTION SELLING
                     ce = float(trd.get("ce_strike", entry_p * 1.025))
                     pe = float(trd.get("pe_strike", entry_p * 0.975))
+                    opt_meta = p_data.get("opt", {
+                        "rsi": 50.0, "rsi_slope": 0.0, "adx": 15.0, "prev_adx": 15.0,
+                        "plus_di": 20.0, "minus_di": 20.0, "tf": trd.get("timeframe", "60m"),
+                        "is_call_threat": False, "is_put_threat": False
+                    })
+                    rsi_val = opt_meta.get("rsi", 50.0)
+                    rsi_slope = opt_meta.get("rsi_slope", 0.0)
+                    adx_val = opt_meta.get("adx", 15.0)
+                    p_di = opt_meta.get("plus_di", 20.0)
+                    m_di = opt_meta.get("minus_di", 20.0)
+                    opt_tf = opt_meta.get("tf", trd.get("timeframe", "60m"))
+                    is_c_threat = opt_meta.get("is_call_threat", False)
+                    is_p_threat = opt_meta.get("is_put_threat", False)
                     
                     if curr_p >= ce:
-                        status_banner = f'<div style="background: rgba(239, 68, 68, 0.15); border: 1px solid #EF4444; border-radius: 8px; padding: 8px 12px; margin: 10px 0;"><span style="color: #F87171; font-weight: 800;">🚨 CALL BREACH ALERT:</span> <span style="color: #FCA5A5; font-size: 12px;">ભાવ Call Strike (₹{ce:.1f}) થી ઉપર નીકળી ગયો છે! શોર્ટ કૉલમાંથી EXIT કરો અથવા હેજ કરો.</span></div>'
+                        status_banner = f'<div style="background: rgba(239, 68, 68, 0.2); border: 2px solid #EF4444; border-radius: 8px; padding: 10px 14px; margin: 10px 0;"><span style="color: #F87171; font-weight: 800; font-size: 14px;">🚨 HARD CALL BREACH:</span> <span style="color: #FECACA; font-size: 12px;">ભાવ Call Strike (₹{ce:.1f}) થી ઉપર નીકળી ગયો છે! શોર્ટ કરેલા Call (CE) માંથી તાત્કાલિક EXIT કરો અથવા પોઝિશન હેજ કરો.</span></div>'
                     elif curr_p <= pe:
-                        status_banner = f'<div style="background: rgba(239, 68, 68, 0.15); border: 1px solid #EF4444; border-radius: 8px; padding: 8px 12px; margin: 10px 0;"><span style="color: #F87171; font-weight: 800;">🚨 PUT BREACH ALERT:</span> <span style="color: #FCA5A5; font-size: 12px;">ભાવ Put Strike (₹{pe:.1f}) થી નીચે ઉતરી ગયો છે! શોર્ટ પુટમાંથી EXIT કરો અથવા હેજ કરો.</span></div>'
+                        status_banner = f'<div style="background: rgba(239, 68, 68, 0.2); border: 2px solid #EF4444; border-radius: 8px; padding: 10px 14px; margin: 10px 0;"><span style="color: #F87171; font-weight: 800; font-size: 14px;">🚨 HARD PUT BREACH:</span> <span style="color: #FECACA; font-size: 12px;">ભાવ Put Strike (₹{pe:.1f}) થી નીચે ઉતરી ગયો છે! શોર્ટ કરેલા Put (PE) માંથી તાત્કાલિક EXIT કરો અથવા પોઝિશન હેજ કરો.</span></div>'
+                    elif is_c_threat:
+                        status_banner = (
+                            f'<div style="background: rgba(239, 68, 68, 0.18); border: 2px solid #EF4444; border-radius: 8px; padding: 10px 14px; margin: 10px 0;">'
+                            f'<span style="color: #F87171; font-weight: 800; font-size: 14px;">⚠️ EARLY EXIT WARNING (CALL SIDE MOMENTUM):</span><br>'
+                            f'<span style="color: #FDE68A; font-size: 12px;">સ્ટોકમાં {opt_tf} ચાર્ટ પર તીવ્ર તેજી મોમેન્ટમ શરૂ થયું છે: '
+                            f'<b>+DI: {p_di:.1f}</b> > 25 (બુલિશ પ્રેશર) | <b>ADX: {adx_val:.1f}</b> (ટ્રેન્ડ વધે છે) | <b>RSI: {rsi_val:.1f}</b> (Slope: {rsi_slope:+.1f}). '
+                            f'Call Strike (₹{ce:.1f}) તૂટે તે પહેલાં જ <b>Call Sell (CE) માંથી અત્યારે જ સુરક્ષિત EXIT</b> કરી લો!</span>'
+                            f'</div>'
+                        )
+                    elif is_p_threat:
+                        status_banner = (
+                            f'<div style="background: rgba(239, 68, 68, 0.18); border: 2px solid #EF4444; border-radius: 8px; padding: 10px 14px; margin: 10px 0;">'
+                            f'<span style="color: #F87171; font-weight: 800; font-size: 14px;">⚠️ EARLY EXIT WARNING (PUT SIDE BREAKDOWN):</span><br>'
+                            f'<span style="color: #FDE68A; font-size: 12px;">સ્ટોકમાં {opt_tf} ચાર્ટ પર તીવ્ર મંદી બ્રેકડાઉન શરૂ થયું છે: '
+                            f'<b>-DI: {m_di:.1f}</b> > 25 (બેરિશ પ્રેશર) | <b>ADX: {adx_val:.1f}</b> (ટ્રેન્ડ વધે છે) | <b>RSI: {rsi_val:.1f}</b> (Slope: {rsi_slope:+.1f}). '
+                            f'Put Strike (₹{pe:.1f}) તૂટે તે પહેલાં જ <b>Put Sell (PE) માંથી અત્યારે જ સુરક્ષિત EXIT</b> કરી લો!</span>'
+                            f'</div>'
+                        )
                     elif (ce - curr_p) <= (ce * 0.008) or (curr_p - pe) <= (pe * 0.008):
-                        status_banner = f'<div style="background: rgba(245, 158, 11, 0.15); border: 1px solid #F59E0B; border-radius: 8px; padding: 8px 12px; margin: 10px 0;"><span style="color: #FBBF24; font-weight: 800;">⚠️ NEAR RANGE BOUNDARY:</span> <span style="color: #FDE68A; font-size: 12px;">ભાવ રેન્જની કિનારી પર આવી ગયો છે. સતર્ક રહો.</span></div>'
+                        status_banner = f'<div style="background: rgba(245, 158, 11, 0.15); border: 1px solid #F59E0B; border-radius: 8px; padding: 8px 12px; margin: 10px 0;"><span style="color: #FBBF24; font-weight: 800;">⚠️ NEAR RANGE BOUNDARY:</span> <span style="color: #FDE68A; font-size: 12px;">ભાવ રેન્જની કિનારી પર આવી ગયો છે (Call થી ₹{ce - curr_p:.1f} / Put થી ₹{curr_p - pe:.1f}). સતર્ક રહો.</span></div>'
+                    elif adx_val <= 22.0 and 40 <= rsi_val <= 60 and abs(p_di - m_di) <= 10:
+                        status_banner = (
+                            f'<div style="background: rgba(16, 185, 129, 0.1); border: 1px solid #10B981; border-radius: 8px; padding: 10px 14px; margin: 10px 0;">'
+                            f'<span style="color: #34D399; font-weight: 800;">🟢 IDEAL THETA DECAY (સંપૂર્ણ સાઇડવેઝ):</span> '
+                            f'<span style="color: #D1FAE5; font-size: 12px;">{opt_tf} ADX: <b>{adx_val:.1f}</b> (શાંત/ટ્રેન્ડલેસ) • RSI: <b>{rsi_val:.1f}</b> (કન્સોલિડેશન) • +DI ({p_di:.1f}) vs -DI ({m_di:.1f}). પ્રીમિયમ ઝડપથી ઓગળી રહ્યું છે, પોઝિશન HOLD રાખો!</span>'
+                            f'</div>'
+                        )
                     else:
-                        status_banner = f'<div style="background: rgba(168, 85, 247, 0.1); border: 1px solid #A855F7; border-radius: 8px; padding: 8px 12px; margin: 10px 0;"><span style="color: #C084FC; font-weight: 800;">🟢 SAFE THETA DECAY:</span> <span style="color: #E2E8F0; font-size: 12px;">સ્ટોક ₹{pe:.1f} થી ₹{ce:.1f} ની સેફ રેન્જમાં શાંતિથી ફરી રહ્યો છે. બંને બાજુ પ્રીમિયમ ગળી રહ્યું છે!</span></div>'
+                        status_banner = f'<div style="background: rgba(168, 85, 247, 0.1); border: 1px solid #A855F7; border-radius: 8px; padding: 8px 12px; margin: 10px 0;"><span style="color: #C084FC; font-weight: 800;">⚖️ SAFE OPTION RANGE:</span> <span style="color: #E2E8F0; font-size: 12px;">સ્ટોક ₹{pe:.1f} થી ₹{ce:.1f} ની સેફ રેન્જમાં છે. {opt_tf} ADX: {adx_val:.1f} | RSI: {rsi_val:.1f}.</span></div>'
                     
                     st.html(status_banner)
                     
-                    m_c1, m_c2, m_c3, m_c4 = st.columns(4)
+                    m_c1, m_c2, m_c3, m_c4, m_c5 = st.columns(5)
                     with m_c1:
-                        st.metric("📉 Call Strike (CE Sell)", f"> ₹{ce:.1f}", f"+{((ce - curr_p)/curr_p)*100:.1f}% Buffer")
+                        rsi_delta = f"Slope: {rsi_slope:+.1f}"
+                        st.metric(f"📊 RSI ({opt_tf})", f"{rsi_val:.1f}", rsi_delta)
                     with m_c2:
-                        st.metric("📈 Put Strike (PE Sell)", f"< ₹{pe:.1f}", f"-{((curr_p - pe)/curr_p)*100:.1f}% Buffer")
+                        adx_state = "શાંત (<22)" if adx_val <= 22 else "ટ્રેન્ડિંગ (>22)"
+                        st.metric(f"📉 ADX ({opt_tf})", f"{adx_val:.1f}", adx_state)
                     with m_c3:
-                        st.metric("🛡️ Safe Expiry Range", f"₹{pe:.0f} - ₹{ce:.0f}", "100% Profit Band")
+                        di_diff = p_di - m_di
+                        di_label = "તેજી પક્ષ (+DI)" if di_diff > 0 else "મંદી પક્ષ (-DI)"
+                        st.metric(f"⚖️ +DI / -DI", f"{p_di:.1f} | {m_di:.1f}", di_label)
                     with m_c4:
-                        st.metric("⚖️ Strategy", "SHORT STRANGLE", "Theta Decay")
+                        st.metric("🛡️ Expiry Range", f"₹{pe:.0f} - ₹{ce:.0f}", f"LTP: ₹{curr_p:.1f}")
+                    with m_c5:
+                        c_buf = ((ce - curr_p) / curr_p) * 100
+                        p_buf = ((curr_p - pe) / curr_p) * 100
+                        st.metric("🎯 Strike Buffer", f"CE: +{c_buf:.1f}%", f"PE: -{p_buf:.1f}%")
 
     # Section C: Closed Trades History
     if closed_positions:
