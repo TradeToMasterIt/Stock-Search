@@ -20,4 +20,7 @@ active_trades.json
 trades.db
 *.db
 *.sqlite
+fyers_token.json
+*.token
+*.log
 

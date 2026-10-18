@@ -6,3 +6,4 @@ altair
 requests
 streamlit-autorefresh
 python-dotenv
+fyers-apiv3
