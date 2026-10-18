@@ -1107,7 +1107,7 @@ else:
 
 telegram_html = '<div class="ticker-chip ticker-chip-bot"><div class="pulse-dot"></div><span><b>TELEGRAM BOT:</b> @patel_stock_bot</span><span style="opacity: 0.5">•</span><span>⚡ 5-Min Auto-Scanner Active</span></div>'
 
-header_html = f'<div class="brand-container"><div><div style="display: flex; align-items: center; gap: 12px;"><span class="brand-title">🎯 CONFLUENCE PRO</span><span class="brand-badge">INSTITUTIONAL v3.0 | GGPATEL VIEW & BACKTESTER</span></div><div class="brand-subtitle">Candlestick Price Channels • Hilega-Milega • Brijesh Bhatia Heikin Ashi • Institutional Volume VPA • Precision Targets & Stop-Loss</div></div></div><div class="ticker-bar">{nifty_html}{telegram_html}</div>'
+header_html = f'<div class="brand-container"><div><div style="display: flex; align-items: center; gap: 12px;"><span class="brand-title">🎯 CONFLUENCE PRO</span><span class="brand-badge">INSTITUTIONAL v3.1 | TOTAL 181 F&O & OPTION SELLING PRO</span></div><div class="brand-subtitle">Candlestick Price Channels • Hilega-Milega • Brijesh Bhatia Heikin Ashi • Institutional Volume VPA • Precision Targets & Stop-Loss</div></div></div><div class="ticker-bar">{nifty_html}{telegram_html}</div>'
 st.html(header_html)
 
 # Navigation Tabs
