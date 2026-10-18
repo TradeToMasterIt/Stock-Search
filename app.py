@@ -11,8 +11,15 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from core.config import get_ist_now, is_market_open, DEFAULT_WATCHLIST
 from core.alerts import send_telegram_alert
-from core.scanner import run_scan_cycle
-from core.database import load_active_trades, save_active_trades, load_all_trades, delete_trade
+from core.database import (
+    load_active_trades,
+    save_active_trades,
+    load_all_trades,
+    delete_trade,
+    save_scan_snapshot,
+    load_scan_snapshots,
+    delete_scan_snapshot
+)
 from core.charts import (
     render_tradingview_widget,
     plot_candlestick_triple_chart,
@@ -1107,7 +1114,7 @@ else:
 
 telegram_html = '<div class="ticker-chip ticker-chip-bot"><div class="pulse-dot"></div><span><b>TELEGRAM BOT:</b> @patel_stock_bot</span><span style="opacity: 0.5">•</span><span>⚡ 5-Min Auto-Scanner Active</span></div>'
 
-header_html = f'<div class="brand-container"><div><div style="display: flex; align-items: center; gap: 12px;"><span class="brand-title">🎯 CONFLUENCE PRO</span><span class="brand-badge">INSTITUTIONAL v3.1 | TOTAL 181 F&O & OPTION SELLING PRO</span></div><div class="brand-subtitle">Candlestick Price Channels • Hilega-Milega • Brijesh Bhatia Heikin Ashi • Institutional Volume VPA • Precision Targets & Stop-Loss</div></div></div><div class="ticker-bar">{nifty_html}{telegram_html}</div>'
+header_html = f'<div class="brand-container"><div><div style="display: flex; align-items: center; gap: 12px;"><span class="brand-title">🎯 CONFLUENCE PRO</span><span class="brand-badge">INSTITUTIONAL v3.2 | TRADINGVIEW PRO & 10-DAY FORWARD TRACKER</span></div><div class="brand-subtitle">Candlestick Price Channels • Hilega-Milega • Brijesh Bhatia Heikin Ashi • Institutional Volume VPA • Precision Targets & Stop-Loss</div></div></div><div class="ticker-bar">{nifty_html}{telegram_html}</div>'
 st.html(header_html)
 
 # Navigation Tabs
@@ -1873,6 +1880,39 @@ with nav_tab_ha:
             df_display = pd.DataFrame(table_data)
             st.dataframe(df_display, use_container_width=True, hide_index=True)
 
+            # Snapshot & Export Action Bar
+            col_act1, col_act2, col_act3 = st.columns([1.6, 1.4, 2.0])
+            with col_act1:
+                snap_btn_label = f"💾 આ સ્કેનનું Snapshot સેવ કરો ({len(filtered_ha)} Stocks)"
+                if st.button(snap_btn_label, type="primary", use_container_width=True, key="btn_save_ha_snapshot"):
+                    now_ts = int(time.time())
+                    now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
+                    snap_id = f"SNAP_HA_{now_ts}"
+                    save_scan_snapshot({
+                        "id": snap_id,
+                        "scan_date": now_str,
+                        "strategy": "Heikin Ashi Trend Rider",
+                        "basket": ha_selected_basket,
+                        "timeframe": ha_timeframe,
+                        "filter_type": curr_ha_filter,
+                        "stock_count": len(filtered_ha),
+                        "stocks": filtered_ha
+                    })
+                    st.toast(f"✅ {len(filtered_ha)} સ્ટોક્સનું Snapshot '{now_str}' તારીખ સાથે ડેટાબેઝમાં સેવ થઈ ગયું!", icon="💾")
+                    st.rerun()
+
+            with col_act2:
+                csv_bytes = df_display.to_csv(index=False).encode('utf-8')
+                csv_filename = f"HeikinAshi_{curr_ha_filter}_{datetime.datetime.now().strftime('%Y%m%d_%H%M')}.csv"
+                st.download_button(
+                    label=f"📥 Download Excel / CSV",
+                    data=csv_bytes,
+                    file_name=csv_filename,
+                    mime="text/csv",
+                    use_container_width=True,
+                    key="btn_download_ha_csv"
+                )
+
         # Interactive Chart Section
         st.divider()
         st.subheader("🕯️ ઇન્ટરેક્ટિવ Heikin Ashi કેન્ડલસ્ટિક & Donchian Trailing SL ચાર્ટ:")
@@ -1951,6 +1991,194 @@ with nav_tab_ha:
                     st.metric("🎯 Target Strategy", "OPEN (Trend Following)", help="ડોન્ચિયન ટ્રેઇલિંગ સ્ટોપલોસ હિટ ન થાય ત્યાં સુધી રાઇડ કરો")
             else:
                 st.warning(f"{selected_chart_sym} માટે ચાર્ટ ડેટા લોડ થઈ શક્યો નહીં.")
+
+    # =============================================================
+    # SECTION: HISTORICAL SCAN ARCHIVE & 10-DAY PERFORMANCE TRACKER
+    # =============================================================
+    st.divider()
+    st.subheader("📜 જૂના સ્કેન્સનો ઇતિહાસ & ૧૦-દિવસનું લાઈવ પરફોર્મન્સ ટ્રેકર (Forward Testing)")
+    
+    saved_snaps = load_scan_snapshots(strategy="Heikin Ashi Trend Rider")
+    
+    if not saved_snaps:
+        st.info("💡 **કોઈ જૂનો સ્કેન હજુ સેવ થયેલ નથી.**\n\nજ્યારે પણ તમે ઉપર સ્કેન ચલાવો ત્યારે ટેબલની નીચે આપેલા **'💾 આ સ્કેનનું Snapshot સેવ કરો'** બટન પર ક્લિક કરો, જેથી ૧૦ દિવસ પછી તમે અહીં એ જૂનું લિસ્ટ ખોલીને તેનું લાઈવ પરફોર્મન્સ ચકાસી શકો.")
+    else:
+        snap_labels = [
+            f"📅 {s['scan_date']} | 🎯 {s['filter_type']} ({s['stock_count']} સ્ટોક્સ) | 🧺 {s.get('basket', 'F&O')} | ⏱️ {s.get('timeframe', 'Daily')}"
+            for s in saved_snaps
+        ]
+        
+        c_snap_sel, c_snap_del = st.columns([4, 1.2])
+        with c_snap_sel:
+            chosen_snap_idx = st.selectbox(
+                "તપાસવા માટે જૂનો સ્કેન પસંદ કરો:",
+                options=range(len(saved_snaps)),
+                format_func=lambda i: snap_labels[i],
+                key="ha_hist_snap_select"
+            )
+        
+        chosen_snap = saved_snaps[chosen_snap_idx]
+        snap_id = chosen_snap["id"]
+        
+        with c_snap_del:
+            st.markdown("<div style='height: 28px;'></div>", unsafe_allow_html=True)
+            if st.button("🗑️ સ્નેપશોટ ડિલીટ", key=f"del_snap_{snap_id}", use_container_width=True):
+                delete_scan_snapshot(snap_id)
+                st.toast("✅ સ્નેપશોટ સફળતાપૂર્વક ડિલીટ થઈ ગયો!", icon="🗑️")
+                st.rerun()
+
+        # Days elapsed
+        try:
+            snap_dt = datetime.datetime.strptime(chosen_snap["scan_date"], "%Y-%m-%d %H:%M")
+            days_ago = (datetime.datetime.now() - snap_dt).days
+        except Exception:
+            days_ago = 0
+            
+        st.caption(f"📌 **સ્નેપશોટ વિગતો:** તારીખ: **{chosen_snap['scan_date']}** ({days_ago} દિવસ પહેલાં) • બાસ્કેટ: **{chosen_snap.get('basket', '-')}** • ફિલ્ટર: **{chosen_snap.get('filter_type', '-')}** • સ્ટોક્સ: **{chosen_snap.get('stock_count', 0)}**")
+        
+        snap_stocks = chosen_snap.get("stocks", [])
+        eval_key = f"ha_perf_eval_{snap_id}"
+        
+        c_ev_btn, c_ev_down = st.columns([2.5, 1.5])
+        with c_ev_btn:
+            btn_eval = st.button(
+                f"⚡ આજના લાઈવ ભાવ સાથે સરખાવો ({days_ago} દિવસ પછીનું લાઈવ પરફોર્મન્સ)",
+                type="primary",
+                use_container_width=True,
+                key=f"btn_eval_{snap_id}"
+            )
+            
+        if btn_eval:
+            with st.spinner(f"⏳ {len(snap_stocks)} સ્ટોક્સના આજના લાઈવ ભાવ મેળવી પરફોર્મન્સ કેલ્ક્યુલેટ થઈ રહ્યું છે..."):
+                def fetch_perf_item(item):
+                    sym = item.get("symbol", "")
+                    full_s = f"{sym}.NS" if not sym.endswith(".NS") else sym
+                    entry_p = float(item.get("price", 0))
+                    sl_val = float(item.get("stop_loss", entry_p * 0.95))
+                    try:
+                        tkr = yf.Ticker(full_s)
+                        h = tkr.history(period="5d", interval="1d")
+                        if not h.empty:
+                            curr_p = float(h['Close'].iloc[-1])
+                            chg_pts = curr_p - entry_p
+                            ret_pct = (chg_pts / entry_p) * 100 if entry_p > 0 else 0
+                            
+                            is_sl_hit = (curr_p <= sl_val)
+                            risk_amt = entry_p - sl_val if entry_p > sl_val else entry_p * 0.02
+                            target_2r = entry_p + (2.0 * risk_amt)
+                            is_target_hit = (curr_p >= target_2r)
+                            
+                            if is_target_hit:
+                                outcome = "🎉 TARGET 1:2+ HIT"
+                            elif ret_pct >= 2.0:
+                                outcome = "🟢 નફામાં (Profitable)"
+                            elif is_sl_hit:
+                                outcome = "🚨 DONCHIAN SL HIT"
+                            elif ret_pct < 0:
+                                outcome = "🟡 પુલબેક (SL બચેલો)"
+                            else:
+                                outcome = "⚪ ફ્લેટ / રેન્જમાં"
+                                
+                            return {
+                                "Stock": sym,
+                                "સ્કેન વખતે ભાવ": entry_p,
+                                "આજનો લાઈવ ભાવ": curr_p,
+                                "રીટર્ન (%)": ret_pct,
+                                "Donchian SL": sl_val,
+                                "પરિણામ (Outcome)": outcome,
+                                "is_profit": ret_pct > 0,
+                                "is_sl": is_sl_hit
+                            }
+                    except Exception:
+                        pass
+                    return {
+                        "Stock": sym,
+                        "સ્કેન વખતે ભાવ": entry_p,
+                        "આજનો લાઈવ ભાવ": entry_p,
+                        "રીટર્ન (%)": 0.0,
+                        "Donchian SL": sl_val,
+                        "પરિણામ (Outcome)": "⚪ ડેટા લોડિંગ",
+                        "is_profit": False,
+                        "is_sl": False
+                    }
+                
+                with ThreadPoolExecutor(max_workers=8) as ex:
+                    perf_results = list(ex.map(fetch_perf_item, snap_stocks))
+                    
+                st.session_state[eval_key] = perf_results
+                st.rerun()
+
+        # Render Evaluated or Raw Data
+        if eval_key in st.session_state and st.session_state[eval_key]:
+            perf_data = st.session_state[eval_key]
+            total_stk = len(perf_data)
+            profitable = sum(1 for p in perf_data if p["is_profit"])
+            sl_hit_cnt = sum(1 for p in perf_data if p["is_sl"])
+            win_rate = (profitable / total_stk) * 100 if total_stk > 0 else 0
+            avg_return = sum(p["રીટર્ન (%)"] for p in perf_data) / total_stk if total_stk > 0 else 0
+            best_stk = max(perf_data, key=lambda x: x["રીટર્ન (%)"], default=None)
+            
+            p_c1, p_c2, p_c3, p_c4 = st.columns(4)
+            with p_c1:
+                st.metric("🏆 Win-Rate", f"{win_rate:.1f}%", f"{profitable}/{total_stk} નફામાં")
+            with p_c2:
+                avg_sign = "+" if avg_return >= 0 else ""
+                st.metric("💰 સરેરાશ રીટર્ન (Avg Return)", f"{avg_sign}{avg_return:.2f}%")
+            with p_c3:
+                if best_stk:
+                    st.metric("🚀 Best Performer", f"{best_stk['Stock']}", f"{best_stk['રીટર્ન (%)']:+.2f}%")
+                else:
+                    st.metric("🚀 Best Performer", "-")
+            with p_c4:
+                st.metric("🛡️ Donchian SL Hit", f"{sl_hit_cnt} Stocks", f"-{((sl_hit_cnt/total_stk)*100):.1f}% Loss Rate", delta_color="inverse")
+                
+            perf_df = pd.DataFrame([
+                {
+                    "Stock": p["Stock"],
+                    "સ્કેન વખતે ભાવ": f"₹{p['સ્કેન વખતે ભાવ']:.2f}",
+                    "આજનો લાઈવ ભાવ": f"₹{p['આજનો લાઈવ ભાવ']:.2f}",
+                    "રીટર્ન (%)": f"{p['રીટર્ન (%)']:+.2f}%",
+                    "Donchian SL": f"₹{p['Donchian SL']:.2f}",
+                    "પરિણામ (Outcome)": p["પરિણામ (Outcome)"]
+                }
+                for p in perf_data
+            ])
+            st.dataframe(perf_df, use_container_width=True, hide_index=True)
+            
+            with c_ev_down:
+                eval_csv = perf_df.to_csv(index=False).encode('utf-8')
+                st.download_button(
+                    label=f"📥 Download Report (CSV)",
+                    data=eval_csv,
+                    file_name=f"Performance_{chosen_snap['filter_type']}_{days_ago}Days_{chosen_snap['scan_date'][:10]}.csv",
+                    mime="text/csv",
+                    use_container_width=True,
+                    key=f"dl_perf_csv_{snap_id}"
+                )
+        else:
+            raw_table = []
+            for item in snap_stocks:
+                raw_table.append({
+                    "Stock": item.get('symbol', '-'),
+                    "સ્કેન વખતનો ભાવ": f"₹{float(item.get('price', 0)):.2f}",
+                    "સ્કેન દિવસનો Change %": f"{float(item.get('change', 0)):+.2f}%",
+                    "Status": item.get('status', '-'),
+                    "Red Candles": f"{item.get('red_count', 0)} Bars",
+                    "Donchian SL": f"₹{float(item.get('stop_loss', 0)):.2f}",
+                    "Risk %": f"{float(item.get('risk_pct', 0)):.1f}%",
+                    "Weekly Trend": "🟢 Bullish" if item.get('weekly_bullish') else "🔴 Bearish"
+                })
+            st.dataframe(pd.DataFrame(raw_table), use_container_width=True, hide_index=True)
+            with c_ev_down:
+                raw_csv = pd.DataFrame(raw_table).to_csv(index=False).encode('utf-8')
+                st.download_button(
+                    label=f"📥 Download Snapshot (CSV)",
+                    data=raw_csv,
+                    file_name=f"Snapshot_{chosen_snap['filter_type']}_{chosen_snap['scan_date'][:10]}.csv",
+                    mime="text/csv",
+                    use_container_width=True,
+                    key=f"dl_raw_csv_{snap_id}"
+                )
 
 # =============================================================
 # TAB 3: SINGLE STOCK DEEP CANDLESTICK ANALYSIS

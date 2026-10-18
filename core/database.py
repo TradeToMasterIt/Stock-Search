@@ -65,6 +65,21 @@ def init_db():
             )
         """)
         
+        # 4. Scan snapshots table for historical tracking
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS scan_snapshots (
+                id TEXT PRIMARY KEY,
+                scan_date TEXT NOT NULL,
+                strategy TEXT NOT NULL,
+                basket TEXT,
+                timeframe TEXT,
+                filter_type TEXT,
+                stock_count INTEGER,
+                stocks_json TEXT NOT NULL,
+                created_at TEXT
+            )
+        """)
+        
         cursor.execute("SELECT value FROM meta_kv WHERE key = 'json_migrated'")
         is_migrated = cursor.fetchone()
         
@@ -307,3 +322,68 @@ def save_alert_state(state_dict):
     except Exception:
         pass
     return True
+
+# -------------------------------------------------------------
+# Scan Snapshot Operations (Historical Screener Archive)
+# -------------------------------------------------------------
+def save_scan_snapshot(snap_dict):
+    """Saves a scan result snapshot into SQLite database."""
+    init_db()
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            INSERT OR REPLACE INTO scan_snapshots (
+                id, scan_date, strategy, basket, timeframe, filter_type, stock_count, stocks_json, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            snap_dict.get("id", f"SNAP_{int(datetime.datetime.now().timestamp())}"),
+            snap_dict.get("scan_date", datetime.datetime.now().strftime("%Y-%m-%d %H:%M")),
+            snap_dict.get("strategy", "Heikin Ashi Trend Rider"),
+            snap_dict.get("basket", "Total F&O"),
+            snap_dict.get("timeframe", "Daily"),
+            snap_dict.get("filter_type", "ALL"),
+            int(snap_dict.get("stock_count", len(snap_dict.get("stocks", [])))),
+            json.dumps(snap_dict.get("stocks", [])),
+            snap_dict.get("created_at", get_ist_now().isoformat())
+        ))
+        conn.commit()
+    return True
+
+def load_scan_snapshots(strategy=None):
+    """Loads scan snapshots ordered by created_at DESC."""
+    init_db()
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        if strategy:
+            cursor.execute("SELECT * FROM scan_snapshots WHERE strategy = ? ORDER BY created_at DESC", (strategy,))
+        else:
+            cursor.execute("SELECT * FROM scan_snapshots ORDER BY created_at DESC")
+        rows = cursor.fetchall()
+        snaps = []
+        for r in rows:
+            try:
+                stocks = json.loads(r["stocks_json"])
+            except Exception:
+                stocks = []
+            snaps.append({
+                "id": r["id"],
+                "scan_date": r["scan_date"],
+                "strategy": r["strategy"],
+                "basket": r["basket"],
+                "timeframe": r["timeframe"],
+                "filter_type": r["filter_type"],
+                "stock_count": r["stock_count"],
+                "stocks": stocks,
+                "created_at": r["created_at"]
+            })
+        return snaps
+
+def delete_scan_snapshot(snap_id):
+    """Deletes a scan snapshot by ID."""
+    init_db()
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM scan_snapshots WHERE id = ?", (snap_id,))
+        conn.commit()
+    return True
+

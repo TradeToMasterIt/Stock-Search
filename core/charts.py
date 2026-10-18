@@ -21,16 +21,105 @@ def get_tradingview_symbol(symbol):
         return "NSE:FINNIFTY"
     return f"NSE:{clean}"
 
-def render_tradingview_widget(symbol, df=None, interval="D", height=550):
+def render_tradingview_widget(symbol, df=None, interval="D", height=600):
     """
-    Renders high-performance interactive GGPATEL VIEW Chart powered by TradingView Lightweight Charts.
-    Completely eliminates the annoying 'This symbol is only available on TradingView' notification modal
-    by feeding actual candle and volume data directly to TradingView's open-source canvas engine.
+    Renders official full-featured TradingView Advanced Real-Time Chart Widget.
+    Features:
+    - Complete left drawing toolbar (Trendlines, Fibonacci, Shapes, Measure, etc.)
+    - Top timeframe toolbar (1m, 5m, 15m, 1h, Daily, Weekly)
+    - Full indicator search menu (fx Indicators with 100+ TV technical indicators)
+    - Bar style switcher (Candles, Heikin Ashi, Line, Area)
+    - Live Indian market ticks for NSE/BSE symbols
+    - Bottom time range selector (1D, 5D, 1M, 3M, 6M, YTD, 1Y, 5Y, All)
+    """
+    clean_sym = symbol.replace(".NS", "").replace(".BO", "").strip().upper()
+    tv_symbol = get_tradingview_symbol(symbol)
+    
+    # Map interval to TradingView syntax
+    if str(interval).lower() in ["1h", "60", "2-hour"]:
+        tv_interval = "60"
+    elif str(interval).lower() in ["15m", "15"]:
+        tv_interval = "15"
+    elif str(interval).lower() in ["w", "weekly"]:
+        tv_interval = "W"
+    elif str(interval).lower() in ["m", "monthly"]:
+        tv_interval = "M"
+    else:
+        tv_interval = "D"
+        
+    container_id = f"tv_adv_chart_{clean_sym.replace('^', '').replace(':', '_')}"
+    
+    html_code = f"""
+    <!DOCTYPE html>
+    <html lang="en" style="height: 100%; margin: 0; padding: 0;">
+    <head>
+        <meta charset="utf-8">
+        <style>
+            html, body {{
+                height: 100%;
+                margin: 0;
+                padding: 0;
+                background-color: #080c14;
+                overflow: hidden;
+            }}
+            .tradingview-widget-container {{
+                height: 100% !important;
+                width: 100% !important;
+                border-radius: 12px;
+                border: 1px solid rgba(255, 255, 255, 0.08);
+                background-color: #080c14;
+                box-sizing: border-box;
+                overflow: hidden;
+            }}
+            #{container_id} {{
+                height: 100% !important;
+                width: 100% !important;
+            }}
+        </style>
+    </head>
+    <body>
+        <div class="tradingview-widget-container">
+            <div id="{container_id}"></div>
+            <script type="text/javascript" src="https://s3.tradingview.com/tv.js"></script>
+            <script type="text/javascript">
+            new TradingView.widget({{
+                "autosize": true,
+                "symbol": "{tv_symbol}",
+                "interval": "{tv_interval}",
+                "timezone": "Asia/Kolkata",
+                "theme": "dark",
+                "style": "1",
+                "locale": "in",
+                "toolbar_bg": "#080c14",
+                "enable_publishing": false,
+                "hide_top_toolbar": false,
+                "hide_side_toolbar": false,
+                "allow_symbol_change": true,
+                "save_image": true,
+                "withdateranges": true,
+                "details": true,
+                "hotlist": false,
+                "calendar": false,
+                "studies": [
+                    "STD;SMA"
+                ],
+                "container_id": "{container_id}"
+            }});
+            </script>
+        </div>
+    </body>
+    </html>
+    """
+    components.html(html_code, height=height + 15)
+
+
+def render_lightweight_chart(symbol, df=None, interval="D", height=550):
+    """
+    Fallback lightweight canvas chart powered by TradingView Lightweight Charts.
     """
     clean_sym = symbol.replace(".NS", "").replace(".BO", "").strip().upper()
     tv_symbol = get_tradingview_symbol(symbol)
 
-    # If df not provided, fetch from yfinance
     if df is None or (isinstance(df, pd.DataFrame) and df.empty):
         try:
             import yfinance as yf
@@ -44,7 +133,6 @@ def render_tradingview_widget(symbol, df=None, interval="D", height=550):
         st.warning(f"⚠️ {clean_sym} માટે પૂરતો કેન્ડલસ્ટિક ડેટા ઉપલબ્ધ નથી.")
         return
 
-    # Prepare data for TradingView Lightweight Charts
     plot_df = df.tail(180).copy()
     if plot_df.index.tz is not None:
         plot_df.index = plot_df.index.tz_localize(None)
@@ -53,15 +141,10 @@ def render_tradingview_widget(symbol, df=None, interval="D", height=550):
     volumes = []
     smas = []
 
-    # Calculate 20 SMA if not present
     sma_series = plot_df['Close'].rolling(window=20).mean()
 
     for idx, row in plot_df.iterrows():
-        if hasattr(idx, 'strftime'):
-            time_str = idx.strftime('%Y-%m-%d')
-        else:
-            time_str = str(idx)[:10]
-
+        time_str = idx.strftime('%Y-%m-%d') if hasattr(idx, 'strftime') else str(idx)[:10]
         o = round(float(row['Open']), 2)
         h = round(float(row['High']), 2)
         l = round(float(row['Low']), 2)
@@ -155,11 +238,6 @@ def render_tradingview_widget(symbol, df=None, interval="D", height=550):
                 display: flex;
                 align-items: center;
                 gap: 5px;
-                transition: all 0.2s;
-            }}
-            .tv-btn:hover {{
-                background: rgba(56, 189, 248, 0.25);
-                color: #FFFFFF;
             }}
             #chart_target_{widget_id} {{
                 width: 100%;
@@ -189,10 +267,7 @@ def render_tradingview_widget(symbol, df=None, interval="D", height=550):
         <script>
             (function() {{
                 const container = document.getElementById('chart_target_{widget_id}');
-                if (!window.LightweightCharts) {{
-                    container.innerHTML = '<div style="padding: 20px; color: #94A3B8; text-align: center;">ચાર્ટ લોડ થઈ રહ્યો છે...</div>';
-                    return;
-                }}
+                if (!window.LightweightCharts) return;
 
                 const chart = LightweightCharts.createChart(container, {{
                     width: container.clientWidth,
@@ -207,21 +282,12 @@ def render_tradingview_widget(symbol, df=None, interval="D", height=550):
                         vertLines: {{ color: 'rgba(255, 255, 255, 0.04)' }},
                         horzLines: {{ color: 'rgba(255, 255, 255, 0.04)' }},
                     }},
-                    crosshair: {{
-                        mode: LightweightCharts.CrosshairMode.Normal,
-                    }},
+                    crosshair: {{ mode: LightweightCharts.CrosshairMode.Normal }},
                     rightPriceScale: {{
                         borderColor: '#334155',
-                        scaleMargins: {{
-                            top: 0.08,
-                            bottom: 0.22,
-                        }},
+                        scaleMargins: {{ top: 0.08, bottom: 0.22 }},
                     }},
-                    timeScale: {{
-                        borderColor: '#334155',
-                        timeVisible: true,
-                        secondsVisible: false,
-                    }},
+                    timeScale: {{ borderColor: '#334155', timeVisible: true, secondsVisible: false }},
                 }});
 
                 const candleSeries = chart.addCandlestickSeries({{
@@ -236,10 +302,7 @@ def render_tradingview_widget(symbol, df=None, interval="D", height=550):
                 const volumeSeries = chart.addHistogramSeries({{
                     priceFormat: {{ type: 'volume' }},
                     priceScaleId: '',
-                    scaleMargins: {{
-                        top: 0.80,
-                        bottom: 0,
-                    }},
+                    scaleMargins: {{ top: 0.80, bottom: 0 }},
                 }});
                 volumeSeries.setData({volumes_json});
 
