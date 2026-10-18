@@ -86,6 +86,108 @@ def calculate_hilega_milega(df, rsi_period=9, ema_period=3, wma_period=21):
     df['Water_50'] = 50.0
     return df
 
+def calculate_adx_dmi(df, period=14):
+    """
+    Wilder's Directional Movement Index (DMI) and Average Directional Index (ADX):
+    - +DI (14): Plus Directional Indicator (Bullish pressure)
+    - -DI (14): Minus Directional Indicator (Bearish pressure)
+    - ADX (14): Trend strength index (non-directional)
+    """
+    if len(df) < (period + 2):
+        df['Plus_DI_14'] = 20.0
+        df['Minus_DI_14'] = 20.0
+        df['ADX_14'] = 15.0
+        return df
+
+    high = df['High']
+    low = df['Low']
+    prev_close = df['Close'].shift(1)
+
+    tr1 = high - low
+    tr2 = (high - prev_close).abs()
+    tr3 = (low - prev_close).abs()
+    tr = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
+
+    up_move = high - high.shift(1)
+    down_move = low.shift(1) - low
+
+    plus_dm = np.where((up_move > down_move) & (up_move > 0), up_move, 0.0)
+    minus_dm = np.where((down_move > up_move) & (down_move > 0), down_move, 0.0)
+
+    alpha = 1.0 / period
+    tr_smooth = pd.Series(tr, index=df.index).ewm(alpha=alpha, adjust=False).mean()
+    plus_dm_smooth = pd.Series(plus_dm, index=df.index).ewm(alpha=alpha, adjust=False).mean()
+    minus_dm_smooth = pd.Series(minus_dm, index=df.index).ewm(alpha=alpha, adjust=False).mean()
+
+    plus_di = 100.0 * (plus_dm_smooth / tr_smooth.replace(0, np.nan))
+    minus_di = 100.0 * (minus_dm_smooth / tr_smooth.replace(0, np.nan))
+
+    di_sum = plus_di + minus_di
+    di_diff = (plus_di - minus_di).abs()
+    dx = 100.0 * (di_diff / di_sum.replace(0, np.nan))
+    adx = dx.ewm(alpha=alpha, adjust=False).mean()
+
+    df['Plus_DI_14'] = plus_di.fillna(20.0)
+    df['Minus_DI_14'] = minus_di.fillna(20.0)
+    df['ADX_14'] = adx.fillna(15.0)
+    return df
+
+def analyze_adx_dmi(df, name="Timeframe"):
+    """
+    Analyzes ADX and +DI/-DI status:
+    - Low ADX (<= 22) + small DI difference (|plus_di - minus_di| <= 8.5) = Ideal Option Selling Sideways.
+    - +DI >= 25 & ADX rising = Bullish Momentum Breakout (Risk for Call Sellers).
+    - -DI >= 25 & ADX rising = Bearish Momentum Breakdown (Risk for Put Sellers).
+    """
+    if 'ADX_14' not in df.columns or len(df.dropna(subset=['ADX_14'])) < 2:
+        return {
+            "name": name,
+            "adx": 15.0,
+            "prev_adx": 15.0,
+            "plus_di": 20.0,
+            "minus_di": 20.0,
+            "di_diff": 0.0,
+            "is_sideways": True,
+            "is_bull_breakout": False,
+            "is_bear_breakdown": False,
+            "status": "⚪ ટ્રેન્ડલેસ / સાઈડવેઝ (Sideways)"
+        }
+
+    curr = df.iloc[-1]
+    prev = df.iloc[-2]
+    
+    adx = float(curr.get('ADX_14', 15.0))
+    prev_adx = float(prev.get('ADX_14', 15.0))
+    plus_di = float(curr.get('Plus_DI_14', 20.0))
+    minus_di = float(curr.get('Minus_DI_14', 20.0))
+    di_diff = abs(plus_di - minus_di)
+
+    is_sideways = (adx <= 22.0) and (di_diff <= 8.5)
+    is_bull_breakout = (plus_di >= 25.0) and (plus_di > minus_di + 4.0) and (adx >= 20.0) and (adx >= prev_adx)
+    is_bear_breakdown = (minus_di >= 25.0) and (minus_di > plus_di + 4.0) and (adx >= 20.0) and (adx >= prev_adx)
+
+    if is_bull_breakout:
+        status = f"🚀 બુલિશ મોમેન્ટમ બ્રેકઆઉટ (+DI: {plus_di:.1f} > 25 & ADX વધી રહ્યો છે)"
+    elif is_bear_breakdown:
+        status = f"🩸 બેરિશ મોમેન્ટમ બ્રેકડાઉન (-DI: {minus_di:.1f} > 25 & ADX વધી રહ્યો છે)"
+    elif is_sideways:
+        status = f"⚖️ શાંત સાઈડવેઝ રેન્જ (ADX: {adx:.1f} • DI તફાવત: {di_diff:.1f})"
+    else:
+        status = f"🟡 સામાન્ય વધ-ઘટ (ADX: {adx:.1f})"
+
+    return {
+        "name": name,
+        "adx": round(adx, 1),
+        "prev_adx": round(prev_adx, 1),
+        "plus_di": round(plus_di, 1),
+        "minus_di": round(minus_di, 1),
+        "di_diff": round(di_diff, 1),
+        "is_sideways": is_sideways,
+        "is_bull_breakout": is_bull_breakout,
+        "is_bear_breakdown": is_bear_breakdown,
+        "status": status
+    }
+
 def calculate_trend_craft_ict(df, default_period=45):
     """Trend Craft ICT Band: Rolling SMA of Highs and Lows."""
     if len(df) < 10:
@@ -221,6 +323,8 @@ def analyze_hm_timeframe(df, name="Timeframe"):
             "green": 50.0, "red": 50.0, "rsi": 50.0, "spread": 0.0,
             "prev_green": 50.0, "prev_red": 50.0,
             "green_slope": 0.0, "two_bar_green_slope": 0.0,
+            "rsi_slope": 0.0, "two_bar_rsi_slope": 0.0,
+            "is_vertical_rsi_up": False, "is_vertical_rsi_down": False,
             "prev_spread": 0.0
         }
     
@@ -234,9 +338,17 @@ def analyze_hm_timeframe(df, name="Timeframe"):
     c_red = curr['Red_WMA21']
     p_red = prev['Red_WMA21']
     c_rsi = curr['RSI_9']
+    p_rsi = prev['RSI_9']
+    p2_rsi = prev2['RSI_9']
     
     green_slope = c_green - p_green
     two_bar_green_slope = c_green - p2_green
+    rsi_slope = c_rsi - p_rsi
+    two_bar_rsi_slope = c_rsi - p2_rsi
+
+    # Vertical RSI Spikes: Fast aggressive momentum shifts threatening Option Sellers
+    is_vertical_rsi_up = (c_rsi >= 60.0) and ((two_bar_rsi_slope >= 5.5) or (green_slope >= 2.5))
+    is_vertical_rsi_down = (c_rsi <= 40.0) and ((two_bar_rsi_slope <= -5.5) or (green_slope <= -2.5))
     
     is_above_water = c_green >= 50.0 and c_red >= 50.0
     is_partly_above_water = c_green >= 50.0 or c_red >= 50.0
@@ -270,6 +382,8 @@ def analyze_hm_timeframe(df, name="Timeframe"):
         "green": c_green, "red": c_red, "rsi": c_rsi, "spread": round(c_green - c_red, 2),
         "prev_green": p_green, "prev_red": p_red,
         "green_slope": green_slope, "two_bar_green_slope": two_bar_green_slope,
+        "rsi_slope": round(rsi_slope, 2), "two_bar_rsi_slope": round(two_bar_rsi_slope, 2),
+        "is_vertical_rsi_up": is_vertical_rsi_up, "is_vertical_rsi_down": is_vertical_rsi_down,
         "prev_spread": round(p_green - p_red, 2)
     }
 
@@ -360,7 +474,7 @@ def analyze_volume_timeframe(df, name="Timeframe"):
         "price_up": price_up, "verdict": verdict
     }
 
-def calculate_master_confluence_vpa(m_hm, w_hm, d_hm, h1_hm, m_tc, w_tc, d_tc, h1_tc, m_vol, w_vol, d_vol, h1_vol):
+def calculate_master_confluence_vpa(m_hm, w_hm, d_hm, h1_hm, m_tc, w_tc, d_tc, h1_tc, m_vol, w_vol, d_vol, h1_vol, d_adx=None):
     """Master Multi-Timeframe Confluence & Institutional Volume spread analysis."""
     score = 0
     checks = []
@@ -496,7 +610,13 @@ def calculate_master_confluence_vpa(m_hm, w_hm, d_hm, h1_hm, m_tc, w_tc, d_tc, h
     
     is_1h_confirmed_bullish = h1_is_vertical_up and h1_gap_expanding_up and h1_above_water and h1_tc_confirmed_bull
     is_inside_tc = (d_tc['close'] >= d_tc['tc_low'] * 0.985) and (d_tc['close'] <= d_tc['tc_high'] * 1.015)
-    is_range_bound = is_inside_tc and (36 <= score <= 64) and (36 <= d_hm['rsi'] <= 64)
+    
+    # Enhanced Range-Bound check using ADX & +DI/-DI
+    is_adx_sideways = True
+    if d_adx:
+        is_adx_sideways = d_adx.get('is_sideways', False)
+        
+    is_range_bound = is_inside_tc and (36 <= score <= 64) and (38 <= d_hm['rsi'] <= 62) and is_adx_sideways
 
     if is_sniper_buy:
         verdict = "🎯 SNIPER DIP BUY (તાત્કાલિક ખરીદી સેટઅપ)"
@@ -562,12 +682,13 @@ def calculate_master_confluence_vpa(m_hm, w_hm, d_hm, h1_hm, m_tc, w_tc, d_tc, h
             explanation = "મોટાભાગના ટાઇમફ્રેમ્સ તેજીમાં છે. સ્ટોપ-લોસ સાથે પોઝિશન રાખી શકાય છે."
             stars = "⭐⭐⭐"
     elif is_range_bound:
+        adx_desc = f" (ADX: {d_adx['adx']:.1f} • +DI: {d_adx['plus_di']:.1f} / -DI: {d_adx['minus_di']:.1f})" if d_adx else ""
         verdict = "⚖️ RANGE-BOUND / OPTION SELLING (ઓપ્શન સેલિંગ)"
         verdict_type = "info"
         pill_class = "pill-option-sell"
         explanation = (
-            f"સ્ટોક Daily Trend Craft ચેનલમાં ₹{d_tc['tc_low']:.1f} થી ₹{d_tc['tc_high']:.1f} વચ્ચે સજ્જડ રેન્જ-બાઉન્ડ કન્સોલિડેટ થાય છે. "
-            f"મોટા ડાયરેક્શનલ ટ્રેન્ડના અભાવે બંને બાજુ OTM Call (>{d_tc['tc_high']:.1f}) અને OTM Put (<{d_tc['tc_low']:.1f}) વેચીને થીટા ડીકે (Theta Decay) "
+            f"સ્ટોક Daily Trend Craft ચેનલમાં ₹{d_tc['tc_low']:.1f} થી ₹{d_tc['tc_high']:.1f} વચ્ચે સજ્જડ રેન્જ-બાઉન્ડ કન્સોલિડેટ થાય છે{adx_desc}. "
+            f"ડાયરેક્શનલ મોમેન્ટમ નહિવત હોવાથી બંને બાજુ OTM Call (>{d_tc['tc_high']:.1f}) અને OTM Put (<{d_tc['tc_low']:.1f}) વેચીને થીટા ડીકે (Theta Decay) "
             f"કમાવા માટે આ આદર્શ સેટઅપ છે (Short Strangle / Iron Condor)."
         )
         stars = "⭐⭐⭐"

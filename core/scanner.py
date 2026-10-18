@@ -14,6 +14,8 @@ from .config import (
 from .database import load_active_trades, load_alert_state, save_alert_state
 from .indicators import (
     calculate_hilega_milega,
+    calculate_adx_dmi,
+    analyze_adx_dmi,
     calculate_trend_craft_ict,
     calculate_volume_analysis,
     calculate_daily_pivot_points,
@@ -277,18 +279,26 @@ def monitor_active_trades(state):
             curr_p = float(df_d['Close'].iloc[-1])
             pnl_pct = ((curr_p - entry_p) / entry_p) * 100
             
-            # Calculate 1-Hour Hilega-Milega for Early Momentum Exit
+            # Calculate 1-Hour Hilega-Milega & ADX/DMI for Early Momentum Exit
             hm_status_text = "સામાન્ય"
             is_hm_bear_cross = False
             c_green, c_red, rsi_val = 50.0, 50.0, 50.0
+            rsi_two_bar_slope = 0.0
+            h1_adx, h1_plus_di, h1_minus_di = 15.0, 20.0, 20.0
             
             if not df_1h.empty and len(df_1h) >= 30:
                 df_1h = calculate_hilega_milega(df_1h)
+                df_1h = calculate_adx_dmi(df_1h)
                 c_green = float(df_1h['Green_EMA3'].iloc[-1])
                 p_green = float(df_1h['Green_EMA3'].iloc[-2])
                 c_red = float(df_1h['Red_WMA21'].iloc[-1])
                 p_red = float(df_1h['Red_WMA21'].iloc[-2])
                 rsi_val = float(df_1h['RSI_9'].iloc[-1])
+                p2_rsi = float(df_1h['RSI_9'].iloc[-3]) if len(df_1h) >= 3 else float(df_1h['RSI_9'].iloc[-2])
+                rsi_two_bar_slope = rsi_val - p2_rsi
+                h1_adx = float(df_1h['ADX_14'].iloc[-1]) if 'ADX_14' in df_1h.columns else 15.0
+                h1_plus_di = float(df_1h['Plus_DI_14'].iloc[-1]) if 'Plus_DI_14' in df_1h.columns else 20.0
+                h1_minus_di = float(df_1h['Minus_DI_14'].iloc[-1]) if 'Minus_DI_14' in df_1h.columns else 20.0
                 
                 is_fresh_bear = (p_green >= p_red) and (c_green < c_red)
                 is_fresh_bull = (p_green <= p_red) and (c_green > c_red)
@@ -500,22 +510,51 @@ def monitor_active_trades(state):
                         send_telegram_alert(msg)
                         state[alert_key] = True
                         alerts.append(f"{sym} OPTION PE BREACH")
-                elif c_green > c_red and rsi_val >= 64 and (ce - curr_p) <= (ce * 0.015):
-                    alert_key = f"{tid}_HM_CALL_THREAT"
+                # Call Side Early Warning: Vertical RSI (>60) or +DI Bull Breakout
+                elif (
+                    (rsi_val >= 60.0 and rsi_two_bar_slope >= 5.0) or
+                    (h1_plus_di >= 25.0 and h1_adx >= 20.0 and c_green > c_red)
+                ) and ce > 0 and (ce - curr_p) <= (ce * 0.025):
+                    alert_key = f"{tid}_CALL_MOMENTUM_THREAT"
                     if not state.get(alert_key):
                         msg = (
                             f"⚠️ <b>OPTION SELLING MOMENTUM THREAT! (CALL SIDE)</b>\n"
                             f"━━━━━━━━━━━━━━━━━━━━━\n"
                             f"⚖️ <b>સ્ટોક:</b> {sym} (ઓપ્શન સેલિંગ)\n"
                             f"📈 <b>હાલનો ભાવ:</b> ₹{curr_p:.2f} | <b>Call Strike:</b> > ₹{ce:.1f}\n"
-                            f"🔥 <b>Hilega-Milega:</b> તીવ્ર તેજી સ્પાઇક (RSI: {rsi_val:.1f} > 64)\n"
+                            f"🚀 <b>અર્લી વોર્નિંગ:</b> 1-Hour ચાર્ટ પર તીવ્ર વર્ટિકલ તેજી સ્પાઇક શરૂ થયો છે!\n"
+                            f"   • RSI 1H: <b>{rsi_val:.1f}</b> (Slope: +{rsi_two_bar_slope:.1f})\n"
+                            f"   • +DI: <b>{h1_plus_di:.1f}</b> | ADX: <b>{h1_adx:.1f}</b>\n"
                             f"━━━━━━━━━━━━━━━━━━━━━\n"
-                            f"🛑 <b>સલાહ:</b> સ્ટોકમાં મોટો બુલિશ સ્પાઇક આવ્યો છે. કૉલ લેગ જોખમમાં આવી શકે છે, એલર્ટ રહો!\n"
+                            f"🛑 <b>સલાહ:</b> સ્ટોકમાં એકતરફી તેજી શરૂ થઈ છે. કૉલ લેગ (CE) નુકસાનમાં જાય તે પહેલાં સલામત <b>Exit</b> કરો અથવા ઉપર શિફ્ટ કરો!\n"
                             f"⏰ <i>{now_str}</i>"
                         )
                         send_telegram_alert(msg)
                         state[alert_key] = True
-                        alerts.append(f"{sym} HM CALL THREAT")
+                        alerts.append(f"{sym} CALL MOMENTUM THREAT")
+
+                # Put Side Early Warning: Vertical RSI (<40) or -DI Bear Breakdown
+                elif (
+                    (rsi_val <= 40.0 and rsi_two_bar_slope <= -5.0) or
+                    (h1_minus_di >= 25.0 and h1_adx >= 20.0 and c_green < c_red)
+                ) and pe > 0 and (curr_p - pe) <= (pe * 0.025):
+                    alert_key = f"{tid}_PUT_MOMENTUM_THREAT"
+                    if not state.get(alert_key):
+                        msg = (
+                            f"⚠️ <b>OPTION SELLING MOMENTUM THREAT! (PUT SIDE)</b>\n"
+                            f"━━━━━━━━━━━━━━━━━━━━━\n"
+                            f"⚖️ <b>સ્ટોક:</b> {sym} (ઓપ્શન સેલિંગ)\n"
+                            f"📉 <b>હાલનો ભાવ:</b> ₹{curr_p:.2f} | <b>Put Strike:</b> < ₹{pe:.1f}\n"
+                            f"🩸 <b>અર્લી વોર્નિંગ:</b> 1-Hour ચાર્ટ પર તીવ્ર વર્ટિકલ મંદી બ્રેકડાઉન શરૂ થયો છે!\n"
+                            f"   • RSI 1H: <b>{rsi_val:.1f}</b> (Slope: {rsi_two_bar_slope:.1f})\n"
+                            f"   • -DI: <b>{h1_minus_di:.1f}</b> | ADX: <b>{h1_adx:.1f}</b>\n"
+                            f"━━━━━━━━━━━━━━━━━━━━━\n"
+                            f"🛑 <b>સલાહ:</b> સ્ટોકમાં એકતરફી ઘટાડો શરૂ થયો છે. પુટ લેગ (PE) નુકસાનમાં જાય તે પહેલાં સલામત <b>Exit</b> કરો અથવા નીચે શિફ્ટ કરો!\n"
+                            f"⏰ <i>{now_str}</i>"
+                        )
+                        send_telegram_alert(msg)
+                        state[alert_key] = True
+                        alerts.append(f"{sym} PUT MOMENTUM THREAT")
         except Exception as err:
             print(f"Error checking trade {trd.get('symbol')}: {err}")
             
