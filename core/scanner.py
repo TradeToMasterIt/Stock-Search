@@ -272,7 +272,8 @@ def monitor_active_trades(state):
             
             ticker = yf.Ticker(full_sym)
             df_d = ticker.history(period="5d", interval="1d")
-            df_1h = ticker.history(period="1mo", interval="1h").dropna(subset=['Close', 'High', 'Low', 'Volume'])
+            opt_interval = "30m" if (t_type == "OPTION_SELLING" and trd.get("timeframe") == "30m") else "1h"
+            df_1h = ticker.history(period="1mo", interval=opt_interval).dropna(subset=['Close', 'High', 'Low', 'Volume'])
             
             if df_d.empty:
                 continue
@@ -512,18 +513,19 @@ def monitor_active_trades(state):
                         alerts.append(f"{sym} OPTION PE BREACH")
                 # Call Side Early Warning: Vertical RSI (>60) or +DI Bull Breakout
                 elif (
-                    (rsi_val >= 60.0 and rsi_two_bar_slope >= 5.0) or
-                    (h1_plus_di >= 25.0 and h1_adx >= 20.0 and c_green > c_red)
+                    (rsi_val >= 60.0 and rsi_two_bar_slope >= 3.0) or
+                    (h1_plus_di >= 25.0 and h1_plus_di > (h1_minus_di + 3.0) and h1_adx >= 20.0 and c_green > c_red)
                 ) and ce > 0 and (ce - curr_p) <= (ce * 0.025):
                     alert_key = f"{tid}_CALL_MOMENTUM_THREAT"
+                    tf_lbl = trd.get('timeframe', '60m')
                     if not state.get(alert_key):
                         msg = (
                             f"⚠️ <b>OPTION SELLING MOMENTUM THREAT! (CALL SIDE)</b>\n"
                             f"━━━━━━━━━━━━━━━━━━━━━\n"
                             f"⚖️ <b>સ્ટોક:</b> {sym} (ઓપ્શન સેલિંગ)\n"
                             f"📈 <b>હાલનો ભાવ:</b> ₹{curr_p:.2f} | <b>Call Strike:</b> > ₹{ce:.1f}\n"
-                            f"🚀 <b>અર્લી વોર્નિંગ:</b> 1-Hour ચાર્ટ પર તીવ્ર વર્ટિકલ તેજી સ્પાઇક શરૂ થયો છે!\n"
-                            f"   • RSI 1H: <b>{rsi_val:.1f}</b> (Slope: +{rsi_two_bar_slope:.1f})\n"
+                            f"🚀 <b>અર્લી વોર્નિંગ:</b> {tf_lbl} ચાર્ટ પર તીવ્ર વર્ટિકલ તેજી સ્પાઇક શરૂ થયો છે!\n"
+                            f"   • RSI {tf_lbl}: <b>{rsi_val:.1f}</b> (Slope: +{rsi_two_bar_slope:.1f})\n"
                             f"   • +DI: <b>{h1_plus_di:.1f}</b> | ADX: <b>{h1_adx:.1f}</b>\n"
                             f"━━━━━━━━━━━━━━━━━━━━━\n"
                             f"🛑 <b>સલાહ:</b> સ્ટોકમાં એકતરફી તેજી શરૂ થઈ છે. કૉલ લેગ (CE) નુકસાનમાં જાય તે પહેલાં સલામત <b>Exit</b> કરો અથવા ઉપર શિફ્ટ કરો!\n"
@@ -535,18 +537,19 @@ def monitor_active_trades(state):
 
                 # Put Side Early Warning: Vertical RSI (<40) or -DI Bear Breakdown
                 elif (
-                    (rsi_val <= 40.0 and rsi_two_bar_slope <= -5.0) or
-                    (h1_minus_di >= 25.0 and h1_adx >= 20.0 and c_green < c_red)
+                    (rsi_val <= 40.0 and rsi_two_bar_slope <= -3.0) or
+                    (h1_minus_di >= 25.0 and h1_minus_di > (h1_plus_di + 3.0) and h1_adx >= 20.0 and c_green < c_red)
                 ) and pe > 0 and (curr_p - pe) <= (pe * 0.025):
                     alert_key = f"{tid}_PUT_MOMENTUM_THREAT"
+                    tf_lbl = trd.get('timeframe', '60m')
                     if not state.get(alert_key):
                         msg = (
                             f"⚠️ <b>OPTION SELLING MOMENTUM THREAT! (PUT SIDE)</b>\n"
                             f"━━━━━━━━━━━━━━━━━━━━━\n"
                             f"⚖️ <b>સ્ટોક:</b> {sym} (ઓપ્શન સેલિંગ)\n"
                             f"📉 <b>હાલનો ભાવ:</b> ₹{curr_p:.2f} | <b>Put Strike:</b> < ₹{pe:.1f}\n"
-                            f"🩸 <b>અર્લી વોર્નિંગ:</b> 1-Hour ચાર્ટ પર તીવ્ર વર્ટિકલ મંદી બ્રેકડાઉન શરૂ થયો છે!\n"
-                            f"   • RSI 1H: <b>{rsi_val:.1f}</b> (Slope: {rsi_two_bar_slope:.1f})\n"
+                            f"🩸 <b>અર્લી વોર્નિંગ:</b> {tf_lbl} ચાર્ટ પર તીવ્ર વર્ટિકલ મંદી બ્રેકડાઉન શરૂ થયો છે!\n"
+                            f"   • RSI {tf_lbl}: <b>{rsi_val:.1f}</b> (Slope: {rsi_two_bar_slope:.1f})\n"
                             f"   • -DI: <b>{h1_minus_di:.1f}</b> | ADX: <b>{h1_adx:.1f}</b>\n"
                             f"━━━━━━━━━━━━━━━━━━━━━\n"
                             f"🛑 <b>સલાહ:</b> સ્ટોકમાં એકતરફી ઘટાડો શરૂ થયો છે. પુટ લેગ (PE) નુકસાનમાં જાય તે પહેલાં સલામત <b>Exit</b> કરો અથવા નીચે શિફ્ટ કરો!\n"
