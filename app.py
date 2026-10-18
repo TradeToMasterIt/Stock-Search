@@ -25,6 +25,8 @@ from core.indicators import (
     format_volume,
     calculate_trade_levels,
     calculate_hilega_milega,
+    calculate_adx_dmi,
+    analyze_adx_dmi,
     calculate_trend_craft_ict,
     calculate_volume_analysis,
     calculate_daily_pivot_points,
@@ -662,23 +664,7 @@ def get_nifty_sentiment():
 
 # Watchlist Baskets
 BASKETS = {
-    "🚀 Top F&O Momentum Leaders (75 Stocks)": [
-        "RELIANCE.NS", "TCS.NS", "HDFCBANK.NS", "ICICIBANK.NS", "INFY.NS",
-        "BHARTIARTL.NS", "ITC.NS", "SBIN.NS", "LT.NS", "BAJFINANCE.NS",
-        "HINDUNILVR.NS", "AXISBANK.NS", "KOTAKBANK.NS", "MARUTI.NS", "SUNPHARMA.NS",
-        "TITAN.NS", "ADANIENT.NS", "ADANIPORTS.NS", "TATASTEEL.NS", "NTPC.NS",
-        "POWERGRID.NS", "COALINDIA.NS", "JSWSTEEL.NS", "HINDALCO.NS", "ONGC.NS",
-        "M&M.NS", "BAJAJFINSV.NS", "ULTRACEMCO.NS", "BEL.NS", "HAL.NS",
-        "BHEL.NS", "ZYDUSLIFE.NS", "ADANIPOWER.NS", "VEDL.NS", "SUZLON.NS",
-        "TRENT.NS", "DIXON.NS", "POLYCAB.NS", "PERSISTENT.NS", "COFORGE.NS",
-        "HAVELLS.NS", "WIPRO.NS", "TECHM.NS", "HCLTECH.NS", "DLF.NS",
-        "CHOLAFIN.NS", "SHRIRAMFIN.NS", "MUTHOOTFIN.NS", "RECLTD.NS", "PFC.NS",
-        "BANKBARODA.NS", "PNB.NS", "CANBK.NS", "IDFCFIRSTB.NS", "FEDERALBNK.NS",
-        "INDUSINDBK.NS", "AUBANK.NS", "SIEMENS.NS", "ABB.NS", "CUMMINSIND.NS",
-        "TVSMOTOR.NS", "EICHERMOT.NS", "HEROMOTOCO.NS", "ASHOKLEY.NS", "BHARATFORG.NS",
-        "CIPLA.NS", "DRREDDY.NS", "LUPIN.NS", "AUROPHARMA.NS", "BIOCON.NS",
-        "AMBUJACEM.NS", "ACC.NS", "GAIL.NS", "BPCL.NS", "IOC.NS"
-    ],
+    "🚀 Total F&O Stocks (સંપૂર્ણ 181 સ્ટોક્સ)": DEFAULT_WATCHLIST,
     "🏛️ Nifty 50 (બધા 50 બ્લુચિપ સ્ટોક્સ)": [
         "RELIANCE.NS", "TCS.NS", "HDFCBANK.NS", "ICICIBANK.NS", "BHARTIARTL.NS",
         "INFY.NS", "ITC.NS", "SBIN.NS", "LT.NS", "HINDUNILVR.NS",
@@ -864,8 +850,8 @@ def scan_stock(sym):
             
         df_m = calculate_volume_analysis(calculate_trend_craft_ict(calculate_hilega_milega(df_m), 24))
         df_w = calculate_volume_analysis(calculate_trend_craft_ict(calculate_hilega_milega(df_w), 30))
-        df_d = calculate_volume_analysis(calculate_trend_craft_ict(calculate_hilega_milega(df_d), 45))
-        df_1h = calculate_volume_analysis(calculate_trend_craft_ict(calculate_hilega_milega(df_1h), 45))
+        df_d = calculate_adx_dmi(calculate_volume_analysis(calculate_trend_craft_ict(calculate_hilega_milega(df_d), 45)))
+        df_1h = calculate_adx_dmi(calculate_volume_analysis(calculate_trend_craft_ict(calculate_hilega_milega(df_1h), 45)))
         
         m_hm = analyze_hm_timeframe(df_m, "Monthly")
         w_hm = analyze_hm_timeframe(df_w, "Weekly")
@@ -881,11 +867,15 @@ def scan_stock(sym):
         w_vol = analyze_volume_timeframe(df_w, "Weekly")
         d_vol = analyze_volume_timeframe(df_d, "Daily")
         h1_vol = analyze_volume_timeframe(df_1h, "1-Hour")
+
+        d_adx = analyze_adx_dmi(df_d, "Daily")
+        h1_adx = analyze_adx_dmi(df_1h, "1-Hour")
         
         conf = calculate_master_confluence_vpa(
             m_hm, w_hm, d_hm, h1_hm,
             m_tc, w_tc, d_tc, h1_tc,
-            m_vol, w_vol, d_vol, h1_vol
+            m_vol, w_vol, d_vol, h1_vol,
+            d_adx=d_adx
         )
         
         curr_p = df_d['Close'].iloc[-1]
@@ -901,12 +891,16 @@ def scan_stock(sym):
         span_20d = ((h20 - l20) / curr_p) * 100
         is_in_band = (curr_p >= d_tc['tc_low'] * 0.97) and (curr_p <= d_tc['tc_high'] * 1.03)
         d_rsi = df_d['RSI_9'].iloc[-1] if 'RSI_9' in df_d.columns else 50.0
+
+        # Dead Trend Check: ADX <= 22 and +DI / -DI Spread <= 8.5 (Equilibrium between bulls & bears)
+        is_adx_calm = (d_adx['adx'] <= 22.0) and (d_adx['di_diff'] <= 8.5)
         
         is_option_selling = (
             is_in_band and 
             (span_20d <= 11.5) and 
-            (36 <= d_rsi <= 64) and 
-            (conf['score'] < 75)
+            (38 <= d_rsi <= 62) and 
+            (conf['score'] < 65) and
+            is_adx_calm
         )
         
         is_sniper_buy = conf.get('is_sniper_buy', False)
@@ -1088,7 +1082,12 @@ def scan_stock(sym):
             "r1": r1_val,
             "r2": r2_val,
             "r3": r3_val,
-            "pivot_p": p_val
+            "pivot_p": p_val,
+            "adx": d_adx['adx'],
+            "plus_di": d_adx['plus_di'],
+            "minus_di": d_adx['minus_di'],
+            "di_diff": d_adx['di_diff'],
+            "span_20d": round(span_20d, 1)
         }
     except Exception:
         return None
@@ -1108,7 +1107,7 @@ else:
 
 telegram_html = '<div class="ticker-chip ticker-chip-bot"><div class="pulse-dot"></div><span><b>TELEGRAM BOT:</b> @patel_stock_bot</span><span style="opacity: 0.5">•</span><span>⚡ 5-Min Auto-Scanner Active</span></div>'
 
-header_html = f'<div class="brand-container"><div><div style="display: flex; align-items: center; gap: 12px;"><span class="brand-title">🎯 CONFLUENCE PRO</span><span class="brand-badge">INSTITUTIONAL v3.0 | GGPATEL VIEW & BACKTESTER</span></div><div class="brand-subtitle">Candlestick Price Channels • Hilega-Milega • Brijesh Bhatia Heikin Ashi • Institutional Volume VPA • Precision Targets & Stop-Loss</div></div></div><div class="ticker-bar">{nifty_html}{telegram_html}</div>'
+header_html = f'<div class="brand-container"><div><div style="display: flex; align-items: center; gap: 12px;"><span class="brand-title">🎯 CONFLUENCE PRO</span><span class="brand-badge">INSTITUTIONAL v3.1 | TOTAL 181 F&O & OPTION SELLING PRO</span></div><div class="brand-subtitle">Candlestick Price Channels • Hilega-Milega • Brijesh Bhatia Heikin Ashi • Institutional Volume VPA • Precision Targets & Stop-Loss</div></div></div><div class="ticker-bar">{nifty_html}{telegram_html}</div>'
 st.html(header_html)
 
 # Navigation Tabs
@@ -1492,11 +1491,21 @@ with nav_tab_screener:
                             f'</div>'
                         )
                     elif "Option Selling" in row["Signal"]:
+                        adx_v = row.get("adx", 18.0)
+                        p_di = row.get("plus_di", 20.0)
+                        m_di = row.get("minus_di", 20.0)
+                        d_diff = row.get("di_diff", 0.0)
+                        span_v = row.get("span_20d", 8.0)
                         targets_snippet = (
                             f'<div class="targets-row">'
                             f'<div class="target-item" style="border-left: 3px solid #A855F7; grid-column: span 3; background: rgba(168, 85, 247, 0.08);">'
                             f'<div class="target-item-title" style="color: #C084FC;">⚖️ OPTION SELLING SETUP (SHORT STRANGLE / RANGE-BOUND)</div>'
-                            f'<div style="font-size: 11px; color: #CBD5E1; margin-top: 2px;">💡 બંને બાજુ CE & PE વેચીને <b>થીટા ડીકે (Theta Decay)</b> નફો મેળવી શકાય.</div>'
+                            f'<div style="font-size: 11px; color: #CBD5E1; margin-top: 3px;">'
+                            f'📊 <b>ADX (14):</b> <span style="color: #34D399; font-weight: 700;">{adx_v:.1f}</span> (શાંત/ટ્રેન્ડલેસ) &nbsp;|&nbsp; '
+                            f'<b>+DI:</b> {p_di:.1f} &nbsp;|&nbsp; <b>-DI:</b> {m_di:.1f} (Diff: <b>{d_diff:.1f}</b>) &nbsp;|&nbsp; '
+                            f'<b>20D Range:</b> <b>{span_v:.1f}%</b>'
+                            f'</div>'
+                            f'<div style="font-size: 11px; color: #94A3B8; margin-top: 2px;">💡 બંને બાજુ OTM CE & PE વેચીને <b>થીટા ડીકે (Theta Decay)</b> મેળવો.</div>'
                             f'</div>'
                             f'<div class="target-item" style="border-left: 3px solid #EC4899;"><div class="target-item-title" style="color: #F472B6;">Call Sell (CE Resist)</div><div class="target-item-val" style="color: #F472B6;">&gt; ₹{row["tc_high"]:.1f}</div></div>'
                             f'<div class="target-item" style="border-left: 3px solid #38BDF8;"><div class="target-item-title" style="color: #38BDF8;">Put Sell (PE Support)</div><div class="target-item-val" style="color: #38BDF8;">&lt; ₹{row["tc_low"]:.1f}</div></div>'
@@ -1983,8 +1992,8 @@ with nav_tab_single:
                         # Indicators
                         df_monthly = calculate_volume_analysis(calculate_trend_craft_ict(calculate_hilega_milega(df_monthly), default_period=24), sma_period=20)
                         df_weekly = calculate_volume_analysis(calculate_trend_craft_ict(calculate_hilega_milega(df_weekly), default_period=30), sma_period=20)
-                        df_daily = calculate_volume_analysis(calculate_trend_craft_ict(calculate_hilega_milega(df_daily), default_period=45), sma_period=20)
-                        df_1h = calculate_volume_analysis(calculate_trend_craft_ict(calculate_hilega_milega(df_1h), default_period=45), sma_period=20)
+                        df_daily = calculate_adx_dmi(calculate_volume_analysis(calculate_trend_craft_ict(calculate_hilega_milega(df_daily), default_period=45), sma_period=20))
+                        df_1h = calculate_adx_dmi(calculate_volume_analysis(calculate_trend_craft_ict(calculate_hilega_milega(df_1h), default_period=45), sma_period=20))
                         
                         m_hm = analyze_hm_timeframe(df_monthly, "Monthly")
                         w_hm = analyze_hm_timeframe(df_weekly, "Weekly")
@@ -2000,8 +2009,11 @@ with nav_tab_single:
                         w_vol = analyze_volume_timeframe(df_weekly, "Weekly")
                         d_vol = analyze_volume_timeframe(df_daily, "Daily")
                         h1_vol = analyze_volume_timeframe(df_1h, "1-Hour")
+
+                        d_adx = analyze_adx_dmi(df_daily, "Daily")
+                        h1_adx = analyze_adx_dmi(df_1h, "1-Hour")
                         
-                        conf = calculate_master_confluence_vpa(m_hm, w_hm, d_hm, h1_hm, m_tc, w_tc, d_tc, h1_tc, m_vol, w_vol, d_vol, h1_vol)
+                        conf = calculate_master_confluence_vpa(m_hm, w_hm, d_hm, h1_hm, m_tc, w_tc, d_tc, h1_tc, m_vol, w_vol, d_vol, h1_vol, d_adx=d_adx)
                         
                         curr_p = df_daily['Close'].iloc[-1]
                         prev_p = df_daily['Close'].iloc[-2]
@@ -2033,8 +2045,8 @@ with nav_tab_single:
                                 f'<div class="kpi-grid">'
                                 f'<div class="kpi-card" style="border-top: 3px solid #EC4899; background: rgba(236, 72, 153, 0.06);"><div class="kpi-title" style="color: #F472B6;">📉 CALL SELL STRIKE (CE)</div><div class="kpi-value" style="color: #F472B6;">&gt; ₹{ce_sell_strike:.1f}</div><div class="kpi-subtitle" style="color: #EC4899; font-weight: 600;">આ લેવલથી ઉપરનો કૉલ વેચવો</div></div>'
                                 f'<div class="kpi-card" style="border-top: 3px solid #38BDF8; background: rgba(56, 189, 248, 0.06);"><div class="kpi-title" style="color: #38BDF8;">📈 PUT SELL STRIKE (PE)</div><div class="kpi-value" style="color: #38BDF8;">&lt; ₹{pe_sell_strike:.1f}</div><div class="kpi-subtitle" style="color: #0284C7; font-weight: 600;">આ લેવલથી નીચેનો પુટ વેચવો</div></div>'
-                                f'<div class="kpi-card" style="border-top: 3px solid #A855F7; background: rgba(168, 85, 247, 0.06);"><div class="kpi-title" style="color: #C084FC;">🛡️ SAFE EXPIRY RANGE</div><div class="kpi-value" style="color: #C084FC;">₹{pe_sell_strike:.0f} - ₹{ce_sell_strike:.0f}</div><div class="kpi-subtitle" style="color: #A855F7; font-weight: 600;">આ રેન્જમાં એક્સપાયરી પર 100% નફો</div></div>'
-                                f'<div class="kpi-card" style="border-top: 3px solid #10B981; background: rgba(168, 85, 247, 0.06);"><div class="kpi-title" style="color: #34D399;">⚖️ STRATEGY TYPE</div><div class="kpi-value" style="color: #34D399; font-size: 20px;">SHORT STRANGLE</div><div class="kpi-subtitle" style="color: #10B981; font-weight: 600;">Theta Decay (પ્રીમિયમ ઈનકમ)</div></div>'
+                                f'<div class="kpi-card" style="border-top: 3px solid #A855F7; background: rgba(168, 85, 247, 0.06);"><div class="kpi-title" style="color: #C084FC;">🛡️ SAFE EXPIRY RANGE</div><div class="kpi-value" style="color: #C084FC;">₹{pe_sell_strike:.0f} - ₹{ce_sell_strike:.0f}</div><div class="kpi-subtitle" style="color: #A855F7; font-weight: 600;">ADX: {d_adx["adx"]:.1f} (ટ્રેન્ડલેસ સાઈડવેઝ)</div></div>'
+                                f'<div class="kpi-card" style="border-top: 3px solid #10B981; background: rgba(168, 85, 247, 0.06);"><div class="kpi-title" style="color: #34D399;">⚖️ STRATEGY TYPE</div><div class="kpi-value" style="color: #34D399; font-size: 20px;">SHORT STRANGLE</div><div class="kpi-subtitle" style="color: #10B981; font-weight: 600;">+DI: {d_adx["plus_di"]:.1f} | -DI: {d_adx["minus_di"]:.1f}</div></div>'
                                 f'</div>'
                             )
                         elif is_short_verdict:
