@@ -1336,6 +1336,9 @@ nav_tab_screener, nav_tab_ha, nav_tab_single, nav_tab_guardian, nav_tab_melting,
 # TAB 1: LIVE MULTI-TIMEFRAME STOCK SCREENER
 # =============================================================
 with nav_tab_screener:
+    market_is_open, market_status_msg = is_market_open()
+    is_currently_scanning = st.session_state.get("is_screener_scanning", False)
+
     with st.container():
         col_b1, col_b2, col_b3 = st.columns([2.4, 1.2, 1.6])
         with col_b1:
@@ -1361,14 +1364,20 @@ with nav_tab_screener:
             st.markdown("<div style='height: 6px;'></div>", unsafe_allow_html=True)
             auto_col1, auto_col2 = st.columns([1.05, 1.35])
             with auto_col1:
-                auto_update_enabled = st.toggle("🔄 Auto-Update", value=True, help="ઓટોમેટિક લાઈવ ડેટા અપડેટ ચાલુ/બંધ કરો")
+                auto_default = True if market_is_open else False
+                auto_help = (
+                    "ઓટોમેટિક લાઈવ ડેટા અપડેટ ચાલુ/બંધ કરો" 
+                    if market_is_open 
+                    else f"🌙 હાલ બજાર બંધ છે ({market_status_msg}). ઓટો-અપડેટ માત્ર સોમ-શુક્ર (09:15 થી 15:30 IST) દરમિયાન જ સક્રિય રહેશે."
+                )
+                auto_update_enabled = st.toggle("🔄 Auto-Update", value=auto_default, help=auto_help)
             with auto_col2:
                 freq_choice = st.selectbox(
                     "આવર્તન",
                     options=["⌛ 5 Min (300s)", "⏱️ 3 Min (180s)", "⚡ 2 Min (120s)"],
                     index=0,
                     label_visibility="collapsed",
-                    disabled=not auto_update_enabled
+                    disabled=not (auto_update_enabled and market_is_open)
                 )
 
     freq_seconds_map = {
@@ -1394,11 +1403,10 @@ with nav_tab_screener:
                         st.session_state.screener_results = df_cached
                         st.session_state.screener_last_updated = cache_obj.get("timestamp", datetime.datetime.now().strftime("%I:%M:%S %p"))
                         st.session_state.screener_last_scan_ts = time.time()
+                        if "basket" in cache_obj and "screener_prev_basket" not in st.session_state:
+                            st.session_state.screener_prev_basket = cache_obj["basket"]
             except Exception:
                 pass
-
-    market_is_open, market_status_msg = is_market_open()
-    is_currently_scanning = st.session_state.get("is_screener_scanning", False)
 
     # Mount Auto-Refresh trigger ONLY during active market hours (Mon-Fri 09:15-15:30 IST) and when not scanning
     if auto_update_enabled and market_is_open and not is_currently_scanning and st_autorefresh is not None:
@@ -1409,22 +1417,39 @@ with nav_tab_screener:
     time_since_last_scan = now_ts - last_scan_ts
 
     # Check if basket changed
-    basket_changed = False
-    if "screener_prev_basket" in st.session_state and st.session_state.screener_prev_basket != selected_basket:
-        basket_changed = True
-    st.session_state.screener_prev_basket = selected_basket
+    if "screener_prev_basket" not in st.session_state:
+        st.session_state.screener_prev_basket = selected_basket
+        basket_changed = False
+    else:
+        basket_changed = (st.session_state.screener_prev_basket != selected_basket)
+        st.session_state.screener_prev_basket = selected_basket
 
-    # Determine if scan should run (Auto-scan only runs during active market hours)
+    # Determine if scan should run:
+    # 1. Manual scan (start_scan) works ANYTIME (24x7, day or night).
+    # 2. Auto-scan (timer or basket change) ONLY runs during active market hours.
     should_scan = False
     is_auto_scan = False
 
     if not is_currently_scanning:
-        if start_scan or basket_changed:
+        if start_scan:
+            # User explicitly clicked "🚀 Scan Market Now" -> manual scan works anytime (day or night)
             should_scan = True
             is_auto_scan = False
-        elif auto_update_enabled and market_is_open and (time_since_last_scan >= (interval_sec - 2)):
-            should_scan = True
-            is_auto_scan = True
+        elif market_is_open:
+            # Active market hours: allow basket change or interval timer to refresh
+            if basket_changed:
+                should_scan = True
+                is_auto_scan = False
+            elif auto_update_enabled and (time_since_last_scan >= (interval_sec - 2)):
+                should_scan = True
+                is_auto_scan = True
+        else:
+            # Outside market hours (Night / Weekend / Holiday):
+            # NEVER auto-scan or scan on basket change. Only cached data is shown.
+            should_scan = False
+            is_auto_scan = False
+            if basket_changed:
+                st.toast("🌙 બજાર બંધ છે. પસંદ કરેલ બાસ્કેટ સ્કેન કરવા માટે '🚀 Scan Market Now' બટન દબાવો.", icon="ℹ️")
 
     if should_scan:
         st.session_state.is_screener_scanning = True
