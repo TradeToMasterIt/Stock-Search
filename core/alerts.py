@@ -28,6 +28,8 @@ def send_telegram_alert(msg):
 def format_r3_radar_alert(res):
     s_name = res['symbol']
     now_str = get_ist_now().strftime('%d %b %Y | %H:%M:%S IST')
+    contract_lbl = res.get('opt_contract_name', f"₹{res.get('otm_call_strike', '')} CE")
+    fyers_lbl = f"• <b>Fyers Symbol:</b> <code>{res['opt_fyers_symbol']}</code>\n" if res.get('opt_fyers_symbol') else ""
     return (
         f"⚡ <b>R3 OPTION ROCKET BREAKOUT!</b> ⚡\n"
         f"━━━━━━━━━━━━━━━━━━━━━\n"
@@ -35,7 +37,8 @@ def format_r3_radar_alert(res):
         f"🚀 <b>સેટઅપ:</b> Strong Morning Move + Breakout above Daily R1/R2\n"
         f"━━━━━━━━━━━━━━━━━━━━━\n"
         f"🎯 <b>R3 Option Strategy (Option Leads, Future Follows):</b>\n"
-        f"• <b>વોચલિસ્ટ કોલ:</b> <b>₹{res['otm_call_strike']} CE</b>\n"
+        f"• <b>વોચલિસ્ટ કોલ:</b> <b>{contract_lbl}</b>\n"
+        f"{fyers_lbl}"
         f"• <b>સુવર્ણ નિયમ (Golden Rule):</b> જ્યારે આ OTM CE તેના પોતાના <b>Daily R3</b> લેવલને ક્રોસ કરે ત્યારે જ બાય એન્ટ્રી કરવી!\n"
         f"• <b>સ્ટોપલોસ:</b> ઓપ્શનની 5m/15m બ્રેકઆઉટ કેન્ડલનો Low\n"
         f"• <b>ટાર્ગેટ:</b> 100% થી 200%+ (ડબલ / મલ્ટિબેગર કેપિટલ ગેઇન)\n"
@@ -48,7 +51,11 @@ def format_r3_radar_alert(res):
 def format_100_confirmed_buy_alert(res):
     s_name = res['symbol']
     now_str = get_ist_now().strftime('%d %b %Y | %H:%M:%S IST')
-    vol_emoji = "🔥" if res['vol_ratio'] >= 1.2 else ""
+    vol_emoji = "🔥" if res.get('vol_ratio', 1.0) >= 1.2 else ""
+    contract_lbl = res.get('opt_contract_name', f"₹{res.get('otm_call_strike', '')} CE")
+    opt_ltp_txt = f" (LTP: ₹{res['opt_ltp']:.2f})" if res.get('opt_ltp') else ""
+    fyers_lbl = f"• <b>Fyers Symbol:</b> <code>{res['opt_fyers_symbol']}</code>\n" if res.get('opt_fyers_symbol') else ""
+    opt_r3_txt = f"• <b>Option R3:</b> ₹{res['opt_r3']:.2f} (ક્રોસ થયેલ ✅)\n" if res.get('opt_r3') else ""
     return (
         f"🚀 <b>૧૦૦% કન્ફર્મ બાય એલર્ટ! (100% CONFIRMED BUY)</b> 🚀\n"
         f"━━━━━━━━━━━━━━━━━━━━━\n"
@@ -57,7 +64,9 @@ def format_100_confirmed_buy_alert(res):
         f"⚡ <b>Hilega-Milega 1H:</b> Green &gt; Red (પાણી 50 ની ઉપર - ૧૦૦% ખરીદી પાકી)\n"
         f"━━━━━━━━━━━━━━━━━━━━━\n"
         f"🔥 <b>ACTIONABLE TRADE ENTRY (તાત્કાલિક એન્ટ્રી):</b>\n"
-        f"• <b>Call Option Buy (CE):</b> <b>₹{res['otm_call_strike']} CE</b> ખરીદો\n"
+        f"• <b>Call Option Buy (CE):</b> <b>{contract_lbl} ખરીદો{opt_ltp_txt}</b>\n"
+        f"{fyers_lbl}"
+        f"{opt_r3_txt}"
         f"• <b>Equity / Future Buy:</b> ₹{res['price']:.2f}\n"
         f"• <b>ચુસ્ત સ્ટોપલોસ:</b> ₹{res['stop_loss']:.2f} (-{res['risk_pct']:.1f}%)\n"
         f"• <b>Target 1 (1:1.5):</b> ₹{res['t1']:.2f} (+{res['t1_pct']:.1f}%)\n"

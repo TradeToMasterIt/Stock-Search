@@ -29,6 +29,18 @@ from core.charts import (
     plot_equity_curve_chart
 )
 from core.option_chain import fetch_live_option_chain, get_strike_step
+from core.option_r3_engine import (
+    TOP_MOMENTUM_FNO_BASKET,
+    build_option_contract,
+    analyze_option_r3_setup
+)
+from core.earnings_filter import check_earnings_blackout
+from core.option_seller_engine import (
+    calculate_hybrid_option_selling_strikes,
+    check_dead_consolidation_rules,
+    format_option_selling_setup_alert,
+    format_overnight_health_check_alert
+)
 from core.backtester import run_backtest, STRATEGIES
 from core.indicators import (
     format_volume,
@@ -690,6 +702,7 @@ def get_nifty_sentiment():
 
 # Watchlist Baskets
 BASKETS = {
+    "🔥 Top Momentum F&O Leaders (35 શેરો)": TOP_MOMENTUM_FNO_BASKET,
     "🚀 Total F&O Stocks (સંપૂર્ણ 181 સ્ટોક્સ)": DEFAULT_WATCHLIST,
     "🏛️ Nifty 50 (બધા 50 બ્લુચિપ સ્ટોક્સ)": [
         "RELIANCE.NS", "TCS.NS", "HDFCBANK.NS", "ICICIBANK.NS", "BHARTIARTL.NS",
@@ -1059,15 +1072,20 @@ def scan_stock(sym):
         is_in_band = (curr_p >= d_tc['tc_low'] * 0.97) and (curr_p <= d_tc['tc_high'] * 1.03)
         d_rsi = df_d['RSI_9'].iloc[-1] if 'RSI_9' in df_d.columns else 50.0
 
-        # Dead Trend Check: ADX <= 22 and +DI / -DI Spread <= 8.5 (Equilibrium between bulls & bears)
-        is_adx_calm = (d_adx['adx'] <= 22.0) and (d_adx['di_diff'] <= 8.5)
+        # Dead Trend Check: ADX <= 20 and +DI / -DI Spread <= 8.5 (Equilibrium between bulls & bears)
+        is_adx_calm = (d_adx['adx'] <= 20.0) and (d_adx['di_diff'] <= 8.5)
         
+        # Enhanced Mega-Cap Dead Consolidation & Earnings Blackout Check
+        seller_strikes = calculate_hybrid_option_selling_strikes(sym, curr_p, df_d)
+        earnings_info = check_earnings_blackout(sym, blackout_days=10)
+        dead_rules = check_dead_consolidation_rules(df_d, df_w, df_m)
+        is_dead_box = dead_rules.get('passes_all', False)
+        is_earnings_blackout = earnings_info.get('is_blackout', False)
+
         is_option_selling = (
-            is_in_band and 
-            (span_20d <= 11.5) and 
-            (38 <= d_rsi <= 62) and 
-            (conf['score'] < 65) and
-            is_adx_calm
+            (is_dead_box or (is_in_band and span_20d <= 8.5 and is_adx_calm)) and 
+            (not is_earnings_blackout) and 
+            (conf['score'] < 65)
         )
         
         is_sniper_buy = conf.get('is_sniper_buy', False)
@@ -1122,9 +1140,11 @@ def scan_stock(sym):
                 (d_hm.get('bullish', False) or pct_chg >= 2.0)
             )
 
-        # Guarantee strictly Out-Of-The-Money (OTM) strikes for Option Selling
-        ce_sell_strike = max(d_tc['tc_high'], curr_p * 1.015)
-        pe_sell_strike = min(d_tc['tc_low'], curr_p * 0.985)
+        # Guarantee strictly Out-Of-The-Money (OTM) strikes for Option Selling via Hybrid Outer Barriers
+        ce_sell_strike = seller_strikes['ce_sell_strike']
+        pe_sell_strike = seller_strikes['pe_sell_strike']
+        wing_ce_strike = seller_strikes['wing_ce_strike']
+        wing_pe_strike = seller_strikes['wing_pe_strike']
         
         if is_sniper_buy:
             signal_cat = "🎯 Sniper Dip Buy"

@@ -22,6 +22,19 @@ from .indicators import (
     calculate_heikin_ashi,
     calculate_donchian_channel
 )
+from .option_r3_engine import (
+    build_option_contract,
+    analyze_option_r3_setup,
+    TOP_MOMENTUM_FNO_BASKET
+)
+from .earnings_filter import check_earnings_blackout
+from .option_seller_engine import (
+    calculate_hybrid_option_selling_strikes,
+    check_dead_consolidation_rules,
+    monitor_option_seller_defense,
+    format_option_selling_setup_alert,
+    format_overnight_health_check_alert
+)
 from .alerts import (
     send_telegram_alert,
     format_r3_radar_alert,
@@ -154,12 +167,23 @@ def analyze_stock(sym):
             t2 = curr_p + (2.5 * risk)
             t1_pct = ((t1 - curr_p) / curr_p) * 100
             t2_pct = ((t2 - curr_p) / curr_p) * 100
-            ce_strike = round(curr_p * 1.005 / strike_step) * strike_step
-            pe_strike = min(d_curr['TC_SMA_Low'], curr_p * 0.975)
+            # Compute Hybrid Outer Strikes (TC Band + Bollinger Bands) & Overnight Wings
+            seller_strikes = calculate_hybrid_option_selling_strikes(sym, curr_p, df_d)
+            earnings_info = check_earnings_blackout(sym, blackout_days=10)
+            dead_rules = check_dead_consolidation_rules(df_d, df_w, df_m)
+            is_dead_consolidation = dead_rules.get("passes_all", False)
+            is_earnings_blackout = earnings_info.get("is_blackout", False)
+
+            ce_strike = seller_strikes["ce_sell_strike"]
+            pe_strike = seller_strikes["pe_sell_strike"]
+            wing_ce_strike = seller_strikes["wing_ce_strike"]
+            wing_pe_strike = seller_strikes["wing_pe_strike"]
             
             is_1h_bull = (h1_curr['Green_EMA3'] > h1_curr['Red_WMA21']) and (h1_curr['Close'] > h1_curr['TC_SMA_High'])
             if is_sniper_buy:
                 signal = "🎯 SNIPER DIP BUY (Confirmed)"
+            elif is_dead_consolidation and not is_earnings_blackout:
+                signal = "⚖️ OPTION SELLING (Dead Box)"
             elif d_is_positive and not is_sniper_buy:
                 signal = "🎯 BUY ON DIPS (Wait for 1H)"
             elif d_is_negative and not is_sniper_short:
@@ -176,22 +200,43 @@ def analyze_stock(sym):
         # Daily Pivots & R3 Option Radar
         pivots = calculate_daily_pivot_points(df_d)
         is_r3_radar = False
-        otm_call_strike = round(curr_p * 1.015 / strike_step) * strike_step
-        if otm_call_strike <= curr_p:
-            otm_call_strike = (int(curr_p / strike_step) + 1) * strike_step
         r1_val, r2_val, r3_val, p_val = 0.0, 0.0, 0.0, 0.0
+        
+        # Build exact Option Contract details (e.g. 'DLF 26 NOV 700 CE')
+        opt_info = build_option_contract(sym, curr_p, "CE")
+        opt_contract_name = opt_info["contract_name"]
+        opt_fyers_symbol = opt_info["fyers_symbol"]
+        otm_call_strike = opt_info["strike"]
         
         if pivots:
             p_val = pivots['p']
             r1_val = pivots['r1']
             r2_val = pivots['r2']
             r3_val = pivots['r3']
-            otm_call_strike = int((int(curr_p / strike_step) + 1) * strike_step)
             is_r3_radar = bool(
                 (pct_chg >= 1.5 or curr_p >= r2_val) and
                 (curr_p >= r1_val) and
                 (d_hm_bull or pct_chg >= 2.0)
             )
+
+        # Deep Option R3 Analysis
+        opt_ltp = 0.0
+        opt_r3_val = 0.0
+        is_option_r3_crossed = False
+        if is_r3_radar:
+            try:
+                opt_analysis = analyze_option_r3_setup(
+                    symbol=sym,
+                    spot_price=curr_p,
+                    spot_pct_change=pct_chg,
+                    spot_is_bullish=d_is_positive,
+                    spot_is_1h_confirmed=is_sniper_buy
+                )
+                opt_ltp = opt_analysis["opt_ltp"]
+                opt_r3_val = opt_analysis["opt_r3"]
+                is_option_r3_crossed = opt_analysis["is_option_r3_crossed"]
+            except Exception:
+                pass
 
         # Heikin Ashi Brijesh Bhatia System
         ha_d = calculate_heikin_ashi(df_d)
@@ -234,12 +279,22 @@ def analyze_stock(sym):
             "risk_pct": risk_pct,
             "pe_strike": pe_strike,
             "ce_strike": ce_strike,
+            "wing_ce_strike": wing_ce_strike,
+            "wing_pe_strike": wing_pe_strike,
+            "is_dead_consolidation": is_dead_consolidation,
+            "is_earnings_blackout": is_earnings_blackout,
+            "earnings_badge": earnings_info.get("status_badge", "🟢 SAFE"),
             "is_r3_radar": is_r3_radar,
             "otm_call_strike": otm_call_strike,
             "r1": r1_val,
             "r2": r2_val,
             "r3": r3_val,
             "pivot_p": p_val,
+            "opt_contract_name": opt_contract_name,
+            "opt_fyers_symbol": opt_fyers_symbol,
+            "opt_ltp": opt_ltp,
+            "opt_r3": opt_r3_val,
+            "is_option_r3_crossed": is_option_r3_crossed,
             "ha_reversal_buy": ha_reversal_buy,
             "ha_red_count": ha_red_count,
             "ha_donchian_sl": ha_donchian_sl,
