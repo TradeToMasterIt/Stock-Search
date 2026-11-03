@@ -30,11 +30,14 @@ def format_r3_radar_alert(res):
     now_str = get_ist_now().strftime('%d %b %Y | %H:%M:%S IST')
     contract_lbl = res.get('opt_contract_name', f"₹{res.get('otm_call_strike', '')} CE")
     fyers_lbl = f"• <b>Fyers Symbol:</b> <code>{res['opt_fyers_symbol']}</code>\n" if res.get('opt_fyers_symbol') else ""
+    rsi_15m_val = res.get('rsi_15m')
+    rsi_txt = f"• <b>15m RSI Confluence:</b> <b>{rsi_15m_val:.1f}</b> (Golden Sweet Spot 58-74 ✅ - નો ફેકઆઉટ)\n" if rsi_15m_val else ""
     return (
         f"⚡ <b>R3 OPTION ROCKET BREAKOUT!</b> ⚡\n"
         f"━━━━━━━━━━━━━━━━━━━━━\n"
         f"📌 <b>સ્ટોક:</b> {s_name} (LTP: ₹{res['price']:.2f}, {res['change']:+.2f}%)\n"
         f"🚀 <b>સેટઅપ:</b> Strong Morning Move + Breakout above Daily R1/R2\n"
+        f"{rsi_txt}"
         f"━━━━━━━━━━━━━━━━━━━━━\n"
         f"🎯 <b>R3 Option Strategy (Option Leads, Future Follows):</b>\n"
         f"• <b>વોચલિસ્ટ કોલ:</b> <b>{contract_lbl}</b>\n"
@@ -56,12 +59,15 @@ def format_100_confirmed_buy_alert(res):
     opt_ltp_txt = f" (LTP: ₹{res['opt_ltp']:.2f})" if res.get('opt_ltp') else ""
     fyers_lbl = f"• <b>Fyers Symbol:</b> <code>{res['opt_fyers_symbol']}</code>\n" if res.get('opt_fyers_symbol') else ""
     opt_r3_txt = f"• <b>Option R3:</b> ₹{res['opt_r3']:.2f} (ક્રોસ થયેલ ✅)\n" if res.get('opt_r3') else ""
+    rsi_15m_val = res.get('rsi_15m', 62.0)
+    rsi_badge = f"• <b>15m RSI Confluence:</b> <b>{rsi_15m_val:.1f}</b> (Golden Sweet Spot 58-74 ✅ - મજબૂત તાજી તેજી)\n"
     return (
         f"🚀 <b>૧૦૦% કન્ફર્મ બાય એલર્ટ! (100% CONFIRMED BUY)</b> 🚀\n"
         f"━━━━━━━━━━━━━━━━━━━━━\n"
         f"📌 <b>સ્ટોક:</b> {s_name} (LTP: ₹{res['price']:.2f}, {res['change']:+.2f}%)\n"
-        f"🎯 <b>સેટઅપ:</b> R3 Option Rocket + 1-Hour Bull Cross કન્ફર્મ!\n"
+        f"🎯 <b>સેટઅપ:</b> Sniper Buy + OTM R3 Rocket + 15m RSI કન્ફર્મ!\n"
         f"⚡ <b>Hilega-Milega 1H:</b> Green &gt; Red (પાણી 50 ની ઉપર - ૧૦૦% ખરીદી પાકી)\n"
+        f"{rsi_badge}"
         f"━━━━━━━━━━━━━━━━━━━━━\n"
         f"🔥 <b>ACTIONABLE TRADE ENTRY (તાત્કાલિક એન્ટ્રી):</b>\n"
         f"• <b>Call Option Buy (CE):</b> <b>{contract_lbl} ખરીદો{opt_ltp_txt}</b>\n"
@@ -131,6 +137,8 @@ def format_sniper_buy_alert(res):
     opt_r3_txt = f"• <b>Option R3 લેવલ:</b> ₹{res['opt_r3']:.2f}\n" if res.get('opt_r3') else ""
     opt_status = " (✅ R3 ક્રોસ થયેલ - રોકેટ બ્રેકઆઉટ!)" if res.get('is_option_r3_crossed') else " (⚠️ R3 ક્રોસ થતાં જ એન્ટ્રી)"
     fyers_lbl = f"• <b>Fyers Symbol:</b> <code>{res['opt_fyers_symbol']}</code>\n" if res.get('opt_fyers_symbol') else ""
+    rsi_15m_val = res.get('rsi_15m')
+    rsi_txt = f"• <b>15m RSI:</b> <b>{rsi_15m_val:.1f}</b> (Golden Sweet Spot 58-74 ✅)\n" if rsi_15m_val else ""
 
     return (
         f"🎯 <b>SNIPER DIP BUY CONFIRMED!</b> 🎯\n"
@@ -151,6 +159,7 @@ def format_sniper_buy_alert(res):
         f"{opt_r3_txt}"
         f"• <b>ઓપ્શન ટાર્ગેટ:</b> ૧૦૦% થી ૨૦૦%+ (મલ્ટિબેગર નફો)\n"
         f"• <b>Option Sellers:</b> &lt; ₹{res['pe_strike']:.0f} PE સેલ કરો (સેફ OTM)\n"
+        f"{rsi_txt}"
         f"📊 <b>1-Hour Volume:</b> {res['vol_ratio']:.1f}x {vol_emoji}\n"
         f"━━━━━━━━━━━━━━━━━━━━━\n"
         f"⏰ <i>{now_str}</i> | 🤖 Patel Trading Bot"

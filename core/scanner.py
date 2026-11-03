@@ -219,11 +219,54 @@ def analyze_stock(sym):
                 (d_hm_bull or pct_chg >= 2.0)
             )
 
+        # 15-Minute Sweet Spot RSI & Candle Rejection Analysis (for candidate setups)
+        m15_rsi = float(h1_curr['RSI_9'])
+        m15_prev_rsi = float(h1_prev['RSI_9'])
+        m15_rsi_slope = round(m15_rsi - m15_prev_rsi, 2)
+        m15_vol_ratio = h1_vol_ratio
+        is_15m_wick_rejected = False
+        
+        is_candidate = bool(is_sniper_buy or is_r3_radar or (curr_p >= r1_val) or (pct_chg >= 0.8))
+        if is_candidate:
+            try:
+                df_15m = t.history(period="5d", interval="15m").dropna(subset=['Close', 'High', 'Low', 'Volume'])
+                if df_15m is not None and not df_15m.empty and len(df_15m) >= 20:
+                    df_15m = calculate_volume_analysis(calculate_hilega_milega(df_15m))
+                    c_15m = df_15m.iloc[-1]
+                    p_15m = df_15m.iloc[-2]
+                    m15_rsi = float(c_15m.get('RSI_9', 50.0))
+                    m15_prev_rsi = float(p_15m.get('RSI_9', 50.0))
+                    m15_rsi_slope = round(m15_rsi - m15_prev_rsi, 2)
+                    m15_vol_ratio = float(c_15m.get('Vol_Ratio', 1.0))
+                    
+                    # Upper wick rejection check (Rejection at R2/R3 barrier)
+                    c_h = float(c_15m['High'])
+                    c_l = float(c_15m['Low'])
+                    c_o = float(c_15m['Open'])
+                    c_c = float(c_15m['Close'])
+                    total_bar_span = c_h - c_l
+                    upper_wick = c_h - max(c_o, c_c)
+                    if total_bar_span > 0:
+                        wick_ratio = upper_wick / total_bar_span
+                        # If more than 45% of candle is a rejected upper wick, it's a trap!
+                        if wick_ratio >= 0.45 and c_c < r2_val:
+                            is_15m_wick_rejected = True
+            except Exception:
+                pass
+
+        # Golden RSI Sweet Spot Filter (58 to 74 with Positive Slope & No Upper Wick Rejection)
+        is_r3_rsi_confirmed = bool(
+            (58.0 <= m15_rsi <= 74.0) and
+            (m15_rsi_slope >= -0.5) and
+            (not is_15m_wick_rejected) and
+            (m15_vol_ratio >= 1.2 or h1_vol_ratio >= 1.3)
+        )
+
         # Deep Option R3 Analysis (Always run for any bullish or sniper setup)
         opt_ltp = 0.0
         opt_r3_val = 0.0
         is_option_r3_crossed = False
-        if is_sniper_buy or is_r3_radar or ("BUY" in signal) or pct_chg >= 0.8:
+        if is_candidate:
             try:
                 opt_analysis = analyze_option_r3_setup(
                     symbol=sym,
@@ -304,6 +347,11 @@ def analyze_stock(sym):
             "opt_ltp": opt_ltp,
             "opt_r3": opt_r3_val,
             "is_option_r3_crossed": is_option_r3_crossed,
+            "rsi_15m": round(m15_rsi, 1),
+            "rsi_15m_slope": round(m15_rsi_slope, 1),
+            "is_r3_rsi_confirmed": is_r3_rsi_confirmed,
+            "is_15m_wick_rejected": is_15m_wick_rejected,
+            "vol_15m": round(m15_vol_ratio, 1),
             "ha_reversal_buy": ha_reversal_buy,
             "ha_red_count": ha_red_count,
             "ha_donchian_sl": ha_donchian_sl,
@@ -667,11 +715,12 @@ def run_scan_cycle(force=False, watchlist=None):
         is_buy = "BUY" in curr_sig or "BULLISH" in curr_sig
         is_sell = "SELL" in curr_sig or "AVOID" in curr_sig
         
-        # 0. R3 Option Breakout / 100% Confirmed Buy Alert (Fires when Option crosses R3)
+        # 0. R3 Option Breakout / 100% Confirmed Buy Alert (Fires when Option crosses R3 + RSI Sweet Spot confirmed)
         r3_confirmed_key = f"{s_name}_R3_CONFIRMED_{today_str}"
         is_r3_confirmed = bool(
             (is_sniper_buy or "STRONG BUY" in curr_sig) and
-            (res.get('is_option_r3_crossed') or res.get('is_r3_radar') or (res['price'] >= res.get('r1', 0)))
+            (res.get('is_option_r3_crossed') or res.get('is_r3_radar') or (res['price'] >= res.get('r1', 0))) and
+            res.get('is_r3_rsi_confirmed', True)
         )
         if is_r3_confirmed and not state.get(r3_confirmed_key):
             confirmed_alert_text = format_100_confirmed_buy_alert(res)
@@ -682,7 +731,7 @@ def run_scan_cycle(force=False, watchlist=None):
 
         # 0.1 Standalone Option R3 Breakout
         r3_alert_key = f"{s_name}_R3_{today_str}"
-        if (res.get('is_option_r3_crossed') or res.get('is_r3_radar')) and not state.get(r3_alert_key) and not is_r3_confirmed:
+        if (res.get('is_option_r3_crossed') or res.get('is_r3_radar')) and res.get('is_r3_rsi_confirmed', True) and not state.get(r3_alert_key) and not is_r3_confirmed:
             alert_text = format_r3_radar_alert(res)
             print(f"Sending R3 OPTION RADAR alert for {s_name}")
             send_telegram_alert(alert_text)
