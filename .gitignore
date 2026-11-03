@@ -15,7 +15,6 @@ venv/
 
 # Caches and runtime state
 alert_state.json
-screener_cache.json
 active_trades.json
 trades.db
 *.db

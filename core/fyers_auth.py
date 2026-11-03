@@ -7,14 +7,19 @@ Tokens are automatically refreshed daily after 6:30 AM IST.
 import os
 import json
 import time
+import socket
 import base64
 import struct
 import hmac
 import hashlib
 from urllib.parse import urlparse, parse_qs
-from datetime import datetime
+from datetime import datetime, timedelta
 import requests
+import threading
 from fyers_apiv3 import fyersModel
+
+# Set default socket timeout so no network socket hangs indefinitely
+socket.setdefaulttimeout(10.0)
 
 from core.config import (
     FYERS_CLIENT_ID,
@@ -66,7 +71,7 @@ def is_token_valid_for_today(saved_timestamp: float) -> bool:
     if now_ist >= today_cutoff:
         return token_time_ist >= today_cutoff
     else:
-        yesterday_cutoff = today_cutoff.replace(day=today_cutoff.day - 1)
+        yesterday_cutoff = today_cutoff - timedelta(days=1)
         return token_time_ist >= yesterday_cutoff
 
 def get_cached_token() -> str | None:
@@ -226,35 +231,60 @@ def login_and_generate_token() -> tuple[bool, str]:
     except Exception as e:
         return False, f"Exception during Fyers login: {str(e)}"
 
+_auth_lock = threading.Lock()
+
 def get_fyers_token(force_refresh: bool = False) -> tuple[bool, str]:
     """
     Returns valid access_token, either from cache or by triggering fresh login.
+    Thread-safe to prevent race conditions during multi-threaded scanning.
     """
-    if not force_refresh:
-        cached = get_cached_token()
-        if cached:
-            return True, cached
+    with _auth_lock:
+        if not force_refresh:
+            cached = get_cached_token()
+            if cached:
+                return True, cached
 
-    return login_and_generate_token()
+        return login_and_generate_token()
+
+_cached_fyers_client = None
+_cached_fyers_token = None
 
 def get_fyers_client(force_refresh: bool = False) -> tuple[bool, fyersModel.FyersModel | str]:
     """
     Returns an authenticated instance of fyersModel.FyersModel.
     Automatically refreshes token if expired.
+    Uses in-memory cache to prevent multiple concurrent re-instantiations.
+    Thread-safe with request timeout protection.
     """
-    success, token_or_err = get_fyers_token(force_refresh=force_refresh)
-    if not success:
-        return False, token_or_err
+    global _cached_fyers_client, _cached_fyers_token
+    with _auth_lock:
+        success, token_or_err = get_fyers_token(force_refresh=force_refresh)
+        if not success:
+            return False, token_or_err
 
-    try:
-        fyers = fyersModel.FyersModel(
-            client_id=FYERS_APP_ID,
-            token=token_or_err,
-            is_async=False
-        )
-        return True, fyers
-    except Exception as e:
-        return False, f"Failed to instantiate FyersModel: {str(e)}"
+        if not force_refresh and _cached_fyers_client is not None and _cached_fyers_token == token_or_err:
+            return True, _cached_fyers_client
+
+        try:
+            fyers = fyersModel.FyersModel(
+                client_id=FYERS_APP_ID,
+                token=token_or_err,
+                is_async=False
+            )
+            # Safeguard requests.Session with timeout protection
+            if hasattr(fyers, "service") and hasattr(fyers.service, "session"):
+                orig_request = fyers.service.session.request
+                def safe_req(*args, **kwargs):
+                    if "timeout" not in kwargs or kwargs["timeout"] is None:
+                        kwargs["timeout"] = 10.0
+                    return orig_request(*args, **kwargs)
+                fyers.service.session.request = safe_req
+
+            _cached_fyers_client = fyers
+            _cached_fyers_token = token_or_err
+            return True, fyers
+        except Exception as e:
+            return False, f"Failed to instantiate FyersModel: {str(e)}"
 
 def test_fyers_connection() -> tuple[bool, dict | str]:
     """
@@ -280,3 +310,67 @@ def test_fyers_connection() -> tuple[bool, dict | str]:
         return False, f"Fyers API Error: {profile}"
     except Exception as e:
         return False, f"Exception in test_fyers_connection: {str(e)}"
+
+# -------------------------------------------------------------
+# Rate-Limited Safe API Callers (5 req/sec Standard Plan Limit)
+# -------------------------------------------------------------
+_fyers_rate_lock = threading.Lock()
+_last_fyers_req_ts = 0.0
+
+def safe_fyers_history(fyers_client, data: dict, retries: int = 2) -> dict:
+    """
+    Thread-safe history caller with strict rate-limiting (max 4.5 req/sec).
+    Prevents 'Standard plan limit of 5 requests/second' errors.
+    Automatically retries with backoff if rate-limited.
+    """
+    global _last_fyers_req_ts
+    for attempt in range(retries + 1):
+        with _fyers_rate_lock:
+            now = time.time()
+            elapsed = now - _last_fyers_req_ts
+            if elapsed < 0.22:
+                time.sleep(0.22 - elapsed)
+            _last_fyers_req_ts = time.time()
+
+        try:
+            res = fyers_client.history(data=data)
+            if isinstance(res, dict):
+                msg = str(res.get("message", "")).lower()
+                if "requests/second" in msg or "limit" in msg or res.get("code") in [-99, 429]:
+                    time.sleep(0.4 + attempt * 0.25)
+                    continue
+            return res
+        except Exception as e:
+            if attempt < retries:
+                time.sleep(0.4 + attempt * 0.25)
+                continue
+            return {"s": "error", "message": str(e)}
+    return {"s": "error", "message": "Max retries exceeded"}
+
+def safe_fyers_quotes(fyers_client, data: dict, retries: int = 2) -> dict:
+    """
+    Thread-safe quotes caller with strict rate-limiting.
+    """
+    global _last_fyers_req_ts
+    for attempt in range(retries + 1):
+        with _fyers_rate_lock:
+            now = time.time()
+            elapsed = now - _last_fyers_req_ts
+            if elapsed < 0.22:
+                time.sleep(0.22 - elapsed)
+            _last_fyers_req_ts = time.time()
+
+        try:
+            res = fyers_client.quotes(data=data)
+            if isinstance(res, dict):
+                msg = str(res.get("message", "")).lower()
+                if "requests/second" in msg or "limit" in msg or res.get("code") in [-99, 429]:
+                    time.sleep(0.4 + attempt * 0.25)
+                    continue
+            return res
+        except Exception as e:
+            if attempt < retries:
+                time.sleep(0.4 + attempt * 0.25)
+                continue
+            return {"s": "error", "message": str(e)}
+    return {"s": "error", "message": "Max retries exceeded"}

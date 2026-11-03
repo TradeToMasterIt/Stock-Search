@@ -8,8 +8,10 @@ import pandas as pd
 import numpy as np
 import altair as alt
 from concurrent.futures import ThreadPoolExecutor, as_completed
+import socket
+socket.setdefaulttimeout(10.0)
 
-from core.config import get_ist_now, is_market_open, DEFAULT_WATCHLIST
+from core.config import get_ist_now, is_market_open, DEFAULT_WATCHLIST, INDEX_WATCHLIST
 from core.alerts import send_telegram_alert
 from core.database import (
     load_active_trades,
@@ -27,6 +29,18 @@ from core.charts import (
     plot_equity_curve_chart
 )
 from core.option_chain import fetch_live_option_chain, get_strike_step
+from core.option_r3_engine import (
+    TOP_MOMENTUM_FNO_BASKET,
+    build_option_contract,
+    analyze_option_r3_setup
+)
+from core.earnings_filter import check_earnings_blackout
+from core.option_seller_engine import (
+    calculate_hybrid_option_selling_strikes,
+    check_dead_consolidation_rules,
+    format_option_selling_setup_alert,
+    format_overnight_health_check_alert
+)
 from core.backtester import run_backtest, STRATEGIES
 from core.indicators import (
     format_volume,
@@ -654,8 +668,25 @@ div[class*="st-key-btn_kpi_"] > button em {
 
 # Note: format_volume and calculate_trade_levels are imported from core.indicators
 
-@st.cache_data(ttl=120)
+@st.cache_data(ttl=60)
 def get_nifty_sentiment():
+    # 1. Try Fyers API first (Real-time official NSE quote)
+    try:
+        from core.fyers_auth import get_fyers_client, safe_fyers_quotes
+        ok, fyers = get_fyers_client()
+        if ok and fyers:
+            res = safe_fyers_quotes(fyers, data={"symbols": "NSE:NIFTY50-INDEX"})
+            if res.get("s") == "ok" and "d" in res and len(res["d"]) > 0:
+                v = res["d"][0].get("v", {})
+                lp = float(v.get("lp", 0))
+                ch = float(v.get("ch", 0))
+                chp = float(v.get("chp", 0))
+                if lp > 0:
+                    return {"price": lp, "change": ch, "pct": chp, "is_bullish": ch >= 0}
+    except Exception:
+        pass
+
+    # 2. Fallback to yfinance
     try:
         t = yf.Ticker("^NSEI")
         d = t.history(period="5d", interval="1d")
@@ -671,6 +702,8 @@ def get_nifty_sentiment():
 
 # Watchlist Baskets
 BASKETS = {
+    "👑 Major Indices (NIFTY, BANKNIFTY, SENSEX, FINNIFTY)": INDEX_WATCHLIST,
+    "🔥 Top Momentum F&O Leaders (35 શેરો)": TOP_MOMENTUM_FNO_BASKET,
     "🚀 Total F&O Stocks (સંપૂર્ણ 181 સ્ટોક્સ)": DEFAULT_WATCHLIST,
     "🏛️ Nifty 50 (બધા 50 બ્લુચિપ સ્ટોક્સ)": [
         "RELIANCE.NS", "TCS.NS", "HDFCBANK.NS", "ICICIBANK.NS", "BHARTIARTL.NS",
@@ -719,38 +752,86 @@ BASKETS = {
 
 def scan_heikin_ashi_stock(sym, min_red_candles=5, timeframe="Daily"):
     try:
-        clean_sym = sym.strip().upper()
-        if not clean_sym.endswith(".NS") and not clean_sym.endswith(".BO") and not clean_sym.startswith("^"):
-            ticker_sym = f"{clean_sym}.NS"
-        else:
-            ticker_sym = clean_sym
-            
-        ticker = yf.Ticker(ticker_sym)
+        clean_sym = sym.replace(".NS", "").replace(".BO", "").replace("^", "").strip().upper()
+        ticker_sym = f"{clean_sym}.NS"
         
-        if timeframe == "2-Hour":
-            df = ticker.history(period="1mo", interval="1h").dropna(subset=['Open', 'High', 'Low', 'Close', 'Volume'])
-            donchian_p = 6 # ~3 2-hour bars
-        elif timeframe == "Weekly":
-            df = ticker.history(period="3y", interval="1wk").dropna(subset=['Open', 'High', 'Low', 'Close', 'Volume'])
-            donchian_p = 5 # 5 weekly bars
-        else: # Daily
-            df = ticker.history(period="1y", interval="1d").dropna(subset=['Open', 'High', 'Low', 'Close', 'Volume'])
-            donchian_p = 11 # 11 daily bars
+        # Handle symbol renames
+        f_sym_base = clean_sym
+        if f_sym_base == "GMRINFRA": f_sym_base = "GMRAIRPORT"
+        elif f_sym_base in ["MCDOWELL-N", "MCDOWELL_N"]: f_sym_base = "UNITDSPR"
+        
+        df = None
+        used_fyers = False
+        # 1. Try Fyers API first
+        try:
+            from core.fyers_auth import get_fyers_client, safe_fyers_history
+            from datetime import datetime as _dt, timedelta as _td
+            ok_f, fyers_c = get_fyers_client()
+            if ok_f and fyers_c:
+                used_fyers = True
+                f_sym = f"NSE:{f_sym_base}-EQ"
+                res_code = "120" if timeframe == "2-Hour" else ("W" if timeframe == "Weekly" else "D")
+                days_back = 45 if timeframe == "2-Hour" else (365 if timeframe == "Weekly" else 180)
+                now_dt = _dt.now()
+                to_d = now_dt.strftime("%Y-%m-%d")
+                from_d = (now_dt - _td(days=days_back)).strftime("%Y-%m-%d")
+                d_req = {
+                    "symbol": f_sym,
+                    "resolution": res_code,
+                    "date_format": "1",
+                    "range_from": from_d,
+                    "range_to": to_d,
+                    "cont_flag": "1"
+                }
+                res = safe_fyers_history(fyers_c, d_req)
+                if isinstance(res, dict) and (res.get("code") in [-300, -99] or res.get("s") == "error"):
+                    return None
+                candles = res.get("candles", []) if isinstance(res, dict) else []
+                if candles and len(candles) >= 25:
+                    df = pd.DataFrame(candles, columns=['Timestamp', 'Open', 'High', 'Low', 'Close', 'Volume'])
+                    df['Date'] = pd.to_datetime(df['Timestamp'], unit='s')
+                    df.set_index('Date', inplace=True)
+                else:
+                    return None
+        except Exception:
+            if used_fyers:
+                return None
+
+        # 2. Fallback to yfinance only if Fyers is not configured/offline
+        if not used_fyers and (df is None or len(df) < 25):
+            ticker_sym = f"{clean_sym}.NS"
+            ticker = yf.Ticker(ticker_sym)
+            if timeframe == "2-Hour":
+                df = ticker.history(period="1mo", interval="1h").dropna(subset=['Open', 'High', 'Low', 'Close', 'Volume'])
+                donchian_p = 6
+            elif timeframe == "Weekly":
+                df = ticker.history(period="3y", interval="1wk").dropna(subset=['Open', 'High', 'Low', 'Close', 'Volume'])
+                donchian_p = 5
+            else:
+                df = ticker.history(period="1y", interval="1d").dropna(subset=['Open', 'High', 'Low', 'Close', 'Volume'])
+                donchian_p = 11
+        else:
+            donchian_p = 6 if timeframe == "2-Hour" else (5 if timeframe == "Weekly" else 11)
             
-        if len(df) < 25:
+        if df is None or len(df) < 25:
             return None
             
         df = calculate_volume_analysis(df)
         ha_df = calculate_heikin_ashi(df)
         ha_df = calculate_donchian_channel(ha_df, period=donchian_p)
         
-        # Weekly macro trend check
+        # Weekly macro trend check (Resample in-memory with 0 network calls!)
         weekly_bullish = True
         if timeframe == "Daily":
-            df_w = ticker.history(period="2y", interval="1wk").dropna(subset=['Open', 'High', 'Low', 'Close', 'Volume'])
-            if len(df_w) >= 10:
-                ha_w = calculate_heikin_ashi(df_w)
-                weekly_bullish = bool((ha_w['HA_Close'].iloc[-1] >= ha_w['HA_Open'].iloc[-1]) or (df_w['Close'].iloc[-1] >= df_w['Close'].tail(15).mean()))
+            try:
+                df_w = df.resample('W-FRI').agg({
+                    'Open': 'first', 'High': 'max', 'Low': 'min', 'Close': 'last', 'Volume': 'sum'
+                }).dropna()
+                if len(df_w) >= 10:
+                    ha_w = calculate_heikin_ashi(df_w)
+                    weekly_bullish = bool((ha_w['HA_Close'].iloc[-1] >= ha_w['HA_Open'].iloc[-1]) or (df_w['Close'].iloc[-1] >= df_w['Close'].tail(15).mean()))
+            except Exception:
+                weekly_bullish = True
                 
         curr = ha_df.iloc[-1]
         prev = ha_df.iloc[-2]
@@ -836,22 +917,115 @@ def scan_heikin_ashi_stock(sym, min_red_candles=5, timeframe="Daily"):
 # Note: plot_heikin_ashi_donchian_chart is imported directly from core.charts
 
 # -------------------------------------------------------------
-# Function: Scan a Single Stock for Screener
+# Function: Fast Multi-Timeframe Candle Loader & Screener Scanner
 # -------------------------------------------------------------
+def fetch_scanner_data(clean_sym):
+    """
+    High-speed multi-timeframe candle fetcher using Fyers API first,
+    with in-memory Weekly/Monthly resampling, falling back to yfinance with timeout.
+    """
+    import time as _time
+    now_ts = int(_time.time())
+
+    # Handle symbol renames
+    f_sym_base = clean_sym
+    if f_sym_base == "GMRINFRA": f_sym_base = "GMRAIRPORT"
+    elif f_sym_base in ["MCDOWELL-N", "MCDOWELL_N"]: f_sym_base = "UNITDSPR"
+
+    # 1. Try Fyers API first (0.3s per stock, official NSE data, zero rate-limits)
+    used_fyers = False
+    try:
+        from core.fyers_auth import get_fyers_client, safe_fyers_history
+        from datetime import datetime as _dt, timedelta as _td
+        ok_fyers, fyers_client = get_fyers_client()
+        if ok_fyers and fyers_client:
+            used_fyers = True
+            f_sym = f"NSE:{f_sym_base}-EQ"
+            now_dt = _dt.now()
+            to_d = now_dt.strftime("%Y-%m-%d")
+            from_d = (now_dt - _td(days=365)).strftime("%Y-%m-%d")
+            from_1h = (now_dt - _td(days=45)).strftime("%Y-%m-%d")
+            d_req = {
+                "symbol": f_sym,
+                "resolution": "D",
+                "date_format": "1",
+                "range_from": from_d,
+                "range_to": to_d,
+                "cont_flag": "1"
+            }
+            res_d = safe_fyers_history(fyers_client, d_req)
+            if isinstance(res_d, dict) and (res_d.get("code") in [-300, -99] or res_d.get("s") == "error"):
+                return None
+            candles_d = res_d.get("candles", []) if isinstance(res_d, dict) else []
+            if not candles_d or len(candles_d) < 30:
+                return None
+
+            h1_req = {
+                "symbol": f_sym,
+                "resolution": "60",
+                "date_format": "1",
+                "range_from": from_1h,
+                "range_to": to_d,
+                "cont_flag": "1"
+            }
+            res_1h = safe_fyers_history(fyers_client, h1_req)
+            candles_1h = res_1h.get("candles", []) if isinstance(res_1h, dict) else []
+
+            if candles_d and len(candles_d) >= 30 and candles_1h:
+                df_d = pd.DataFrame(candles_d, columns=['Timestamp', 'Open', 'High', 'Low', 'Close', 'Volume'])
+                df_d['Date'] = pd.to_datetime(df_d['Timestamp'], unit='s')
+                df_d.set_index('Date', inplace=True)
+
+                df_1h = pd.DataFrame(candles_1h, columns=['Timestamp', 'Open', 'High', 'Low', 'Close', 'Volume'])
+                df_1h['Date'] = pd.to_datetime(df_1h['Timestamp'], unit='s')
+                df_1h.set_index('Date', inplace=True)
+
+                # Resample weekly and monthly in memory (0 network calls)
+                df_w = df_d.resample('W-FRI').agg({
+                    'Open': 'first', 'High': 'max', 'Low': 'min', 'Close': 'last', 'Volume': 'sum'
+                }).dropna()
+                df_m = df_d.resample('ME').agg({
+                    'Open': 'first', 'High': 'max', 'Low': 'min', 'Close': 'last', 'Volume': 'sum'
+                }).dropna()
+
+                return df_d, df_w, df_m, df_1h
+            else:
+                return None
+    except Exception:
+        if used_fyers:
+            return None
+
+    # 2. Fallback to yfinance only if Fyers was not used
+    if not used_fyers:
+        try:
+            ticker_sym = f"{clean_sym}.NS"
+            ticker = yf.Ticker(ticker_sym)
+            df_d = ticker.history(period="1y", interval="1d").dropna(subset=['Close', 'High', 'Low', 'Volume'])
+            if df_d.empty or len(df_d) < 30:
+                return None
+            df_1h = ticker.history(period="1mo", interval="1h").dropna(subset=['Close', 'High', 'Low', 'Volume'])
+            if df_1h.empty:
+                return None
+
+            df_w = df_d.resample('W-FRI').agg({
+                'Open': 'first', 'High': 'max', 'Low': 'min', 'Close': 'last', 'Volume': 'sum'
+            }).dropna()
+            df_m = df_d.resample('ME').agg({
+                'Open': 'first', 'High': 'max', 'Low': 'min', 'Close': 'last', 'Volume': 'sum'
+            }).dropna()
+
+            return df_d, df_w, df_m, df_1h
+        except Exception:
+            return None
+
 def scan_stock(sym):
     try:
-        clean_sym = sym.strip().upper()
-        if not clean_sym.endswith(".NS") and not clean_sym.endswith(".BO") and not clean_sym.startswith("^"):
-            ticker_sym = f"{clean_sym}.NS"
-        else:
-            ticker_sym = clean_sym
-            
-        ticker = yf.Ticker(ticker_sym)
-        df_d = ticker.history(period="1y", interval="1d").dropna(subset=['Close', 'High', 'Low', 'Volume'])
-        df_w = ticker.history(period="3y", interval="1wk").dropna(subset=['Close', 'High', 'Low', 'Volume'])
-        df_m = ticker.history(period="5y", interval="1mo").dropna(subset=['Close', 'High', 'Low', 'Volume'])
-        df_1h = ticker.history(period="1mo", interval="1h").dropna(subset=['Close', 'High', 'Low', 'Volume'])
-        
+        clean_sym = sym.replace(".NS", "").replace(".BO", "").replace("^", "").strip().upper()
+        ticker_sym = f"{clean_sym}.NS"
+        data = fetch_scanner_data(clean_sym)
+        if not data:
+            return None
+        df_d, df_w, df_m, df_1h = data
         if df_d.empty or len(df_d) < 30 or df_1h.empty:
             return None
             
@@ -899,15 +1073,20 @@ def scan_stock(sym):
         is_in_band = (curr_p >= d_tc['tc_low'] * 0.97) and (curr_p <= d_tc['tc_high'] * 1.03)
         d_rsi = df_d['RSI_9'].iloc[-1] if 'RSI_9' in df_d.columns else 50.0
 
-        # Dead Trend Check: ADX <= 22 and +DI / -DI Spread <= 8.5 (Equilibrium between bulls & bears)
-        is_adx_calm = (d_adx['adx'] <= 22.0) and (d_adx['di_diff'] <= 8.5)
+        # Dead Trend Check: ADX <= 20 and +DI / -DI Spread <= 8.5 (Equilibrium between bulls & bears)
+        is_adx_calm = (d_adx['adx'] <= 20.0) and (d_adx['di_diff'] <= 8.5)
         
+        # Enhanced Mega-Cap Dead Consolidation & Earnings Blackout Check
+        seller_strikes = calculate_hybrid_option_selling_strikes(sym, curr_p, df_d)
+        earnings_info = check_earnings_blackout(sym, blackout_days=10)
+        dead_rules = check_dead_consolidation_rules(df_d, df_w, df_m)
+        is_dead_box = dead_rules.get('passes_all', False)
+        is_earnings_blackout = earnings_info.get('is_blackout', False)
+
         is_option_selling = (
-            is_in_band and 
-            (span_20d <= 11.5) and 
-            (38 <= d_rsi <= 62) and 
-            (conf['score'] < 65) and
-            is_adx_calm
+            (is_dead_box or (is_in_band and span_20d <= 8.5 and is_adx_calm)) and 
+            (not is_earnings_blackout) and 
+            (conf['score'] < 65)
         )
         
         is_sniper_buy = conf.get('is_sniper_buy', False)
@@ -962,9 +1141,11 @@ def scan_stock(sym):
                 (d_hm.get('bullish', False) or pct_chg >= 2.0)
             )
 
-        # Guarantee strictly Out-Of-The-Money (OTM) strikes for Option Selling
-        ce_sell_strike = max(d_tc['tc_high'], curr_p * 1.015)
-        pe_sell_strike = min(d_tc['tc_low'], curr_p * 0.985)
+        # Guarantee strictly Out-Of-The-Money (OTM) strikes for Option Selling via Hybrid Outer Barriers
+        ce_sell_strike = seller_strikes['ce_sell_strike']
+        pe_sell_strike = seller_strikes['pe_sell_strike']
+        wing_ce_strike = seller_strikes['wing_ce_strike']
+        wing_pe_strike = seller_strikes['wing_pe_strike']
         
         if is_sniper_buy:
             signal_cat = "🎯 Sniper Dip Buy"
@@ -1141,21 +1322,41 @@ else:
 header_html = f'<div class="brand-container"><div><div style="display: flex; align-items: center; gap: 12px;"><span class="brand-title">🎯 CONFLUENCE PRO</span><span class="brand-badge">INSTITUTIONAL v3.3 | FYERS API v3 LIVE INTEGRATION</span></div><div class="brand-subtitle">Candlestick Price Channels • Hilega-Milega • Brijesh Bhatia Heikin Ashi • Institutional Volume VPA • Precision Targets & Stop-Loss</div></div></div><div class="ticker-bar">{nifty_html}{telegram_html}{fyers_html}</div>'
 st.html(header_html)
 
-# Navigation Tabs
-nav_tab_screener, nav_tab_ha, nav_tab_single, nav_tab_guardian, nav_tab_melting, nav_tab_backtest = st.tabs([
+# Module Navigation (Dropdown Selector)
+NAV_OPTIONS = [
     "📊 Market Screener (ઓટોમેટિક સ્કેનર)",
     "🚀 Heikin Ashi Trend Rider (બ્રિજેશ ભાટિયા)",
     "🕯️ Single Stock (ડીપ કેન્ડલસ્ટિક ચાર્ટ્સ)",
     "🛡️ Risk Guardian (લાઈવ પોઝિશન & મોનિટર)",
     "🎯 Melting Straddles (ડૉ. ગાંગુલી 0DTE)",
     "🧪 Strategy Backtester (વિન-રેટ ચકાસો)"
-])
+]
+
+col_nav1, col_nav2 = st.columns([3.2, 1.2])
+with col_nav1:
+    selected_module = st.selectbox(
+        "🎯 મુખ્ય મોડ્યુલ પસંદ કરો (Navigation Menu):",
+        options=NAV_OPTIONS,
+        index=0,
+        key="app_active_module"
+    )
+with col_nav2:
+    st.markdown("<div style='height: 28px;'></div>", unsafe_allow_html=True)
+    st.markdown(
+        f'<div style="background: rgba(30, 41, 59, 0.7); border: 1px solid rgba(56, 189, 248, 0.35); border-radius: 8px; padding: 7px 14px; text-align: center; font-size: 13px; font-weight: 700; color: #38BDF8;">'
+        f'📌 સક્રિય: {selected_module.split()[1] if len(selected_module.split()) > 1 else selected_module}'
+        f'</div>',
+        unsafe_allow_html=True
+    )
 
 
 # =============================================================
 # TAB 1: LIVE MULTI-TIMEFRAME STOCK SCREENER
 # =============================================================
-with nav_tab_screener:
+if selected_module == "📊 Market Screener (ઓટોમેટિક સ્કેનર)":
+    market_is_open, market_status_msg = is_market_open()
+    is_currently_scanning = st.session_state.get("is_screener_scanning", False)
+
     with st.container():
         col_b1, col_b2, col_b3 = st.columns([2.4, 1.2, 1.6])
         with col_b1:
@@ -1181,22 +1382,28 @@ with nav_tab_screener:
             st.markdown("<div style='height: 6px;'></div>", unsafe_allow_html=True)
             auto_col1, auto_col2 = st.columns([1.05, 1.35])
             with auto_col1:
-                auto_update_enabled = st.toggle("🔄 Auto-Update", value=True, help="ઓટોમેટિક લાઈવ ડેટા અપડેટ ચાલુ/બંધ કરો")
+                auto_default = True if market_is_open else False
+                auto_help = (
+                    "ઓટોમેટિક લાઈવ ડેટા અપડેટ ચાલુ/બંધ કરો" 
+                    if market_is_open 
+                    else f"🌙 હાલ બજાર બંધ છે ({market_status_msg}). ઓટો-અપડેટ માત્ર સોમ-શુક્ર (09:15 થી 15:30 IST) દરમિયાન જ સક્રિય રહેશે."
+                )
+                auto_update_enabled = st.toggle("🔄 Auto-Update", value=auto_default, help=auto_help)
             with auto_col2:
                 freq_choice = st.selectbox(
                     "આવર્તન",
-                    options=["⚡ 1 Min (60s)", "⏱️ 2 Min (120s)", "⏳ 5 Min (300s)"],
+                    options=["⌛ 5 Min (300s)", "⏱️ 3 Min (180s)", "⚡ 2 Min (120s)"],
                     index=0,
                     label_visibility="collapsed",
-                    disabled=not auto_update_enabled
+                    disabled=not (auto_update_enabled and market_is_open)
                 )
 
     freq_seconds_map = {
-        "⚡ 1 Min (60s)": 60,
-        "⏱️ 2 Min (120s)": 120,
-        "⏳ 5 Min (300s)": 300
+        "⌛ 5 Min (300s)": 300,
+        "⏱️ 3 Min (180s)": 180,
+        "⚡ 2 Min (120s)": 120
     }
-    interval_sec = freq_seconds_map.get(freq_choice, 60)
+    interval_sec = freq_seconds_map.get(freq_choice, 300)
     interval_ms = interval_sec * 1000
 
     # Auto-load cached scan results on startup
@@ -1214,11 +1421,13 @@ with nav_tab_screener:
                         st.session_state.screener_results = df_cached
                         st.session_state.screener_last_updated = cache_obj.get("timestamp", datetime.datetime.now().strftime("%I:%M:%S %p"))
                         st.session_state.screener_last_scan_ts = time.time()
+                        if "basket" in cache_obj and "screener_prev_basket" not in st.session_state:
+                            st.session_state.screener_prev_basket = cache_obj["basket"]
             except Exception:
                 pass
 
-    # Mount Auto-Refresh trigger
-    if auto_update_enabled and st_autorefresh is not None:
+    # Mount Auto-Refresh trigger ONLY during active market hours (Mon-Fri 09:15-15:30 IST) and when not scanning
+    if auto_update_enabled and market_is_open and not is_currently_scanning and st_autorefresh is not None:
         st_autorefresh(interval=interval_ms, key="screener_autorefresh_trigger")
 
     now_ts = time.time()
@@ -1226,102 +1435,141 @@ with nav_tab_screener:
     time_since_last_scan = now_ts - last_scan_ts
 
     # Check if basket changed
-    basket_changed = False
-    if "screener_prev_basket" in st.session_state and st.session_state.screener_prev_basket != selected_basket:
-        basket_changed = True
-    st.session_state.screener_prev_basket = selected_basket
+    if "screener_prev_basket" not in st.session_state:
+        st.session_state.screener_prev_basket = selected_basket
+        basket_changed = False
+    else:
+        basket_changed = (st.session_state.screener_prev_basket != selected_basket)
+        st.session_state.screener_prev_basket = selected_basket
 
-    # Determine if scan should run
+    # Determine if scan should run:
+    # 1. Manual scan (start_scan) works ANYTIME (24x7, day or night).
+    # 2. Auto-scan (timer or basket change) ONLY runs during active market hours.
     should_scan = False
     is_auto_scan = False
 
-    if start_scan or basket_changed:
-        should_scan = True
-        is_auto_scan = False
-    elif st.session_state.screener_results is None:
-        should_scan = True
-        is_auto_scan = False
-    elif auto_update_enabled and (time_since_last_scan >= (interval_sec - 2)):
-        should_scan = True
-        is_auto_scan = True
+    if not is_currently_scanning:
+        if start_scan:
+            # User explicitly clicked "🚀 Scan Market Now" -> manual scan works anytime (day or night)
+            should_scan = True
+            is_auto_scan = False
+        elif market_is_open:
+            # Active market hours: allow basket change or interval timer to refresh
+            if basket_changed:
+                should_scan = True
+                is_auto_scan = False
+            elif auto_update_enabled and (time_since_last_scan >= (interval_sec - 2)):
+                should_scan = True
+                is_auto_scan = True
+        else:
+            # Outside market hours (Night / Weekend / Holiday):
+            # NEVER auto-scan or scan on basket change. Only cached data is shown.
+            should_scan = False
+            is_auto_scan = False
+            if basket_changed:
+                st.toast("🌙 બજાર બંધ છે. પસંદ કરેલ બાસ્કેટ સ્કેન કરવા માટે '🚀 Scan Market Now' બટન દબાવો.", icon="ℹ️")
 
     if should_scan:
-        if "Custom Watchlist" in selected_basket:
-            tickers_to_scan = [s.strip() for s in custom_symbols_text.split(",") if s.strip()]
-        else:
-            tickers_to_scan = BASKETS.get(selected_basket, [])
+        st.session_state.is_screener_scanning = True
+        try:
+            # Pre-authenticate Fyers once on main thread before launching workers
+            try:
+                from core.fyers_auth import get_fyers_client
+                get_fyers_client()
+            except Exception:
+                pass
+
+            if "Custom Watchlist" in selected_basket:
+                tickers_to_scan = [s.strip() for s in custom_symbols_text.split(",") if s.strip()]
+            else:
+                tickers_to_scan = BASKETS.get(selected_basket, [])
+                
+            total = len(tickers_to_scan)
+            results = []
             
-        total = len(tickers_to_scan)
-        results = []
-        
-        if is_auto_scan:
-            with st.spinner(f"🔄 લાઈવ માર્કેટ સ્કેનર ઓટો-અપડેટ થઈ રહ્યું છે ({total} શેરો)..."):
-                with ThreadPoolExecutor(max_workers=10) as executor:
+            if is_auto_scan:
+                with st.spinner(f"🔄 લાઈવ માર્કેટ સ્કેનર ઓટો-અપડેટ થઈ રહ્યું છે ({total} શેરો)..."):
+                    with ThreadPoolExecutor(max_workers=5) as executor:
+                        future_to_stock = {executor.submit(scan_stock, sym): sym for sym in tickers_to_scan}
+                        for future in as_completed(future_to_stock):
+                            try:
+                                res = future.result(timeout=10)
+                                if res:
+                                    results.append(res)
+                            except Exception:
+                                pass
+            else:
+                progress_bar = st.progress(0, text="સ્કેનિંગ શરૂ થઈ રહ્યું છે...")
+                with ThreadPoolExecutor(max_workers=5) as executor:
                     future_to_stock = {executor.submit(scan_stock, sym): sym for sym in tickers_to_scan}
+                    completed = 0
                     for future in as_completed(future_to_stock):
+                        completed += 1
+                        progress_bar.progress(completed / total, text=f"સ્કેનિંગ પ્રગતિમાં છે... ({completed}/{total} શેરો પૂરા થયા)")
                         try:
-                            res = future.result()
+                            res = future.result(timeout=10)
                             if res:
                                 results.append(res)
                         except Exception:
                             pass
-        else:
-            progress_bar = st.progress(0, text="સ્કેનિંગ શરૂ થઈ રહ્યું છે...")
-            with ThreadPoolExecutor(max_workers=10) as executor:
-                future_to_stock = {executor.submit(scan_stock, sym): sym for sym in tickers_to_scan}
-                completed = 0
-                for future in as_completed(future_to_stock):
-                    completed += 1
-                    progress_bar.progress(completed / total, text=f"સ્કેનિંગ પ્રગતિમાં છે... ({completed}/{total} શેરો પૂરા થયા)")
-                    try:
-                        res = future.result()
-                        if res:
-                            results.append(res)
-                    except Exception:
-                        pass
-            progress_bar.empty()
-            
-        if results:
-            df_res = pd.DataFrame(results)
-            df_res = df_res.sort_values(by=["Score", "Change (%)"], ascending=[False, False])
-            st.session_state.screener_results = df_res
-            now_str = datetime.datetime.now().strftime("%I:%M:%S %p")
-            st.session_state.screener_last_updated = now_str
-            st.session_state.screener_last_scan_ts = time.time()
+                progress_bar.empty()
+                
+            if results:
+                df_res = pd.DataFrame(results)
+                df_res = df_res.sort_values(by=["Score", "Change (%)"], ascending=[False, False])
+                st.session_state.screener_results = df_res
+                now_str = datetime.datetime.now().strftime("%I:%M:%S %p")
+                st.session_state.screener_last_updated = now_str
+                st.session_state.screener_last_scan_ts = time.time()
 
-            # Save to screener_cache.json
-            try:
-                cache_obj = {
-                    "timestamp": now_str,
-                    "basket": selected_basket,
-                    "data": results
-                }
-                with open("screener_cache.json", "w", encoding="utf-8") as f:
-                    json.dump(cache_obj, f, indent=2, ensure_ascii=False, default=serialize_screener_data)
-            except Exception:
-                pass
+                # Save to screener_cache.json
+                try:
+                    cache_obj = {
+                        "timestamp": now_str,
+                        "basket": selected_basket,
+                        "data": results
+                    }
+                    with open("screener_cache.json", "w", encoding="utf-8") as f:
+                        json.dump(cache_obj, f, indent=2, ensure_ascii=False, default=serialize_screener_data)
+                except Exception:
+                    pass
 
-            if is_auto_scan:
-                st.toast(f"🔄 લાઈવ માર્કેટ સ્કેનર આપમેળે અપડેટ થયું! ({now_str})", icon="✅")
+                if is_auto_scan:
+                    st.toast(f"🔄 લાઈવ માર્કેટ સ્કેનર આપમેળે અપડેટ થયું! ({now_str})", icon="✅")
+                else:
+                    st.toast(f"✅ સફળતાપૂર્વક {len(results)} સ્ટોક્સનું મલ્ટી-ટાઇમફ્રેમ સ્કેનિંગ પૂરું થયું!", icon="🚀")
             else:
-                st.toast(f"✅ સફળતાપૂર્વક {len(results)} સ્ટોક્સનું મલ્ટી-ટાઇમફ્રેમ સ્કેનિંગ પૂરું થયું!", icon="🚀")
-        else:
-            if not is_auto_scan:
-                st.error("કોઈ સ્ટોકનો ડેટા મળ્યો નથી. કૃપા કરીને સિમ્બોલ ચકાસો.")
+                if not is_auto_scan:
+                    st.error("કોઈ સ્ટોકનો ડેટા મળ્યો નથી. કૃપા કરીને સિમ્બોલ ચકાસો.")
+        finally:
+            st.session_state.is_screener_scanning = False
 
     last_updated_str = st.session_state.get("screener_last_updated") or "તાજેતરનો ડેટા"
     if auto_update_enabled:
-        st.markdown(
-            f'<div style="display: flex; align-items: center; justify-content: space-between; background: rgba(16, 185, 129, 0.08); border: 1px solid rgba(16, 185, 129, 0.25); padding: 8px 16px; border-radius: 10px; margin-top: 10px; margin-bottom: 16px;">'
-            f'<div style="display: flex; align-items: center; gap: 10px;">'
-            f'<span style="display: inline-block; width: 10px; height: 10px; background: #10B981; border-radius: 50%; box-shadow: 0 0 10px #10B981;"></span>'
-            f'<span style="color: #34D399; font-weight: 700; font-size: 13.5px;">🟢 LIVE AUTO-UPDATE સક્રિય ({freq_choice})</span>'
-            f'<span style="color: #9CA3AF; font-size: 13px;">| બજારનો તાજો ડેટા આપમેળે રિફ્રેશ થઈ રહ્યો છે</span>'
-            f'</div>'
-            f'<div style="color: #E5E7EB; font-size: 13px; font-weight: 600;">છેલ્લું અપડેટ: <span style="color: #38BDF8; font-family: monospace; font-size: 14px;">{last_updated_str}</span></div>'
-            f'</div>',
-            unsafe_allow_html=True
-        )
+        if market_is_open:
+            st.markdown(
+                f'<div style="display: flex; align-items: center; justify-content: space-between; background: rgba(16, 185, 129, 0.08); border: 1px solid rgba(16, 185, 129, 0.25); padding: 8px 16px; border-radius: 10px; margin-top: 10px; margin-bottom: 16px;">'
+                f'<div style="display: flex; align-items: center; gap: 10px;">'
+                f'<span style="display: inline-block; width: 10px; height: 10px; background: #10B981; border-radius: 50%; box-shadow: 0 0 10px #10B981;"></span>'
+                f'<span style="color: #34D399; font-weight: 700; font-size: 13.5px;">🟢 LIVE AUTO-UPDATE સક્રિય ({freq_choice})</span>'
+                f'<span style="color: #9CA3AF; font-size: 13px;">| બજાર ચાલુ છે, ડેટા આપમેળે રિફ્રેશ થઈ રહ્યો છે</span>'
+                f'</div>'
+                f'<div style="color: #E5E7EB; font-size: 13px; font-weight: 600;">છેલ્લું અપડેટ: <span style="color: #38BDF8; font-family: monospace; font-size: 14px;">{last_updated_str}</span></div>'
+                f'</div>',
+                unsafe_allow_html=True
+            )
+        else:
+            st.markdown(
+                f'<div style="display: flex; align-items: center; justify-content: space-between; background: rgba(245, 158, 11, 0.08); border: 1px solid rgba(245, 158, 11, 0.25); padding: 8px 16px; border-radius: 10px; margin-top: 10px; margin-bottom: 16px;">'
+                f'<div style="display: flex; align-items: center; gap: 10px;">'
+                f'<span style="display: inline-block; width: 10px; height: 10px; background: #F59E0B; border-radius: 50%;"></span>'
+                f'<span style="color: #FBBF24; font-weight: 700; font-size: 13.5px;">⏸️ બજાર બંધ છે ({market_status_msg})</span>'
+                f'<span style="color: #9CA3AF; font-size: 13px;">| Auto-Update થોભાવેલ છે (સોમ-શુક્ર 09:15 થી 03:30 દરમિયાન આપોઆપ સક્રિય થશે)</span>'
+                f'</div>'
+                f'<div style="color: #E5E7EB; font-size: 13px; font-weight: 600;">છેલ્લો સંગ્રહિત ડેટા: <span style="color: #38BDF8; font-family: monospace; font-size: 14px;">{last_updated_str}</span></div>'
+                f'</div>',
+                unsafe_allow_html=True
+            )
     else:
         st.markdown(
             f'<div style="display: flex; align-items: center; justify-content: space-between; background: rgba(239, 68, 68, 0.08); border: 1px solid rgba(239, 68, 68, 0.2); padding: 8px 16px; border-radius: 10px; margin-top: 10px; margin-bottom: 16px;">'
@@ -1657,9 +1905,33 @@ with nav_tab_screener:
         
         if inspect_sym:
             with st.spinner(f"{inspect_sym} માટે કેન્ડલસ્ટિક ચાર્ટ લોડ થઈ રહ્યો છે..."):
-                t = yf.Ticker(inspect_sym)
-                q_df_1h = calculate_volume_analysis(calculate_trend_craft_ict(calculate_hilega_milega(t.history(period="1mo", interval="1h").dropna(subset=['Close', 'High', 'Low', 'Volume']))))
-                q_df_d = calculate_volume_analysis(calculate_trend_craft_ict(calculate_hilega_milega(t.history(period="1y", interval="1d").dropna(subset=['Close', 'High', 'Low', 'Volume']))))
+                q_df_d = None
+                q_df_1h = None
+                try:
+                    from core.charts import fetch_fyers_chart_df
+                    q_df_d = fetch_fyers_chart_df(inspect_sym, interval="D", days=180)
+                    q_df_1h = fetch_fyers_chart_df(inspect_sym, interval="1h", days=45)
+                except Exception:
+                    pass
+
+                if q_df_d is None or q_df_d.empty:
+                    try:
+                        t = yf.Ticker(inspect_sym)
+                        q_df_d = t.history(period="1y", interval="1d").dropna(subset=['Close', 'High', 'Low', 'Volume'])
+                    except Exception:
+                        q_df_d = pd.DataFrame()
+
+                if q_df_1h is None or q_df_1h.empty:
+                    try:
+                        t = yf.Ticker(inspect_sym)
+                        q_df_1h = t.history(period="1mo", interval="1h").dropna(subset=['Close', 'High', 'Low', 'Volume'])
+                    except Exception:
+                        q_df_1h = pd.DataFrame()
+
+                if not q_df_d.empty:
+                    q_df_d = calculate_volume_analysis(calculate_trend_craft_ict(calculate_hilega_milega(q_df_d)))
+                if not q_df_1h.empty:
+                    q_df_1h = calculate_volume_analysis(calculate_trend_craft_ict(calculate_hilega_milega(q_df_1h)))
                 
                 chart_col_tv, chart_col1, chart_col2 = st.tabs([
                     "📊 GGPATEL VIEW (ઇન્ટરેક્ટિવ)",
@@ -1676,12 +1948,31 @@ with nav_tab_screener:
                     if not q_df_d.empty:
                         c_d = plot_candlestick_triple_chart(q_df_d, title_prefix=f"{inspect_sym} Daily", lookback=100, is_hourly=False)
                         st.altair_chart(c_d, width="stretch")
+    else:
+        st.markdown(
+            """
+            <div style="background: linear-gradient(135deg, rgba(30, 41, 59, 0.7) 0%, rgba(15, 23, 42, 0.9) 100%);
+                        border: 1px dashed rgba(56, 189, 248, 0.35); border-radius: 14px; padding: 36px 24px; text-align: center; margin-top: 18px;">
+                <div style="font-size: 36px; margin-bottom: 12px;">🎯 🚀</div>
+                <h3 style="color: #F8FAFC; margin-bottom: 8px; font-weight: 700;">કોન્ફ્લુઅન્સ પ્રો માર્કેટ સ્કેનર તૈયાર છે</h3>
+                <p style="color: #94A3B8; font-size: 14px; max-width: 640px; margin: 0 auto 20px auto; line-height: 1.6;">
+                    બજારના ૧૮૧+ F&O સ્ટોક્સનું <b>4-Timeframe Confluence</b> (1-Hour + Daily + Weekly + Monthly), Hilega-Milega, VPA Volume અને R3 Option Radar સાથે લાઈવ એનાલિસિસ કરવા માટે ઉપરનું <b>"🚀 Scan Market Now"</b> બટન દબાવો.
+                </p>
+                <div style="display: inline-flex; gap: 12px; flex-wrap: wrap; justify-content: center;">
+                    <span style="background: rgba(56, 189, 248, 0.15); border: 1px solid rgba(56, 189, 248, 0.3); color: #38BDF8; padding: 6px 14px; border-radius: 20px; font-size: 12.5px; font-weight: 600;">⚡ FYERS API v3 સંચાલિત</span>
+                    <span style="background: rgba(16, 185, 129, 0.15); border: 1px solid rgba(16, 185, 129, 0.3); color: #34D399; padding: 6px 14px; border-radius: 20px; font-size: 12.5px; font-weight: 600;">🎯 6 મલ્ટીપલ સ્ટ્રેટેજી ફિલ્ટર્સ</span>
+                    <span style="background: rgba(245, 158, 11, 0.15); border: 1px solid rgba(245, 158, 11, 0.3); color: #FCD34D; padding: 6px 14px; border-radius: 20px; font-size: 12.5px; font-weight: 600;">🛡️ પ્રિસિઝન સ્ટોપલોસ & ટાર્ગેટ્સ</span>
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
 
 
 # =============================================================
 # TAB 2: HEIKIN ASHI TREND RIDER (BRIJESH BHATIA REVERSAL SYSTEM)
 # =============================================================
-with nav_tab_ha:
+if selected_module == "🚀 Heikin Ashi Trend Rider (બ્રિજેશ ભાટિયા)":
     ha_header_html = (
         '<div style="background: linear-gradient(135deg, rgba(30, 41, 59, 0.85) 0%, rgba(15, 23, 42, 0.95) 100%); '
         'border: 1px solid rgba(255,255,255,0.08); border-radius: 16px; padding: 22px 26px; margin-bottom: 22px; '
@@ -1766,9 +2057,17 @@ with nav_tab_ha:
     elif "Weekly" in ha_timeframe:
         tf_str = "Weekly"
 
-    if "ha_screener_results" not in st.session_state:
+    if "ha_screener_results" not in st.session_state or st.session_state.ha_screener_results is None:
         st.session_state.ha_screener_results = None
         st.session_state.ha_screener_filter = "ALL"
+        st.session_state.ha_loaded_from_snapshot = None
+        try:
+            latest_snaps = load_scan_snapshots(strategy="Heikin Ashi Trend Rider")
+            if latest_snaps and len(latest_snaps) > 0:
+                st.session_state.ha_screener_results = latest_snaps[0].get("stocks", [])
+                st.session_state.ha_loaded_from_snapshot = latest_snaps[0].get("scan_date", "")
+        except Exception:
+            pass
 
     if start_ha_scan:
         if "Custom Watchlist" in ha_selected_basket:
@@ -1781,9 +2080,14 @@ with nav_tab_ha:
         else:
             progress_bar = st.progress(0, text="🔍 હાઇકિન-આશી અને ડોન્ચિયન સ્કેનિંગ ચાલુ છે...")
             results_ha = []
-            from concurrent.futures import ThreadPoolExecutor, as_completed
+            # Pre-authenticate Fyers once on main thread before launching workers
+            try:
+                from core.fyers_auth import get_fyers_client
+                get_fyers_client()
+            except Exception:
+                pass
             
-            with ThreadPoolExecutor(max_workers=10) as executor:
+            with ThreadPoolExecutor(max_workers=5) as executor:
                 future_map = {
                     executor.submit(scan_heikin_ashi_stock, s, ha_min_red, tf_str): s 
                     for s in ha_symbols_to_scan
@@ -1791,23 +2095,29 @@ with nav_tab_ha:
                 completed_count = 0
                 total_s = len(future_map)
                 for f in as_completed(future_map):
-                    res = f.result()
-                    if res:
-                        results_ha.append(res)
                     completed_count += 1
                     progress_bar.progress(completed_count / total_s, text=f"🔍 સ્કેનિંગ: {completed_count}/{total_s} પૂર્ણ...")
+                    try:
+                        res = f.result(timeout=10)
+                        if res:
+                            results_ha.append(res)
+                    except Exception:
+                        pass
                     
             progress_bar.empty()
             
             if results_ha:
                 results_ha.sort(key=lambda x: (x['priority'], -x['red_count']))
                 st.session_state.ha_screener_results = results_ha
+                st.session_state.ha_loaded_from_snapshot = None
                 st.toast(f"✅ {len(results_ha)} સ્ટોક્સનું હાઇકિન-આશી સ્કેનિંગ પૂર્ણ થયું!", icon="🚀")
             else:
                 st.error("કોઈ સ્ટોકનો ડેટા મળ્યો નથી.")
 
     # Render Results if available
     if st.session_state.ha_screener_results:
+        if st.session_state.get("ha_loaded_from_snapshot"):
+            st.info(f"💾 **છેલ્લા સેવ કરેલ સ્કેનનો ડેટા ({st.session_state.ha_loaded_from_snapshot}) લોડ કરેલ છે.** આજના તાજા લાઈવ સ્કેન માટે ઉપર આપેલ લીલું **'🚀 Scan Reversals'** બટન દબાવો.")
         all_ha_res = st.session_state.ha_screener_results
         
         c_fresh = [r for r in all_ha_res if r['priority'] == 1]
@@ -1922,11 +2232,31 @@ with nav_tab_ha:
                         "stock_count": len(filtered_ha),
                         "stocks": filtered_ha
                     })
-                    st.toast(f"✅ {len(filtered_ha)} સ્ટોક્સનું Snapshot '{now_str}' તારીખ સાથે ડેટાબેઝમાં સેવ થઈ ગયું!", icon="💾")
+                    st.session_state.ha_last_saved_snapshot_id = snap_id
+                    st.toast(f"✅ {len(filtered_ha)} સ્ટોક્સનું Snapshot '{now_str}' તારીખ સાથે સેવ થઈ ગયું!", icon="💾")
                     st.rerun()
 
             with col_act2:
-                csv_bytes = df_display.to_csv(index=False).encode('utf-8')
+                # Prepare clean Excel-friendly CSV with BOM (utf-8-sig) to eliminate garbled characters in MS Excel
+                csv_rows = []
+                for item in filtered_ha:
+                    clean_status = item.get('status', '')
+                    for emoji_char in ["🚀 ", "👀 ", "📉 ", "🟢 ", "🔴 "]:
+                        clean_status = clean_status.replace(emoji_char, "")
+                    clean_trend = "Bullish" if item.get('weekly_bullish') else "Bearish"
+                    csv_rows.append({
+                        "Stock": item.get('symbol', ''),
+                        "LTP (₹)": round(float(item.get('price', 0)), 2),
+                        "Change %": round(float(item.get('change', 0)), 2),
+                        "Status": clean_status,
+                        "Red Candles": int(item.get('red_count', 0)),
+                        "Donchian SL (₹)": round(float(item.get('stop_loss', 0)), 2),
+                        "Risk %": round(float(item.get('risk_pct', 0)), 1),
+                        "Vol Ratio": round(float(item.get('vol_ratio', 1)), 2),
+                        "Weekly Trend": clean_trend
+                    })
+                df_clean_csv = pd.DataFrame(csv_rows)
+                csv_bytes = df_clean_csv.to_csv(index=False).encode('utf-8-sig')
                 csv_filename = f"HeikinAshi_{curr_ha_filter}_{datetime.datetime.now().strftime('%Y%m%d_%H%M')}.csv"
                 st.download_button(
                     label=f"📥 Download Excel / CSV",
@@ -2034,9 +2364,20 @@ with nav_tab_ha:
         
         c_snap_sel, c_snap_del = st.columns([4, 1.2])
         with c_snap_sel:
+            default_snap_idx = 0
+            if "ha_last_saved_snapshot_id" in st.session_state:
+                for idx, s in enumerate(saved_snaps):
+                    if s["id"] == st.session_state.ha_last_saved_snapshot_id:
+                        default_snap_idx = idx
+                        break
+            # Ensure chosen index is within bounds of saved_snaps
+            if "ha_hist_snap_select" in st.session_state:
+                if st.session_state.ha_hist_snap_select >= len(saved_snaps):
+                    st.session_state.ha_hist_snap_select = 0
             chosen_snap_idx = st.selectbox(
                 "તપાસવા માટે જૂનો સ્કેન પસંદ કરો:",
                 options=range(len(saved_snaps)),
+                index=default_snap_idx,
                 format_func=lambda i: snap_labels[i],
                 key="ha_hist_snap_select"
             )
@@ -2074,59 +2415,83 @@ with nav_tab_ha:
             
         if btn_eval:
             with st.spinner(f"⏳ {len(snap_stocks)} સ્ટોક્સના આજના લાઈવ ભાવ મેળવી પરફોર્મન્સ કેલ્ક્યુલેટ થઈ રહ્યું છે..."):
+                # 1. Try batch fetching quotes from Fyers API (instant, ~1s for all 175 stocks)
+                live_prices = {}
+                try:
+                    from core.fyers_auth import get_fyers_client, safe_fyers_quotes
+                    ok_f, fyers_c = get_fyers_client()
+                    if ok_f and fyers_c:
+                        all_symbols = [s.get("symbol", "").replace(".NS", "").strip().upper() for s in snap_stocks]
+                        chunk_size = 40
+                        for i in range(0, len(all_symbols), chunk_size):
+                            chunk = all_symbols[i:i+chunk_size]
+                            fyers_sym_list = []
+                            for sym in chunk:
+                                b_sym = sym
+                                if b_sym == "GMRINFRA": b_sym = "GMRAIRPORT"
+                                elif b_sym in ["MCDOWELL-N", "MCDOWELL_N"]: b_sym = "UNITDSPR"
+                                fyers_sym_list.append(f"NSE:{b_sym}-EQ")
+                            q_resp = safe_fyers_quotes(fyers_c, {"symbols": ",".join(fyers_sym_list)})
+                            if isinstance(q_resp, dict) and q_resp.get("s") == "ok":
+                                for item in q_resp.get("d", []):
+                                    v = item.get("v", {})
+                                    lp = v.get("lp") or v.get("cmd", {}).get("c")
+                                    if lp:
+                                        raw_n = item.get("n", "").replace("NSE:", "").replace("-EQ", "")
+                                        live_prices[raw_n] = float(lp)
+                                        if raw_n == "GMRAIRPORT": live_prices["GMRINFRA"] = float(lp)
+                                        if raw_n == "UNITDSPR": live_prices["MCDOWELL-N"] = float(lp)
+                except Exception:
+                    pass
+
                 def fetch_perf_item(item):
-                    sym = item.get("symbol", "")
-                    full_s = f"{sym}.NS" if not sym.endswith(".NS") else sym
+                    sym = item.get("symbol", "").replace(".NS", "").strip().upper()
+                    full_s = f"{sym}.NS"
                     entry_p = float(item.get("price", 0))
                     sl_val = float(item.get("stop_loss", entry_p * 0.95))
-                    try:
-                        tkr = yf.Ticker(full_s)
-                        h = tkr.history(period="5d", interval="1d")
-                        if not h.empty:
-                            curr_p = float(h['Close'].iloc[-1])
-                            chg_pts = curr_p - entry_p
-                            ret_pct = (chg_pts / entry_p) * 100 if entry_p > 0 else 0
-                            
-                            is_sl_hit = (curr_p <= sl_val)
-                            risk_amt = entry_p - sl_val if entry_p > sl_val else entry_p * 0.02
-                            target_2r = entry_p + (2.0 * risk_amt)
-                            is_target_hit = (curr_p >= target_2r)
-                            
-                            if is_target_hit:
-                                outcome = "🎉 TARGET 1:2+ HIT"
-                            elif ret_pct >= 2.0:
-                                outcome = "🟢 નફામાં (Profitable)"
-                            elif is_sl_hit:
-                                outcome = "🚨 DONCHIAN SL HIT"
-                            elif ret_pct < 0:
-                                outcome = "🟡 પુલબેક (SL બચેલો)"
-                            else:
-                                outcome = "⚪ ફ્લેટ / રેન્જમાં"
-                                
-                            return {
-                                "Stock": sym,
-                                "સ્કેન વખતે ભાવ": entry_p,
-                                "આજનો લાઈવ ભાવ": curr_p,
-                                "રીટર્ન (%)": ret_pct,
-                                "Donchian SL": sl_val,
-                                "પરિણામ (Outcome)": outcome,
-                                "is_profit": ret_pct > 0,
-                                "is_sl": is_sl_hit
-                            }
-                    except Exception:
-                        pass
+                    curr_p = live_prices.get(sym)
+                    if curr_p is None:
+                        try:
+                            tkr = yf.Ticker(full_s)
+                            h = tkr.history(period="5d", interval="1d")
+                            if not h.empty:
+                                curr_p = float(h['Close'].iloc[-1])
+                        except Exception:
+                            pass
+                    if curr_p is None:
+                        curr_p = entry_p
+
+                    chg_pts = curr_p - entry_p
+                    ret_pct = (chg_pts / entry_p) * 100 if entry_p > 0 else 0
+                    
+                    is_sl_hit = (curr_p <= sl_val)
+                    risk_amt = entry_p - sl_val if entry_p > sl_val else entry_p * 0.02
+                    target_2r = entry_p + (2.0 * risk_amt)
+                    is_target_hit = (curr_p >= target_2r)
+                    
+                    if is_target_hit:
+                        outcome = "🎉 TARGET 1:2+ HIT"
+                    elif ret_pct >= 2.0:
+                        outcome = "🟢 નફામાં (Profitable)"
+                    elif is_sl_hit:
+                        outcome = "🚨 DONCHIAN SL HIT"
+                    elif ret_pct < 0:
+                        outcome = "🟡 પુલબેક (SL બચેલો)"
+                    else:
+                        outcome = "⚪ ફ્લેટ / રેન્જમાં"
+                        
                     return {
                         "Stock": sym,
                         "સ્કેન વખતે ભાવ": entry_p,
-                        "આજનો લાઈવ ભાવ": entry_p,
-                        "રીટર્ન (%)": 0.0,
+                        "આજનો લાઈવ ભાવ": curr_p,
+                        "રીટર્ન (%)": ret_pct,
                         "Donchian SL": sl_val,
-                        "પરિણામ (Outcome)": "⚪ ડેટા લોડિંગ",
-                        "is_profit": False,
-                        "is_sl": False
+                        "પરિણામ (Outcome)": outcome,
+                        "is_profit": ret_pct > 0,
+                        "is_sl": is_sl_hit
                     }
                 
-                with ThreadPoolExecutor(max_workers=8) as ex:
+                with ThreadPoolExecutor(max_workers=5) as ex:
                     perf_results = list(ex.map(fetch_perf_item, snap_stocks))
                     
                 st.session_state[eval_key] = perf_results
@@ -2170,7 +2535,7 @@ with nav_tab_ha:
             st.dataframe(perf_df, use_container_width=True, hide_index=True)
             
             with c_ev_down:
-                eval_csv = perf_df.to_csv(index=False).encode('utf-8')
+                eval_csv = perf_df.to_csv(index=False).encode('utf-8-sig')
                 st.download_button(
                     label=f"📥 Download Report (CSV)",
                     data=eval_csv,
@@ -2181,7 +2546,13 @@ with nav_tab_ha:
                 )
         else:
             raw_table = []
+            clean_raw_csv_rows = []
             for item in snap_stocks:
+                clean_stat = item.get('status', '-')
+                for emoji_char in ["🚀 ", "👀 ", "📉 ", "🟢 ", "🔴 "]:
+                    clean_stat = clean_stat.replace(emoji_char, "")
+                clean_trend = "Bullish" if item.get('weekly_bullish') else "Bearish"
+
                 raw_table.append({
                     "Stock": item.get('symbol', '-'),
                     "સ્કેન વખતનો ભાવ": f"₹{float(item.get('price', 0)):.2f}",
@@ -2192,9 +2563,19 @@ with nav_tab_ha:
                     "Risk %": f"{float(item.get('risk_pct', 0)):.1f}%",
                     "Weekly Trend": "🟢 Bullish" if item.get('weekly_bullish') else "🔴 Bearish"
                 })
+                clean_raw_csv_rows.append({
+                    "Stock": item.get('symbol', '-'),
+                    "સ્કેન વખતનો ભાવ (₹)": round(float(item.get('price', 0)), 2),
+                    "Change %": round(float(item.get('change', 0)), 2),
+                    "Status": clean_stat,
+                    "Red Candles": int(item.get('red_count', 0)),
+                    "Donchian SL (₹)": round(float(item.get('stop_loss', 0)), 2),
+                    "Risk %": round(float(item.get('risk_pct', 0)), 1),
+                    "Weekly Trend": clean_trend
+                })
             st.dataframe(pd.DataFrame(raw_table), use_container_width=True, hide_index=True)
             with c_ev_down:
-                raw_csv = pd.DataFrame(raw_table).to_csv(index=False).encode('utf-8')
+                raw_csv = pd.DataFrame(clean_raw_csv_rows).to_csv(index=False).encode('utf-8-sig')
                 st.download_button(
                     label=f"📥 Download Snapshot (CSV)",
                     data=raw_csv,
@@ -2207,7 +2588,7 @@ with nav_tab_ha:
 # =============================================================
 # TAB 3: SINGLE STOCK DEEP CANDLESTICK ANALYSIS
 # =============================================================
-with nav_tab_single:
+if selected_module == "🕯️ Single Stock (ડીપ કેન્ડલસ્ટિક ચાર્ટ્સ)":
     st.subheader("🕯️ સિંગલ સ્ટોક ડીપ કેન્ડલસ્ટિક એનાલિસિસ (Cockpit View)")
     col_in, col_btn = st.columns([3, 1])
     with col_in:
@@ -2554,7 +2935,7 @@ with nav_tab_single:
 # =============================================================
 # TAB 3: MY ACTIVE TRADES & RISK GUARDIAN (AUTO-EXIT WATCHDOG)
 # =============================================================
-with nav_tab_guardian:
+if selected_module == "🛡️ Risk Guardian (લાઈવ પોઝિશન & મોનિટર)":
     guardian_header_html = (
         '<div style="background: linear-gradient(135deg, rgba(30, 41, 59, 0.8) 0%, rgba(15, 23, 42, 0.95) 100%); '
         'border: 1px solid rgba(255,255,255,0.08); border-radius: 16px; padding: 20px 24px; margin-bottom: 22px; '
@@ -3151,7 +3532,7 @@ def fetch_index_data_for_melting(symbol):
     except Exception:
         return None, None
 
-with nav_tab_melting:
+if selected_module == "🎯 Melting Straddles (ડૉ. ગાંગુલી 0DTE)":
     melting_header_html = (
         '<div style="background: linear-gradient(135deg, rgba(20, 30, 48, 0.95) 0%, rgba(15, 23, 42, 0.98) 100%); '
         'border: 1px solid rgba(255,255,255,0.08); border-radius: 16px; padding: 22px 26px; margin-bottom: 20px; '
@@ -3591,7 +3972,7 @@ with nav_tab_melting:
 # =============================================================
 # TAB 6: HISTORICAL STRATEGY BACKTESTER & WIN-RATE VERIFIER
 # =============================================================
-with nav_tab_backtest:
+if selected_module == "🧪 Strategy Backtester (વિન-રેટ ચકાસો)":
     backtest_header_html = (
         '<div style="background: linear-gradient(135deg, rgba(30, 41, 59, 0.9) 0%, rgba(15, 23, 42, 0.95) 100%); '
         'border: 1px solid rgba(255,255,255,0.08); border-radius: 14px; padding: 18px 24px; margin-bottom: 20px;">'

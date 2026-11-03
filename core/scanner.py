@@ -8,7 +8,7 @@ import pandas as pd
 import numpy as np
 
 from .config import (
-    DEFAULT_WATCHLIST, STATE_FILE, ACTIVE_TRADES_FILE,
+    DEFAULT_WATCHLIST, INDEX_WATCHLIST, STATE_FILE, ACTIVE_TRADES_FILE,
     get_ist_now, is_market_open, ENFORCE_MARKET_HOURS
 )
 from .database import load_active_trades, load_alert_state, save_alert_state
@@ -21,6 +21,21 @@ from .indicators import (
     calculate_daily_pivot_points,
     calculate_heikin_ashi,
     calculate_donchian_channel
+)
+from .option_r3_engine import (
+    build_option_contract,
+    analyze_option_r3_setup,
+    TOP_MOMENTUM_FNO_BASKET,
+    is_index_symbol,
+    normalize_symbol_and_exchange
+)
+from .earnings_filter import check_earnings_blackout
+from .option_seller_engine import (
+    calculate_hybrid_option_selling_strikes,
+    check_dead_consolidation_rules,
+    monitor_option_seller_defense,
+    format_option_selling_setup_alert,
+    format_overnight_health_check_alert
 )
 from .alerts import (
     send_telegram_alert,
@@ -39,14 +54,21 @@ def analyze_stock(sym):
     Returns dictionary with signals, price, targets, stops, pivots, and Heikin Ashi data.
     """
     try:
+        is_index = is_index_symbol(sym)
         t = yf.Ticker(sym)
-        df_d = t.history(period="1y", interval="1d").dropna(subset=['Close', 'High', 'Low', 'Volume'])
-        df_w = t.history(period="3y", interval="1wk").dropna(subset=['Close', 'High', 'Low', 'Volume'])
-        df_m = t.history(period="5y", interval="1mo").dropna(subset=['Close', 'High', 'Low', 'Volume'])
-        df_1h = t.history(period="1mo", interval="1h").dropna(subset=['Close', 'High', 'Low', 'Volume'])
+        subset_cols = ['Close', 'High', 'Low'] if is_index else ['Close', 'High', 'Low', 'Volume']
+        df_d = t.history(period="1y", interval="1d").dropna(subset=subset_cols)
+        df_w = t.history(period="3y", interval="1wk").dropna(subset=subset_cols)
+        df_m = t.history(period="5y", interval="1mo").dropna(subset=subset_cols)
+        df_1h = t.history(period="1mo", interval="1h").dropna(subset=subset_cols)
         
         if df_d.empty or len(df_d) < 30 or df_1h.empty:
             return None
+            
+        if is_index:
+            for df_item in [df_d, df_w, df_m, df_1h]:
+                if 'Volume' not in df_item.columns or df_item['Volume'].sum() == 0:
+                    df_item['Volume'] = 1_000_000
             
         df_m = calculate_volume_analysis(calculate_trend_craft_ict(calculate_hilega_milega(df_m), 24))
         df_w = calculate_volume_analysis(calculate_trend_craft_ict(calculate_hilega_milega(df_w), 30))
@@ -89,9 +111,9 @@ def analyze_stock(sym):
         h1_bear_gap = h1_curr['Red_WMA21'] - h1_curr['Green_EMA3']
         h1_prev_bear_gap = h1_prev['Red_WMA21'] - h1_prev['Green_EMA3']
         
-        # 1H Institutional Volume (VPA >= 1.2x)
+        # 1H Institutional Volume (VPA >= 1.2x, auto-confirmed for Index)
         h1_vol_ratio = h1_curr['Vol_Ratio'] if pd.notna(h1_curr['Vol_Ratio']) else 1.0
-        h1_vol_confirmed = h1_vol_ratio >= 1.2
+        h1_vol_confirmed = True if is_index else (h1_vol_ratio >= 1.2)
         
         # Bullish Rocket Confluence
         h1_is_vertical_up = (h1_green_slope >= 1.8) or (h1_two_bar_green_slope >= 3.0)
@@ -154,12 +176,23 @@ def analyze_stock(sym):
             t2 = curr_p + (2.5 * risk)
             t1_pct = ((t1 - curr_p) / curr_p) * 100
             t2_pct = ((t2 - curr_p) / curr_p) * 100
-            ce_strike = round(curr_p * 1.005 / strike_step) * strike_step
-            pe_strike = min(d_curr['TC_SMA_Low'], curr_p * 0.975)
+            # Compute Hybrid Outer Strikes (TC Band + Bollinger Bands) & Overnight Wings
+            seller_strikes = calculate_hybrid_option_selling_strikes(sym, curr_p, df_d)
+            earnings_info = check_earnings_blackout(sym, blackout_days=10)
+            dead_rules = check_dead_consolidation_rules(df_d, df_w, df_m)
+            is_dead_consolidation = dead_rules.get("passes_all", False)
+            is_earnings_blackout = earnings_info.get("is_blackout", False)
+
+            ce_strike = seller_strikes["ce_sell_strike"]
+            pe_strike = seller_strikes["pe_sell_strike"]
+            wing_ce_strike = seller_strikes["wing_ce_strike"]
+            wing_pe_strike = seller_strikes["wing_pe_strike"]
             
             is_1h_bull = (h1_curr['Green_EMA3'] > h1_curr['Red_WMA21']) and (h1_curr['Close'] > h1_curr['TC_SMA_High'])
             if is_sniper_buy:
                 signal = "🎯 SNIPER DIP BUY (Confirmed)"
+            elif is_dead_consolidation and not is_earnings_blackout:
+                signal = "⚖️ OPTION SELLING (Dead Box)"
             elif d_is_positive and not is_sniper_buy:
                 signal = "🎯 BUY ON DIPS (Wait for 1H)"
             elif d_is_negative and not is_sniper_short:
@@ -176,22 +209,100 @@ def analyze_stock(sym):
         # Daily Pivots & R3 Option Radar
         pivots = calculate_daily_pivot_points(df_d)
         is_r3_radar = False
-        otm_call_strike = round(curr_p * 1.015 / strike_step) * strike_step
-        if otm_call_strike <= curr_p:
-            otm_call_strike = (int(curr_p / strike_step) + 1) * strike_step
         r1_val, r2_val, r3_val, p_val = 0.0, 0.0, 0.0, 0.0
+        
+        # Build exact Option Contract details (e.g. 'DLF 26 NOV 700 CE')
+        opt_info = build_option_contract(sym, curr_p, "CE")
+        opt_contract_name = opt_info["contract_name"]
+        opt_fyers_symbol = opt_info["fyers_symbol"]
+        otm_call_strike = opt_info["strike"]
         
         if pivots:
             p_val = pivots['p']
             r1_val = pivots['r1']
             r2_val = pivots['r2']
             r3_val = pivots['r3']
-            otm_call_strike = int((int(curr_p / strike_step) + 1) * strike_step)
             is_r3_radar = bool(
                 (pct_chg >= 1.5 or curr_p >= r2_val) and
                 (curr_p >= r1_val) and
                 (d_hm_bull or pct_chg >= 2.0)
             )
+
+        # 15-Minute Sweet Spot RSI & Candle Rejection Analysis (for candidate setups)
+        m15_rsi = float(h1_curr['RSI_9'])
+        m15_prev_rsi = float(h1_prev['RSI_9'])
+        m15_rsi_slope = round(m15_rsi - m15_prev_rsi, 2)
+        m15_vol_ratio = h1_vol_ratio
+        is_15m_wick_rejected = False
+        
+        is_candidate = bool(is_sniper_buy or is_r3_radar or (curr_p >= r1_val) or (pct_chg >= 0.8))
+        if is_candidate:
+            try:
+                df_15m = t.history(period="5d", interval="15m").dropna(subset=subset_cols)
+                if df_15m is not None and not df_15m.empty and len(df_15m) >= 20:
+                    if is_index and ('Volume' not in df_15m.columns or df_15m['Volume'].sum() == 0):
+                        df_15m['Volume'] = 1_000_000
+                    df_15m = calculate_volume_analysis(calculate_hilega_milega(df_15m))
+                    c_15m = df_15m.iloc[-1]
+                    p_15m = df_15m.iloc[-2]
+                    m15_rsi = float(c_15m.get('RSI_9', 50.0))
+                    m15_prev_rsi = float(p_15m.get('RSI_9', 50.0))
+                    m15_rsi_slope = round(m15_rsi - m15_prev_rsi, 2)
+                    m15_vol_ratio = float(c_15m.get('Vol_Ratio', 1.0))
+                    
+                    # Upper wick rejection check (Rejection at R2/R3 barrier)
+                    c_h = float(c_15m['High'])
+                    c_l = float(c_15m['Low'])
+                    c_o = float(c_15m['Open'])
+                    c_c = float(c_15m['Close'])
+                    total_bar_span = c_h - c_l
+                    upper_wick = c_h - max(c_o, c_c)
+                    if total_bar_span > 0:
+                        wick_ratio = upper_wick / total_bar_span
+                        # If more than 45% of candle is a rejected upper wick, it's a trap!
+                        if wick_ratio >= 0.45 and c_c < r2_val:
+                            is_15m_wick_rejected = True
+            except Exception:
+                pass
+
+        # Golden RSI Sweet Spot Filter (58 to 74 with Positive Slope & No Upper Wick Rejection)
+        vol_sweet_confirmed = True if is_index else (m15_vol_ratio >= 1.2 or h1_vol_ratio >= 1.3)
+        is_r3_rsi_confirmed = bool(
+            (58.0 <= m15_rsi <= 74.0) and
+            (m15_rsi_slope >= -0.5) and
+            (not is_15m_wick_rejected) and
+            vol_sweet_confirmed
+        )
+
+        # Deep Option R3 Analysis (Always run for any bullish or sniper setup)
+        opt_ltp = 0.0
+        opt_r3_val = 0.0
+        is_option_r3_crossed = False
+        if is_candidate:
+            try:
+                opt_analysis = analyze_option_r3_setup(
+                    symbol=sym,
+                    spot_price=curr_p,
+                    spot_pct_change=pct_chg,
+                    spot_is_bullish=d_is_positive,
+                    spot_is_1h_confirmed=is_sniper_buy,
+                    spot_prev_high=float(d_prev['High']),
+                    spot_prev_low=float(d_prev['Low']),
+                    spot_prev_close=float(d_prev['Close']),
+                    spot_r1=r1_val,
+                    spot_r2=r2_val,
+                    spot_r3=r3_val
+                )
+                if opt_analysis:
+                    opt_ltp = opt_analysis.get("opt_ltp", 0.0)
+                    opt_r3_val = opt_analysis.get("opt_r3", 0.0)
+                    is_option_r3_crossed = opt_analysis.get("is_option_r3_crossed", False)
+                    if is_option_r3_crossed:
+                        is_r3_radar = True
+            except Exception:
+                pass
+        
+        is_gamma_blast = opt_analysis.get("is_gamma_blast", False) if opt_analysis else opt_info.get("is_gamma_blast", False)
 
         # Heikin Ashi Brijesh Bhatia System
         ha_d = calculate_heikin_ashi(df_d)
@@ -218,8 +329,13 @@ def analyze_stock(sym):
             ha_donchian_sl = curr_p * 0.96
         ha_risk_pct = ((curr_p - ha_donchian_sl) / curr_p) * 100
 
+        clean_sym, _, display_name = normalize_symbol_and_exchange(sym)
+        s_display = display_name if is_index else sym.replace(".NS", "")
         return {
-            "symbol": sym.replace(".NS", ""),
+            "symbol": s_display,
+            "raw_symbol": sym,
+            "is_index": is_index,
+            "is_gamma_blast": is_gamma_blast,
             "price": curr_p,
             "change": pct_chg,
             "signal": signal,
@@ -234,12 +350,27 @@ def analyze_stock(sym):
             "risk_pct": risk_pct,
             "pe_strike": pe_strike,
             "ce_strike": ce_strike,
+            "wing_ce_strike": wing_ce_strike,
+            "wing_pe_strike": wing_pe_strike,
+            "is_dead_consolidation": is_dead_consolidation,
+            "is_earnings_blackout": is_earnings_blackout,
+            "earnings_badge": earnings_info.get("status_badge", "🟢 SAFE"),
             "is_r3_radar": is_r3_radar,
             "otm_call_strike": otm_call_strike,
             "r1": r1_val,
             "r2": r2_val,
             "r3": r3_val,
             "pivot_p": p_val,
+            "opt_contract_name": opt_contract_name,
+            "opt_fyers_symbol": opt_fyers_symbol,
+            "opt_ltp": opt_ltp,
+            "opt_r3": opt_r3_val,
+            "is_option_r3_crossed": is_option_r3_crossed,
+            "rsi_15m": round(m15_rsi, 1),
+            "rsi_15m_slope": round(m15_rsi_slope, 1),
+            "is_r3_rsi_confirmed": is_r3_rsi_confirmed,
+            "is_15m_wick_rejected": is_15m_wick_rejected,
+            "vol_15m": round(m15_vol_ratio, 1),
             "ha_reversal_buy": ha_reversal_buy,
             "ha_red_count": ha_red_count,
             "ha_donchian_sl": ha_donchian_sl,
@@ -569,7 +700,7 @@ def run_scan_cycle(force=False, watchlist=None):
     Checks market hours, monitors active trades, and dispatches Telegram alerts.
     """
     if watchlist is None:
-        watchlist = DEFAULT_WATCHLIST
+        watchlist = INDEX_WATCHLIST + DEFAULT_WATCHLIST
         
     if ENFORCE_MARKET_HOURS and not force:
         is_open, reason = is_market_open()
@@ -603,28 +734,28 @@ def run_scan_cycle(force=False, watchlist=None):
         is_buy = "BUY" in curr_sig or "BULLISH" in curr_sig
         is_sell = "SELL" in curr_sig or "AVOID" in curr_sig
         
-        # 0. R3 Option Breakout
+        # 0. R3 Option Breakout / 100% Confirmed Buy Alert (Fires when Option crosses R3 + RSI Sweet Spot confirmed)
+        r3_confirmed_key = f"{s_name}_R3_CONFIRMED_{today_str}"
+        is_r3_confirmed = bool(
+            (is_sniper_buy or "STRONG BUY" in curr_sig) and
+            (res.get('is_option_r3_crossed') or res.get('is_r3_radar') or (res['price'] >= res.get('r1', 0))) and
+            res.get('is_r3_rsi_confirmed', True)
+        )
+        if is_r3_confirmed and not state.get(r3_confirmed_key):
+            confirmed_alert_text = format_100_confirmed_buy_alert(res)
+            print(f"Sending 100% CONFIRMED BUY (OPTION R3 CROSSED) alert for {s_name}")
+            send_telegram_alert(confirmed_alert_text)
+            state[r3_confirmed_key] = True
+            new_alerts.append(f"{s_name}: 100% CONFIRMED BUY")
+
+        # 0.1 Standalone Option R3 Breakout
         r3_alert_key = f"{s_name}_R3_{today_str}"
-        if res.get('is_r3_radar') and not state.get(r3_alert_key):
+        if (res.get('is_option_r3_crossed') or res.get('is_r3_radar')) and res.get('is_r3_rsi_confirmed', True) and not state.get(r3_alert_key) and not is_r3_confirmed:
             alert_text = format_r3_radar_alert(res)
             print(f"Sending R3 OPTION RADAR alert for {s_name}")
             send_telegram_alert(alert_text)
             state[r3_alert_key] = True
             new_alerts.append(f"{s_name}: R3 OPTION RADAR")
-
-        # 0.1 100% Confirmed Buy
-        is_r3_confirmed = bool(
-            res.get('is_r3_radar') and 
-            (is_sniper_buy or "STRONG BUY" in curr_sig) and
-            (res['price'] >= res.get('r1', 0))
-        )
-        r3_confirmed_key = f"{s_name}_R3_CONFIRMED_{today_str}"
-        if is_r3_confirmed and not state.get(r3_confirmed_key):
-            confirmed_alert_text = format_100_confirmed_buy_alert(res)
-            print(f"Sending 100% CONFIRMED BUY alert for {s_name}")
-            send_telegram_alert(confirmed_alert_text)
-            state[r3_confirmed_key] = True
-            new_alerts.append(f"{s_name}: 100% CONFIRMED BUY")
 
         # 0.2 Heikin Ashi Reversal Buy
         ha_alert_key = f"{s_name}_HA_REVERSAL_{today_str}"
@@ -635,33 +766,20 @@ def run_scan_cycle(force=False, watchlist=None):
             state[ha_alert_key] = True
             new_alerts.append(f"{s_name}: HEIKIN ASHI REVERSAL")
 
-        # 1. Fresh Sniper Short
-        if is_sniper_short and (prev_sig != curr_sig):
-            alert_text = format_sniper_short_alert(res)
-            print(f"Sending SNIPER SHORT alert for {s_name}")
-            send_telegram_alert(alert_text)
-            new_alerts.append(f"{s_name}: SNIPER SHORT")
-            
-        # 2. Fresh Sniper Buy
-        elif is_sniper_buy and (prev_sig != curr_sig):
+        # 1. Confirmed Sniper Buy (Includes exact OTM Call Strike & Option R3 level)
+        if is_sniper_buy and (prev_sig != curr_sig) and not state.get(r3_confirmed_key):
             alert_text = format_sniper_buy_alert(res)
             print(f"Sending SNIPER BUY alert for {s_name}")
             send_telegram_alert(alert_text)
             new_alerts.append(f"{s_name}: SNIPER BUY")
-            
-        # 3. General Bullish
-        elif is_buy and (prev_sig != curr_sig):
-            alert_text = format_general_buy_alert(res)
-            print(f"Sending BUY alert for {s_name}: {curr_sig}")
-            send_telegram_alert(alert_text)
-            new_alerts.append(f"{s_name}: {curr_sig}")
-            
-        # 4. Exit Alert
-        elif is_sell and prev_sig and ("BUY" in prev_sig or "BULLISH" in prev_sig) and not is_sniper_short:
-            alert_text = format_exit_alert(res)
-            print(f"Sending EXIT alert for {s_name}")
-            send_telegram_alert(alert_text)
-            new_alerts.append(f"{s_name}: EXIT")
+
+        # NOTE: Unconfirmed "BUY ON DIPS (Wait for 1H)" and general weak bullish alerts
+        # are intentionally suppressed from Telegram to prevent message spam.
+        # Only 100% Confirmed Buy, Sniper Dip Buy, and R3 Breakout alerts are sent.
+        
+        # NOTE: Exit alerts are STRICTLY restricted to positions actively monitored 
+        # in Risk Guardian (handled above in monitor_active_trades()). General unowned
+        # stock exit alerts are suppressed to keep the Telegram feed clean.
             
         state[s_name] = curr_sig
         
