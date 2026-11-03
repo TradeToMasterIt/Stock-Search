@@ -668,37 +668,86 @@ div[class*="st-key-btn_kpi_"] > button em {
 
 # Note: format_volume and calculate_trade_levels are imported from core.indicators
 
-@st.cache_data(ttl=60)
+@st.cache_data(ttl=180, show_spinner=False)
 def get_nifty_sentiment():
-    # 1. Try Fyers API first (Real-time official NSE quote)
+    cache_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "nifty_last_quote.json")
+    
+    def _fetch_live():
+        # 1. Try Fyers API first (Real-time official NSE quote - ONLY if token is cached)
+        try:
+            from core.fyers_auth import get_cached_token, get_fyers_client, safe_fyers_quotes
+            if get_cached_token():
+                ok, fyers = get_fyers_client(force_refresh=False)
+                if ok and fyers:
+                    res = safe_fyers_quotes(fyers, data={"symbols": "NSE:NIFTY50-INDEX"})
+                    if res.get("s") == "ok" and "d" in res and len(res["d"]) > 0:
+                        v = res["d"][0].get("v", {})
+                        lp = float(v.get("lp", 0))
+                        ch = float(v.get("ch", 0))
+                        chp = float(v.get("chp", 0))
+                        if lp > 0:
+                            return {"price": lp, "change": ch, "pct": chp, "is_bullish": ch >= 0}
+        except Exception:
+            pass
+
+        # 2. Fallback to yfinance with quick timeout
+        try:
+            import yfinance as yf
+            t = yf.Ticker("^NSEI")
+            d = t.history(period="5d", interval="1d", timeout=2.0)
+            if not d.empty and len(d) >= 2:
+                c = float(d['Close'].iloc[-1])
+                p = float(d['Close'].iloc[-2])
+                chg = c - p
+                pct = (chg / p) * 100
+                return {"price": c, "change": chg, "pct": pct, "is_bullish": chg >= 0}
+        except Exception:
+            pass
+        return None
+
+    res = None
     try:
-        from core.fyers_auth import get_fyers_client, safe_fyers_quotes
-        ok, fyers = get_fyers_client()
-        if ok and fyers:
-            res = safe_fyers_quotes(fyers, data={"symbols": "NSE:NIFTY50-INDEX"})
-            if res.get("s") == "ok" and "d" in res and len(res["d"]) > 0:
-                v = res["d"][0].get("v", {})
-                lp = float(v.get("lp", 0))
-                ch = float(v.get("ch", 0))
-                chp = float(v.get("chp", 0))
-                if lp > 0:
-                    return {"price": lp, "change": ch, "pct": chp, "is_bullish": ch >= 0}
+        import concurrent.futures
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+            future = executor.submit(_fetch_live)
+            res = future.result(timeout=2.0)
+    except Exception:
+        res = None
+
+    if res:
+        try:
+            with open(cache_path, "w", encoding="utf-8") as f:
+                json.dump(res, f)
+        except Exception:
+            pass
+        return res
+
+    # 3. Fast fallback to cached file if live fetch times out or fails
+    if os.path.exists(cache_path):
+        try:
+            with open(cache_path, "r", encoding="utf-8") as f:
+                cached_res = json.load(f)
+                if isinstance(cached_res, dict) and "price" in cached_res:
+                    return cached_res
+        except Exception:
+            pass
+
+    return None
+
+@st.cache_data(ttl=300, show_spinner=False)
+def get_cached_fyers_status():
+    """Checks Fyers API status safely without blocking UI on cold startup."""
+    try:
+        from core.fyers_auth import get_cached_token
+        if not get_cached_token():
+            return False, ""
+        from core.fyers_auth import test_fyers_connection
+        ok_fyers, prof_fyers = test_fyers_connection()
+        if ok_fyers and isinstance(prof_fyers, dict):
+            return True, prof_fyers.get("name", "Connected")
     except Exception:
         pass
-
-    # 2. Fallback to yfinance
-    try:
-        t = yf.Ticker("^NSEI")
-        d = t.history(period="5d", interval="1d")
-        if d.empty or len(d) < 2:
-            return None
-        c = d['Close'].iloc[-1]
-        p = d['Close'].iloc[-2]
-        chg = c - p
-        pct = (chg / p) * 100
-        return {"price": c, "change": chg, "pct": pct, "is_bullish": chg >= 0}
-    except Exception:
-        return None
+    return False, ""
 
 # Watchlist Baskets
 BASKETS = {
@@ -1302,17 +1351,8 @@ else:
 
 telegram_html = '<div class="ticker-chip ticker-chip-bot"><div class="pulse-dot"></div><span><b>TELEGRAM BOT:</b> @patel_stock_bot</span><span style="opacity: 0.5">•</span><span>⚡ 5-Min Auto-Scanner Active</span></div>'
 
-# Fyers API Live Status Check
-fyers_connected = False
-fyers_user_name = ""
-try:
-    from core.fyers_auth import test_fyers_connection
-    ok_fyers, prof_fyers = test_fyers_connection()
-    if ok_fyers and isinstance(prof_fyers, dict):
-        fyers_connected = True
-        fyers_user_name = prof_fyers.get("name", "Connected")
-except Exception:
-    pass
+# Fyers API Live Status Check (Safe, Cached & Non-blocking)
+fyers_connected, fyers_user_name = get_cached_fyers_status()
 
 if fyers_connected:
     fyers_html = f'<div class="ticker-chip" style="background: rgba(16, 185, 129, 0.15); border: 1px solid rgba(16, 185, 129, 0.4);"><div class="pulse-dot" style="background: #10B981;"></div><span>⚡ <b>FYERS API v3:</b> LIVE ({fyers_user_name})</span></div>'
