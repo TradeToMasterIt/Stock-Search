@@ -690,33 +690,20 @@ def run_scan_cycle(force=False, watchlist=None):
             state[ha_alert_key] = True
             new_alerts.append(f"{s_name}: HEIKIN ASHI REVERSAL")
 
-        # 1. Fresh Sniper Short
-        if is_sniper_short and (prev_sig != curr_sig):
-            alert_text = format_sniper_short_alert(res)
-            print(f"Sending SNIPER SHORT alert for {s_name}")
-            send_telegram_alert(alert_text)
-            new_alerts.append(f"{s_name}: SNIPER SHORT")
-            
-        # 2. Fresh Sniper Buy
-        elif is_sniper_buy and (prev_sig != curr_sig):
+        # 1. Confirmed Sniper Buy
+        if is_sniper_buy and (prev_sig != curr_sig):
             alert_text = format_sniper_buy_alert(res)
             print(f"Sending SNIPER BUY alert for {s_name}")
             send_telegram_alert(alert_text)
             new_alerts.append(f"{s_name}: SNIPER BUY")
-            
-        # 3. General Bullish
-        elif is_buy and (prev_sig != curr_sig):
-            alert_text = format_general_buy_alert(res)
-            print(f"Sending BUY alert for {s_name}: {curr_sig}")
-            send_telegram_alert(alert_text)
-            new_alerts.append(f"{s_name}: {curr_sig}")
-            
-        # 4. Exit Alert
-        elif is_sell and prev_sig and ("BUY" in prev_sig or "BULLISH" in prev_sig) and not is_sniper_short:
-            alert_text = format_exit_alert(res)
-            print(f"Sending EXIT alert for {s_name}")
-            send_telegram_alert(alert_text)
-            new_alerts.append(f"{s_name}: EXIT")
+
+        # NOTE: Unconfirmed "BUY ON DIPS (Wait for 1H)" and general weak bullish alerts
+        # are intentionally suppressed from Telegram to prevent message spam.
+        # Only 100% Confirmed Buy, Sniper Dip Buy, and R3 Breakout alerts are sent.
+        
+        # NOTE: Exit alerts are STRICTLY restricted to positions actively monitored 
+        # in Risk Guardian (handled above in monitor_active_trades()). General unowned
+        # stock exit alerts are suppressed to keep the Telegram feed clean.
             
         state[s_name] = curr_sig
         

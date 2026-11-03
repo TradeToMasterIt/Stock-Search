@@ -1321,21 +1321,38 @@ else:
 header_html = f'<div class="brand-container"><div><div style="display: flex; align-items: center; gap: 12px;"><span class="brand-title">🎯 CONFLUENCE PRO</span><span class="brand-badge">INSTITUTIONAL v3.3 | FYERS API v3 LIVE INTEGRATION</span></div><div class="brand-subtitle">Candlestick Price Channels • Hilega-Milega • Brijesh Bhatia Heikin Ashi • Institutional Volume VPA • Precision Targets & Stop-Loss</div></div></div><div class="ticker-bar">{nifty_html}{telegram_html}{fyers_html}</div>'
 st.html(header_html)
 
-# Navigation Tabs
-nav_tab_screener, nav_tab_ha, nav_tab_single, nav_tab_guardian, nav_tab_melting, nav_tab_backtest = st.tabs([
+# Module Navigation (Dropdown Selector)
+NAV_OPTIONS = [
     "📊 Market Screener (ઓટોમેટિક સ્કેનર)",
     "🚀 Heikin Ashi Trend Rider (બ્રિજેશ ભાટિયા)",
     "🕯️ Single Stock (ડીપ કેન્ડલસ્ટિક ચાર્ટ્સ)",
     "🛡️ Risk Guardian (લાઈવ પોઝિશન & મોનિટર)",
     "🎯 Melting Straddles (ડૉ. ગાંગુલી 0DTE)",
     "🧪 Strategy Backtester (વિન-રેટ ચકાસો)"
-])
+]
+
+col_nav1, col_nav2 = st.columns([3.2, 1.2])
+with col_nav1:
+    selected_module = st.selectbox(
+        "🎯 મુખ્ય મોડ્યુલ પસંદ કરો (Navigation Menu):",
+        options=NAV_OPTIONS,
+        index=0,
+        key="app_active_module"
+    )
+with col_nav2:
+    st.markdown("<div style='height: 28px;'></div>", unsafe_allow_html=True)
+    st.markdown(
+        f'<div style="background: rgba(30, 41, 59, 0.7); border: 1px solid rgba(56, 189, 248, 0.35); border-radius: 8px; padding: 7px 14px; text-align: center; font-size: 13px; font-weight: 700; color: #38BDF8;">'
+        f'📌 સક્રિય: {selected_module.split()[1] if len(selected_module.split()) > 1 else selected_module}'
+        f'</div>',
+        unsafe_allow_html=True
+    )
 
 
 # =============================================================
 # TAB 1: LIVE MULTI-TIMEFRAME STOCK SCREENER
 # =============================================================
-with nav_tab_screener:
+if selected_module == "📊 Market Screener (ઓટોમેટિક સ્કેનર)":
     market_is_open, market_status_msg = is_market_open()
     is_currently_scanning = st.session_state.get("is_screener_scanning", False)
 
@@ -1954,7 +1971,7 @@ with nav_tab_screener:
 # =============================================================
 # TAB 2: HEIKIN ASHI TREND RIDER (BRIJESH BHATIA REVERSAL SYSTEM)
 # =============================================================
-with nav_tab_ha:
+if selected_module == "🚀 Heikin Ashi Trend Rider (બ્રિજેશ ભાટિયા)":
     ha_header_html = (
         '<div style="background: linear-gradient(135deg, rgba(30, 41, 59, 0.85) 0%, rgba(15, 23, 42, 0.95) 100%); '
         'border: 1px solid rgba(255,255,255,0.08); border-radius: 16px; padding: 22px 26px; margin-bottom: 22px; '
@@ -2570,7 +2587,7 @@ with nav_tab_ha:
 # =============================================================
 # TAB 3: SINGLE STOCK DEEP CANDLESTICK ANALYSIS
 # =============================================================
-with nav_tab_single:
+if selected_module == "🕯️ Single Stock (ડીપ કેન્ડલસ્ટિક ચાર્ટ્સ)":
     st.subheader("🕯️ સિંગલ સ્ટોક ડીપ કેન્ડલસ્ટિક એનાલિસિસ (Cockpit View)")
     col_in, col_btn = st.columns([3, 1])
     with col_in:
@@ -2917,7 +2934,7 @@ with nav_tab_single:
 # =============================================================
 # TAB 3: MY ACTIVE TRADES & RISK GUARDIAN (AUTO-EXIT WATCHDOG)
 # =============================================================
-with nav_tab_guardian:
+if selected_module == "🛡️ Risk Guardian (લાઈવ પોઝિશન & મોનિટર)":
     guardian_header_html = (
         '<div style="background: linear-gradient(135deg, rgba(30, 41, 59, 0.8) 0%, rgba(15, 23, 42, 0.95) 100%); '
         'border: 1px solid rgba(255,255,255,0.08); border-radius: 16px; padding: 20px 24px; margin-bottom: 22px; '
@@ -3514,7 +3531,7 @@ def fetch_index_data_for_melting(symbol):
     except Exception:
         return None, None
 
-with nav_tab_melting:
+if selected_module == "🎯 Melting Straddles (ડૉ. ગાંગુલી 0DTE)":
     melting_header_html = (
         '<div style="background: linear-gradient(135deg, rgba(20, 30, 48, 0.95) 0%, rgba(15, 23, 42, 0.98) 100%); '
         'border: 1px solid rgba(255,255,255,0.08); border-radius: 16px; padding: 22px 26px; margin-bottom: 20px; '
@@ -3954,7 +3971,7 @@ with nav_tab_melting:
 # =============================================================
 # TAB 6: HISTORICAL STRATEGY BACKTESTER & WIN-RATE VERIFIER
 # =============================================================
-with nav_tab_backtest:
+if selected_module == "🧪 Strategy Backtester (વિન-રેટ ચકાસો)":
     backtest_header_html = (
         '<div style="background: linear-gradient(135deg, rgba(30, 41, 59, 0.9) 0%, rgba(15, 23, 42, 0.95) 100%); '
         'border: 1px solid rgba(255,255,255,0.08); border-radius: 14px; padding: 18px 24px; margin-bottom: 20px;">'
