@@ -11,7 +11,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 import socket
 socket.setdefaulttimeout(10.0)
 
-from core.config import get_ist_now, is_market_open, DEFAULT_WATCHLIST
+from core.config import get_ist_now, is_market_open, DEFAULT_WATCHLIST, INDEX_WATCHLIST
 from core.alerts import send_telegram_alert
 from core.database import (
     load_active_trades,
@@ -702,6 +702,7 @@ def get_nifty_sentiment():
 
 # Watchlist Baskets
 BASKETS = {
+    "👑 Major Indices (NIFTY, BANKNIFTY, SENSEX, FINNIFTY)": INDEX_WATCHLIST,
     "🔥 Top Momentum F&O Leaders (35 શેરો)": TOP_MOMENTUM_FNO_BASKET,
     "🚀 Total F&O Stocks (સંપૂર્ણ 181 સ્ટોક્સ)": DEFAULT_WATCHLIST,
     "🏛️ Nifty 50 (બધા 50 બ્લુચિપ સ્ટોક્સ)": [

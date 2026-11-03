@@ -89,6 +89,14 @@ def is_market_open():
         
     return True, "Market is Open"
 
+# Major Indian Indices (Nifty 50, Bank Nifty, Sensex, FinNifty)
+INDEX_WATCHLIST = [
+    "^NSEI",             # NIFTY 50
+    "^NSEBANK",          # BANK NIFTY
+    "^BSESN",            # BSE SENSEX
+    "NIFTY_FIN_SERVICE.NS" # FIN NIFTY
+]
+
 # Complete Watchlist of all 181 NSE F&O Stocks (Total F&O Universe)
 DEFAULT_WATCHLIST = [
     "AARTIIND.NS", "ABB.NS", "ABBOTINDIA.NS", "ABCAPITAL.NS", "ABFRL.NS",

@@ -74,12 +74,119 @@ TOP_MOMENTUM_FNO_BASKET = [
 INDEX_STRIKE_STEPS = {
     "NIFTY": 50,
     "^NSEI": 50,
+    "NSEI": 50,
+    "NIFTY 50": 50,
     "BANKNIFTY": 100,
     "^NSEBANK": 100,
+    "NSEBANK": 100,
+    "BANK NIFTY": 100,
     "FINNIFTY": 50,
+    "NIFTY_FIN_SERVICE": 50,
     "SENSEX": 100,
-    "^BSESN": 100
+    "^BSESN": 100,
+    "BSESN": 100
 }
+
+def is_index_symbol(symbol: str) -> bool:
+    clean = symbol.replace(".NS", "").replace(".BO", "").replace("^", "").strip().upper()
+    return clean in [
+        "NIFTY", "NSEI", "NIFTY50", "NIFTY 50",
+        "BANKNIFTY", "NSEBANK", "BANK NIFTY",
+        "FINNIFTY", "NIFTY_FIN_SERVICE", "CNXFIN",
+        "SENSEX", "BSESN", "BSE SENSEX"
+    ]
+
+def normalize_symbol_and_exchange(symbol: str):
+    """
+    Normalizes stock or index symbol and returns (clean_sym, exchange, display_name)
+    e.g. '^NSEI' -> ('NIFTY', 'NSE', 'NIFTY 50')
+         '^NSEBANK' -> ('BANKNIFTY', 'NSE', 'BANK NIFTY')
+         '^BSESN' -> ('SENSEX', 'BSE', 'SENSEX')
+         'NIFTY_FIN_SERVICE.NS' -> ('FINNIFTY', 'NSE', 'FINNIFTY')
+    """
+    clean = symbol.replace(".NS", "").replace(".BO", "").replace("^", "").strip().upper()
+    if clean in ["NSEI", "NIFTY", "NIFTY50", "NIFTY 50"]:
+        return "NIFTY", "NSE", "NIFTY 50"
+    elif clean in ["NSEBANK", "BANKNIFTY", "BANK NIFTY"]:
+        return "BANKNIFTY", "NSE", "BANK NIFTY"
+    elif clean in ["FINNIFTY", "NIFTY_FIN_SERVICE", "CNXFIN"]:
+        return "FINNIFTY", "NSE", "FINNIFTY"
+    elif clean in ["BSESN", "SENSEX", "BSE SENSEX"]:
+        return "SENSEX", "BSE", "SENSEX"
+    elif clean == "GMRINFRA":
+        return "GMRAIRPORT", "NSE", "GMRAIRPORT"
+    elif clean in ["MCDOWELL-N", "MCDOWELL_N"]:
+        return "UNITDSPR", "NSE", "UNITDSPR"
+    return clean, "NSE", clean
+
+def get_current_weekly_expiry(symbol: str, ref_date = None):
+    """
+    Computes upcoming Weekly Option Expiry for Indian Indices:
+    - NIFTY 50: Thursday (weekday = 3)
+    - BANK NIFTY: Wednesday (weekday = 2)
+    - FIN NIFTY: Tuesday (weekday = 1)
+    - BSE SENSEX: Friday (weekday = 4)
+    """
+    now = get_ist_now()
+    ref_dt = ref_date if ref_date else now.date()
+
+    clean, _, _ = normalize_symbol_and_exchange(symbol)
+    if clean == "BANKNIFTY":
+        target_weekday = calendar.WEDNESDAY  # 2
+    elif clean == "FINNIFTY":
+        target_weekday = calendar.TUESDAY    # 1
+    elif clean == "SENSEX":
+        target_weekday = calendar.FRIDAY     # 4
+    else:
+        target_weekday = calendar.THURSDAY   # 3 (NIFTY / Default)
+
+    today_weekday = ref_dt.weekday()
+    
+    if today_weekday == target_weekday:
+        if now.hour < 15 or (now.hour == 15 and now.minute < 30):
+            days_ahead = 0
+        else:
+            days_ahead = 7
+    elif today_weekday < target_weekday:
+        days_ahead = target_weekday - today_weekday
+    else:
+        days_ahead = 7 - (today_weekday - target_weekday)
+
+    expiry_date = ref_dt + datetime.timedelta(days=days_ahead)
+
+    # Check if this expiry date is also the monthly expiry date
+    cal = calendar.monthcalendar(expiry_date.year, expiry_date.month)
+    target_days = [week[target_weekday] for week in cal if week[target_weekday] != 0]
+    is_monthly = (expiry_date.day == target_days[-1])
+
+    month_chars = {
+        1: '1', 2: '2', 3: '3', 4: '4', 5: '5', 6: '6',
+        7: '7', 8: '8', 9: '9', 10: 'O', 11: 'N', 12: 'D'
+    }
+    
+    yy = expiry_date.strftime("%y")
+    mmm = expiry_date.strftime("%b").upper()
+    dd = f"{expiry_date.day:02d}"
+    
+    if is_monthly:
+        fyers_expiry_code = f"{yy}{mmm}"
+    else:
+        fyers_expiry_code = f"{yy}{month_chars[expiry_date.month]}{dd}"
+
+    expiry_label = f"{expiry_date.day} {mmm} (W)"
+    nse_expiry_str = expiry_date.strftime("%d-%b-%Y")
+
+    return {
+        "date": expiry_date,
+        "day": expiry_date.day,
+        "month_str": mmm,
+        "year": expiry_date.year,
+        "is_weekly": True,
+        "is_monthly": is_monthly,
+        "label": expiry_label,
+        "fyers_code": fyers_expiry_code,
+        "nse_str": nse_expiry_str
+    }
 
 def get_accurate_strike_step(symbol: str, spot_price: float) -> int:
     """
@@ -149,12 +256,10 @@ def get_current_monthly_expiry(ref_date: Optional[datetime.date] = None) -> Dict
 def build_option_contract(symbol: str, spot_price: float, opt_type: str = "CE") -> Dict[str, Any]:
     """
     Builds the exact Strike, Contract Name, and Fyers Trading Symbol for an OTM Option.
-    Example: symbol='DLF', spot=685 -> 'DLF 28 NOV 700 CE' & 'NSE:DLF24NOV700CE'
+    Supports Weekly Expiry for Indices and Monthly Expiry for F&O Equities.
+    Example: symbol='^NSEI', spot=24520 -> 'NIFTY 5 NOV (W) 24550 CE' & 'NSE:NIFTY26N0524550CE'
     """
-    clean_sym = symbol.replace(".NS", "").replace(".BO", "").replace("^", "").strip().upper()
-    if clean_sym == "GMRINFRA": clean_sym = "GMRAIRPORT"
-    elif clean_sym in ["MCDOWELL-N", "MCDOWELL_N"]: clean_sym = "UNITDSPR"
-
+    clean_sym, exchange, display_name = normalize_symbol_and_exchange(symbol)
     step = get_accurate_strike_step(clean_sym, spot_price)
     
     # Calculate First Just Out-Of-The-Money (OTM) Strike
@@ -167,17 +272,25 @@ def build_option_contract(symbol: str, spot_price: float, opt_type: str = "CE") 
         if strike >= spot_price:
             strike -= int(step)
 
-    expiry_info = get_current_monthly_expiry()
+    # Use Weekly Expiry for Indices, Monthly Expiry for Stocks
+    is_idx = is_index_symbol(symbol)
+    if is_idx:
+        expiry_info = get_current_weekly_expiry(clean_sym)
+    else:
+        expiry_info = get_current_monthly_expiry()
+
     contract_name = f"{clean_sym} {expiry_info['label']} {strike} {opt_type.upper()}"
-    fyers_symbol = f"NSE:{clean_sym}{expiry_info['fyers_code']}{strike}{opt_type.upper()}"
+    fyers_symbol = f"{exchange}:{clean_sym}{expiry_info['fyers_code']}{strike}{opt_type.upper()}"
 
     return {
         "symbol": clean_sym,
-        "full_symbol": f"{clean_sym}.NS",
+        "display_name": display_name,
+        "full_symbol": f"{symbol}",
         "spot_price": spot_price,
         "strike": strike,
         "step": step,
         "opt_type": opt_type.upper(),
+        "is_index": is_idx,
         "expiry_info": expiry_info,
         "contract_name": contract_name,
         "fyers_symbol": fyers_symbol

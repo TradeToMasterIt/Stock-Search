@@ -8,7 +8,7 @@ import pandas as pd
 import numpy as np
 
 from .config import (
-    DEFAULT_WATCHLIST, STATE_FILE, ACTIVE_TRADES_FILE,
+    DEFAULT_WATCHLIST, INDEX_WATCHLIST, STATE_FILE, ACTIVE_TRADES_FILE,
     get_ist_now, is_market_open, ENFORCE_MARKET_HOURS
 )
 from .database import load_active_trades, load_alert_state, save_alert_state
@@ -25,7 +25,9 @@ from .indicators import (
 from .option_r3_engine import (
     build_option_contract,
     analyze_option_r3_setup,
-    TOP_MOMENTUM_FNO_BASKET
+    TOP_MOMENTUM_FNO_BASKET,
+    is_index_symbol,
+    normalize_symbol_and_exchange
 )
 from .earnings_filter import check_earnings_blackout
 from .option_seller_engine import (
@@ -52,14 +54,21 @@ def analyze_stock(sym):
     Returns dictionary with signals, price, targets, stops, pivots, and Heikin Ashi data.
     """
     try:
+        is_index = is_index_symbol(sym)
         t = yf.Ticker(sym)
-        df_d = t.history(period="1y", interval="1d").dropna(subset=['Close', 'High', 'Low', 'Volume'])
-        df_w = t.history(period="3y", interval="1wk").dropna(subset=['Close', 'High', 'Low', 'Volume'])
-        df_m = t.history(period="5y", interval="1mo").dropna(subset=['Close', 'High', 'Low', 'Volume'])
-        df_1h = t.history(period="1mo", interval="1h").dropna(subset=['Close', 'High', 'Low', 'Volume'])
+        subset_cols = ['Close', 'High', 'Low'] if is_index else ['Close', 'High', 'Low', 'Volume']
+        df_d = t.history(period="1y", interval="1d").dropna(subset=subset_cols)
+        df_w = t.history(period="3y", interval="1wk").dropna(subset=subset_cols)
+        df_m = t.history(period="5y", interval="1mo").dropna(subset=subset_cols)
+        df_1h = t.history(period="1mo", interval="1h").dropna(subset=subset_cols)
         
         if df_d.empty or len(df_d) < 30 or df_1h.empty:
             return None
+            
+        if is_index:
+            for df_item in [df_d, df_w, df_m, df_1h]:
+                if 'Volume' not in df_item.columns or df_item['Volume'].sum() == 0:
+                    df_item['Volume'] = 1_000_000
             
         df_m = calculate_volume_analysis(calculate_trend_craft_ict(calculate_hilega_milega(df_m), 24))
         df_w = calculate_volume_analysis(calculate_trend_craft_ict(calculate_hilega_milega(df_w), 30))
@@ -102,9 +111,9 @@ def analyze_stock(sym):
         h1_bear_gap = h1_curr['Red_WMA21'] - h1_curr['Green_EMA3']
         h1_prev_bear_gap = h1_prev['Red_WMA21'] - h1_prev['Green_EMA3']
         
-        # 1H Institutional Volume (VPA >= 1.2x)
+        # 1H Institutional Volume (VPA >= 1.2x, auto-confirmed for Index)
         h1_vol_ratio = h1_curr['Vol_Ratio'] if pd.notna(h1_curr['Vol_Ratio']) else 1.0
-        h1_vol_confirmed = h1_vol_ratio >= 1.2
+        h1_vol_confirmed = True if is_index else (h1_vol_ratio >= 1.2)
         
         # Bullish Rocket Confluence
         h1_is_vertical_up = (h1_green_slope >= 1.8) or (h1_two_bar_green_slope >= 3.0)
@@ -229,8 +238,10 @@ def analyze_stock(sym):
         is_candidate = bool(is_sniper_buy or is_r3_radar or (curr_p >= r1_val) or (pct_chg >= 0.8))
         if is_candidate:
             try:
-                df_15m = t.history(period="5d", interval="15m").dropna(subset=['Close', 'High', 'Low', 'Volume'])
+                df_15m = t.history(period="5d", interval="15m").dropna(subset=subset_cols)
                 if df_15m is not None and not df_15m.empty and len(df_15m) >= 20:
+                    if is_index and ('Volume' not in df_15m.columns or df_15m['Volume'].sum() == 0):
+                        df_15m['Volume'] = 1_000_000
                     df_15m = calculate_volume_analysis(calculate_hilega_milega(df_15m))
                     c_15m = df_15m.iloc[-1]
                     p_15m = df_15m.iloc[-2]
@@ -255,11 +266,12 @@ def analyze_stock(sym):
                 pass
 
         # Golden RSI Sweet Spot Filter (58 to 74 with Positive Slope & No Upper Wick Rejection)
+        vol_sweet_confirmed = True if is_index else (m15_vol_ratio >= 1.2 or h1_vol_ratio >= 1.3)
         is_r3_rsi_confirmed = bool(
             (58.0 <= m15_rsi <= 74.0) and
             (m15_rsi_slope >= -0.5) and
             (not is_15m_wick_rejected) and
-            (m15_vol_ratio >= 1.2 or h1_vol_ratio >= 1.3)
+            vol_sweet_confirmed
         )
 
         # Deep Option R3 Analysis (Always run for any bullish or sniper setup)
@@ -315,8 +327,12 @@ def analyze_stock(sym):
             ha_donchian_sl = curr_p * 0.96
         ha_risk_pct = ((curr_p - ha_donchian_sl) / curr_p) * 100
 
+        clean_sym, _, display_name = normalize_symbol_and_exchange(sym)
+        s_display = display_name if is_index else sym.replace(".NS", "")
         return {
-            "symbol": sym.replace(".NS", ""),
+            "symbol": s_display,
+            "raw_symbol": sym,
+            "is_index": is_index,
             "price": curr_p,
             "change": pct_chg,
             "signal": signal,
@@ -681,7 +697,7 @@ def run_scan_cycle(force=False, watchlist=None):
     Checks market hours, monitors active trades, and dispatches Telegram alerts.
     """
     if watchlist is None:
-        watchlist = DEFAULT_WATCHLIST
+        watchlist = INDEX_WATCHLIST + DEFAULT_WATCHLIST
         
     if ENFORCE_MARKET_HOURS and not force:
         is_open, reason = is_market_open()
