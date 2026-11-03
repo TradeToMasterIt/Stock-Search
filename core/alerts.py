@@ -64,7 +64,13 @@ def format_100_confirmed_buy_alert(res):
     s_name = res['symbol']
     is_idx = res.get('is_index', False)
     inst_lbl = "ઈન્ડેક્સ" if is_idx else "સ્ટોક"
-    headline = f"🚀 <b>૧૦૦% કન્ફર્મ {s_name.upper()} બાય એલર્ટ! (100% CONFIRMED BUY)</b> 🚀" if is_idx else "🚀 <b>૧૦૦% કન્ફર્મ બાય એલર્ટ! (100% CONFIRMED BUY)</b> 🚀"
+    is_gb = res.get('is_gamma_blast', False)
+    if is_gb:
+        headline = f"⚡🔥 <b>{s_name.upper()} 0DTE GAMMA BLAST ALERT! (HERO-ZERO ૧૦૦% કન્ફર્મ)</b> 🔥⚡"
+    elif is_idx:
+        headline = f"🚀 <b>૧૦૦% કન્ફર્મ {s_name.upper()} બાય એલર્ટ! (100% CONFIRMED BUY)</b> 🚀"
+    else:
+        headline = "🚀 <b>૧૦૦% કન્ફર્મ બાય એલર્ટ! (100% CONFIRMED BUY)</b> 🚀"
     now_str = get_ist_now().strftime('%d %b %Y | %H:%M:%S IST')
     vol_emoji = "🔥" if res.get('vol_ratio', 1.0) >= 1.2 else ""
     opt_strike_val = res.get('otm_call_strike', res.get('ce_strike', ''))
@@ -76,6 +82,7 @@ def format_100_confirmed_buy_alert(res):
     rsi_15m_val = res.get('rsi_15m', 62.0)
     strike_desc = "Weekly OTM Strike" if is_idx else "OTM Option Strike"
     asset_action = "Index / Future Buy" if is_idx else "Equity / Future Buy"
+    target_gain_txt = "૧૫૦% થી ૪૦૦%+ (ઝીરો-ટુ-હીરો સુપર જેકપોટ)" if is_gb else "૧૦૦% થી ૨૦૦%+ (ડબલ / મલ્ટિબેગર નફો)"
     rsi_badge = (
         f"• <b>15m RSI Confluence:</b> <b>{rsi_15m_val:.1f}</b> (Golden Sweet Spot 58-74 ✅ - મજબૂત તાજી તેજી)\n"
         f"• <b>🎯 {strike_desc}:</b> <b>{strike_str}</b> ({contract_lbl})\n"
@@ -97,7 +104,7 @@ def format_100_confirmed_buy_alert(res):
         f"• <b>ચુસ્ત સ્ટોપલોસ:</b> ₹{res['stop_loss']:.2f} (-{res['risk_pct']:.1f}%)\n"
         f"• <b>Target 1 (1:1.5):</b> ₹{res['t1']:.2f} (+{res['t1_pct']:.1f}%)\n"
         f"• <b>Target 2 (1:2.5):</b> ₹{res['t2']:.2f} (+{res['t2_pct']:.1f}%)\n"
-        f"• <b>ઓપ્શન ટાર્ગેટ:</b> ૧૦૦% થી ૨૦૦%+ (ડબલ / મલ્ટિબેગર નફો)\n"
+        f"• <b>ઓપ્શન ટાર્ગેટ:</b> {target_gain_txt}\n"
         f"━━━━━━━━━━━━━━━━━━━━━\n"
         f"📊 <b>Spot Pivots:</b> P: ₹{res['pivot_p']:.1f} | R1: ₹{res['r1']:.1f} | R2: ₹{res['r2']:.1f} | R3: ₹{res['r3']:.1f}\n"
         f"📊 <b>1-Hour Volume:</b> {res['vol_ratio']:.1f}x {vol_emoji}\n"

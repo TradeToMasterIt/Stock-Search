@@ -121,11 +121,11 @@ def normalize_symbol_and_exchange(symbol: str):
 
 def get_current_weekly_expiry(symbol: str, ref_date = None):
     """
-    Computes upcoming Weekly Option Expiry for Indian Indices:
-    - NIFTY 50: Thursday (weekday = 3)
-    - BANK NIFTY: Wednesday (weekday = 2)
-    - FIN NIFTY: Tuesday (weekday = 1)
-    - BSE SENSEX: Friday (weekday = 4)
+    Computes upcoming Weekly Option Expiry for Indian Indices with Time-Segmented Logic:
+    - Normal non-expiry days: Current Week's Weekly Expiry
+    - Expiry day 09:15-13:00 IST: Next Week's Expiry (Protects capital against brutal Theta decay)
+    - Expiry day 13:00-15:15 IST: Same Day 0DTE (Captures explosive Gamma Blast / Hero-Zero)
+    - Expiry day post-15:15 IST: Next Week's Expiry
     """
     now = get_ist_now()
     ref_dt = ref_date if ref_date else now.date()
@@ -143,14 +143,34 @@ def get_current_weekly_expiry(symbol: str, ref_date = None):
     today_weekday = ref_dt.weekday()
     
     if today_weekday == target_weekday:
-        if now.hour < 15 or (now.hour == 15 and now.minute < 30):
-            days_ahead = 0
-        else:
+        # Expiry Day Time Segmentation
+        current_minute_val = now.hour * 60 + now.minute
+        time_1300 = 13 * 60       # 1:00 PM IST
+        time_1515 = 15 * 60 + 15  # 3:15 PM IST
+
+        if current_minute_val < time_1300:
+            # Morning Session: Theta decay peak -> Next Week's Expiry protects buyer capital
             days_ahead = 7
+            regime = "NEXT_WEEK_SAFE"
+            tag = "(Next W - Theta Safe)"
+        elif time_1300 <= current_minute_val <= time_1515:
+            # Afternoon Session: Short Squeeze & Gamma Blast zone -> Same Day 0DTE
+            days_ahead = 0
+            regime = "GAMMA_BLAST_0DTE"
+            tag = "(0DTE - Gamma Blast)"
+        else:
+            # Post 3:15 PM: Expiry closed -> Roll to Next Week
+            days_ahead = 7
+            regime = "NEXT_WEEK_POST_EXPIRY"
+            tag = "(Next W)"
     elif today_weekday < target_weekday:
         days_ahead = target_weekday - today_weekday
+        regime = "CURRENT_WEEKLY"
+        tag = "(W)"
     else:
         days_ahead = 7 - (today_weekday - target_weekday)
+        regime = "CURRENT_WEEKLY"
+        tag = "(W)"
 
     expiry_date = ref_dt + datetime.timedelta(days=days_ahead)
 
@@ -168,12 +188,12 @@ def get_current_weekly_expiry(symbol: str, ref_date = None):
     mmm = expiry_date.strftime("%b").upper()
     dd = f"{expiry_date.day:02d}"
     
-    if is_monthly:
+    if is_monthly and days_ahead != 0:
         fyers_expiry_code = f"{yy}{mmm}"
     else:
         fyers_expiry_code = f"{yy}{month_chars[expiry_date.month]}{dd}"
 
-    expiry_label = f"{expiry_date.day} {mmm} (W)"
+    expiry_label = f"{expiry_date.day} {mmm} {tag}"
     nse_expiry_str = expiry_date.strftime("%d-%b-%Y")
 
     return {
@@ -183,6 +203,8 @@ def get_current_weekly_expiry(symbol: str, ref_date = None):
         "year": expiry_date.year,
         "is_weekly": True,
         "is_monthly": is_monthly,
+        "is_gamma_blast": (regime == "GAMMA_BLAST_0DTE"),
+        "regime": regime,
         "label": expiry_label,
         "fyers_code": fyers_expiry_code,
         "nse_str": nse_expiry_str
@@ -291,6 +313,7 @@ def build_option_contract(symbol: str, spot_price: float, opt_type: str = "CE") 
         "step": step,
         "opt_type": opt_type.upper(),
         "is_index": is_idx,
+        "is_gamma_blast": expiry_info.get("is_gamma_blast", False),
         "expiry_info": expiry_info,
         "contract_name": contract_name,
         "fyers_symbol": fyers_symbol
@@ -483,6 +506,8 @@ def analyze_option_r3_setup(
         "opt_r3": opt_r3,
         "is_option_r3_crossed": is_option_r3_crossed,
         "is_100_percent_buy": is_100_percent_buy,
+        "is_gamma_blast": contract.get("is_gamma_blast", False),
+        "is_index": contract.get("is_index", False),
         "stop_loss": opt_sl,
         "risk_pct": risk_pct,
         "target_1": opt_t1,

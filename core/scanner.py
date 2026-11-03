@@ -301,6 +301,8 @@ def analyze_stock(sym):
                         is_r3_radar = True
             except Exception:
                 pass
+        
+        is_gamma_blast = opt_analysis.get("is_gamma_blast", False) if opt_analysis else opt_info.get("is_gamma_blast", False)
 
         # Heikin Ashi Brijesh Bhatia System
         ha_d = calculate_heikin_ashi(df_d)
@@ -333,6 +335,7 @@ def analyze_stock(sym):
             "symbol": s_display,
             "raw_symbol": sym,
             "is_index": is_index,
+            "is_gamma_blast": is_gamma_blast,
             "price": curr_p,
             "change": pct_chg,
             "signal": signal,
