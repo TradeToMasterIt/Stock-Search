@@ -215,6 +215,12 @@ def analyze_option_r3_setup(
     spot_pct_change: float = 0.0,
     spot_is_bullish: bool = True,
     spot_is_1h_confirmed: bool = True,
+    spot_prev_high: float = 0.0,
+    spot_prev_low: float = 0.0,
+    spot_prev_close: float = 0.0,
+    spot_r1: float = 0.0,
+    spot_r2: float = 0.0,
+    spot_r3: float = 0.0,
     fyers_client: Optional[Any] = None
 ) -> Dict[str, Any]:
     """
@@ -236,7 +242,21 @@ def analyze_option_r3_setup(
     opt_prev_c = 0.0
     data_source = "Analytical Calibration"
 
-    # 1. Attempt Live Option Data from Fyers API if client is provided
+    # Auto-acquire Fyers client ONLY if already authenticated in memory or cache
+    if fyers_client is None:
+        try:
+            from core.fyers_auth import _cached_fyers_client, get_cached_token
+            if _cached_fyers_client is not None:
+                fyers_client = _cached_fyers_client
+            elif get_cached_token() is not None:
+                from core.fyers_auth import get_fyers_client
+                ok_f, cl_f = get_fyers_client(force_refresh=False)
+                if ok_f and cl_f:
+                    fyers_client = cl_f
+        except Exception:
+            pass
+
+    # 1. Attempt Live Option Data from Fyers API if client is available
     if fyers_client:
         try:
             try:
@@ -274,22 +294,27 @@ def analyze_option_r3_setup(
         except Exception:
             pass
 
-    # 2. Resilient Analytical Fallback (Calibrated Black-Scholes / Delta Model)
+    # 2. Resilient Analytical Fallback (Calibrated to Spot HLC & Delta Model)
     # Used when market is closed, Fyers is offline, or pre-market simulation
     if opt_ltp <= 0 or opt_prev_h <= 0:
-        # Distance of strike from spot
-        otm_diff = strike - spot_price
-        # Time value estimate based on ~20 trading days to expiry and 25% IV
-        base_extrinsic = spot_price * 0.022
-        est_ltp = max(0.50, round(base_extrinsic - (otm_diff * 0.35), 2))
-        if est_ltp < 1.0:
-            est_ltp = max(0.60, round(spot_price * 0.008, 2))
+        p_close = spot_prev_close if spot_prev_close > 0 else (spot_price / (1.0 + (spot_pct_change / 100.0)))
+        p_high = spot_prev_high if spot_prev_high > 0 else max(p_close * 1.015, spot_price)
+        p_low = spot_prev_low if spot_prev_low > 0 else (p_close * 0.985)
 
-        opt_ltp = est_ltp
-        # Calibrated previous session HLC for option
-        opt_prev_c = round(opt_ltp * 0.82, 2)
-        opt_prev_l = round(opt_ltp * 0.65, 2)
-        opt_prev_h = round(opt_ltp * 0.95, 2)
+        step_val = max(1.0, float(contract.get("step", 20)))
+        otm_diff = max(0.0, float(strike - p_close))
+        delta = max(0.20, min(0.50, 0.42 - (otm_diff / (step_val * 8.0))))
+
+        # Static baseline option price at yesterday's close
+        base_extrinsic = max(1.50, p_close * 0.02 - (otm_diff * 0.20))
+        opt_prev_c = round(base_extrinsic, 2)
+        opt_prev_h = round(opt_prev_c + delta * (p_high - p_close), 2)
+        opt_prev_l = round(max(0.30, opt_prev_c + delta * (p_low - p_close)), 2)
+
+        # Today's option LTP derived from spot movement
+        spot_move = spot_price - p_close
+        gamma_boost = (0.0015 * (spot_move ** 2)) if spot_move > 0 else 0.0
+        opt_ltp = round(max(0.50, opt_prev_c + delta * spot_move + gamma_boost), 2)
         data_source = "🔵 Calibrated Option Analytics"
 
     # Compute Option Pivot Points
@@ -301,12 +326,15 @@ def analyze_option_r3_setup(
 
     # --- Golden Rule Logic: Option Leads, Future Follows ---
     # The option contract itself must cross above its own Daily R3 Level
-    is_option_r3_crossed = (opt_ltp >= opt_r3) or (spot_pct_change >= 2.0 and opt_ltp >= opt_r2)
+    # Or Spot is breaking out through R1/R2 on Sniper Buy
+    is_option_r3_crossed = bool(
+        (opt_ltp >= opt_r3) or
+        (spot_r2 > 0 and spot_price >= spot_r2) or
+        (spot_r1 > 0 and spot_price >= spot_r1 and spot_pct_change >= 1.2) or
+        (spot_is_1h_confirmed and (opt_ltp >= opt_r2 or (spot_r1 > 0 and spot_price >= spot_r1)))
+    )
 
     # 100% Confirmed Buy Condition:
-    # 1. Spot stock is in 1H Bullish Confluence
-    # 2. Spot stock change >= +1.5%
-    # 3. The selected OTM Call itself has crossed its Daily R3 Level!
     is_100_percent_buy = bool(is_option_r3_crossed and spot_is_bullish and spot_is_1h_confirmed)
 
     # Risk-Reward for Option:

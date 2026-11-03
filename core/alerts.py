@@ -125,7 +125,13 @@ def format_sniper_short_alert(res):
 def format_sniper_buy_alert(res):
     s_name = res['symbol']
     now_str = get_ist_now().strftime('%d %b %Y | %H:%M:%S IST')
-    vol_emoji = "🔥" if res['vol_ratio'] >= 1.5 else ""
+    vol_emoji = "🔥" if res.get('vol_ratio', 1.0) >= 1.5 else ""
+    contract_lbl = res.get('opt_contract_name', f"₹{res.get('otm_call_strike', res.get('ce_strike', ''))} CE")
+    opt_ltp_txt = f" (LTP: ₹{res['opt_ltp']:.2f})" if res.get('opt_ltp') else ""
+    opt_r3_txt = f"• <b>Option R3 લેવલ:</b> ₹{res['opt_r3']:.2f}\n" if res.get('opt_r3') else ""
+    opt_status = " (✅ R3 ક્રોસ થયેલ - રોકેટ બ્રેકઆઉટ!)" if res.get('is_option_r3_crossed') else " (⚠️ R3 ક્રોસ થતાં જ એન્ટ્રી)"
+    fyers_lbl = f"• <b>Fyers Symbol:</b> <code>{res['opt_fyers_symbol']}</code>\n" if res.get('opt_fyers_symbol') else ""
+
     return (
         f"🎯 <b>SNIPER DIP BUY CONFIRMED!</b> 🎯\n"
         f"━━━━━━━━━━━━━━━━━━━━━\n"
@@ -139,9 +145,12 @@ def format_sniper_buy_alert(res):
         f"• Target 1 (1:1.5): ₹{res['t1']:.2f} (+{res['t1_pct']:.1f}%)\n"
         f"• Target 2 (1:2.5): ₹{res['t2']:.2f} (+{res['t2_pct']:.1f}%)\n"
         f"━━━━━━━━━━━━━━━━━━━━━\n"
-        f"💡 <b>Options Action:</b>\n"
-        f"• Call Buyers: ₹{res['ce_strike']} CE બાય કરો\n"
-        f"• Option Sellers: &lt; ₹{res['pe_strike']:.0f} PE સેલ કરો (સેફ OTM)\n"
+        f"💡 <b>Options Action (સુવર્ણ નિયમ):</b>\n"
+        f"• <b>Call Option Buy (CE):</b> <b>{contract_lbl}{opt_ltp_txt}</b>{opt_status}\n"
+        f"{fyers_lbl}"
+        f"{opt_r3_txt}"
+        f"• <b>ઓપ્શન ટાર્ગેટ:</b> ૧૦૦% થી ૨૦૦%+ (મલ્ટિબેગર નફો)\n"
+        f"• <b>Option Sellers:</b> &lt; ₹{res['pe_strike']:.0f} PE સેલ કરો (સેફ OTM)\n"
         f"📊 <b>1-Hour Volume:</b> {res['vol_ratio']:.1f}x {vol_emoji}\n"
         f"━━━━━━━━━━━━━━━━━━━━━\n"
         f"⏰ <i>{now_str}</i> | 🤖 Patel Trading Bot"

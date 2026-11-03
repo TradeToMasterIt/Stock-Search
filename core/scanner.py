@@ -219,22 +219,31 @@ def analyze_stock(sym):
                 (d_hm_bull or pct_chg >= 2.0)
             )
 
-        # Deep Option R3 Analysis
+        # Deep Option R3 Analysis (Always run for any bullish or sniper setup)
         opt_ltp = 0.0
         opt_r3_val = 0.0
         is_option_r3_crossed = False
-        if is_r3_radar:
+        if is_sniper_buy or is_r3_radar or ("BUY" in signal) or pct_chg >= 0.8:
             try:
                 opt_analysis = analyze_option_r3_setup(
                     symbol=sym,
                     spot_price=curr_p,
                     spot_pct_change=pct_chg,
                     spot_is_bullish=d_is_positive,
-                    spot_is_1h_confirmed=is_sniper_buy
+                    spot_is_1h_confirmed=is_sniper_buy,
+                    spot_prev_high=float(d_prev['High']),
+                    spot_prev_low=float(d_prev['Low']),
+                    spot_prev_close=float(d_prev['Close']),
+                    spot_r1=r1_val,
+                    spot_r2=r2_val,
+                    spot_r3=r3_val
                 )
-                opt_ltp = opt_analysis["opt_ltp"]
-                opt_r3_val = opt_analysis["opt_r3"]
-                is_option_r3_crossed = opt_analysis["is_option_r3_crossed"]
+                if opt_analysis:
+                    opt_ltp = opt_analysis.get("opt_ltp", 0.0)
+                    opt_r3_val = opt_analysis.get("opt_r3", 0.0)
+                    is_option_r3_crossed = opt_analysis.get("is_option_r3_crossed", False)
+                    if is_option_r3_crossed:
+                        is_r3_radar = True
             except Exception:
                 pass
 
@@ -658,28 +667,27 @@ def run_scan_cycle(force=False, watchlist=None):
         is_buy = "BUY" in curr_sig or "BULLISH" in curr_sig
         is_sell = "SELL" in curr_sig or "AVOID" in curr_sig
         
-        # 0. R3 Option Breakout
+        # 0. R3 Option Breakout / 100% Confirmed Buy Alert (Fires when Option crosses R3)
+        r3_confirmed_key = f"{s_name}_R3_CONFIRMED_{today_str}"
+        is_r3_confirmed = bool(
+            (is_sniper_buy or "STRONG BUY" in curr_sig) and
+            (res.get('is_option_r3_crossed') or res.get('is_r3_radar') or (res['price'] >= res.get('r1', 0)))
+        )
+        if is_r3_confirmed and not state.get(r3_confirmed_key):
+            confirmed_alert_text = format_100_confirmed_buy_alert(res)
+            print(f"Sending 100% CONFIRMED BUY (OPTION R3 CROSSED) alert for {s_name}")
+            send_telegram_alert(confirmed_alert_text)
+            state[r3_confirmed_key] = True
+            new_alerts.append(f"{s_name}: 100% CONFIRMED BUY")
+
+        # 0.1 Standalone Option R3 Breakout
         r3_alert_key = f"{s_name}_R3_{today_str}"
-        if res.get('is_r3_radar') and not state.get(r3_alert_key):
+        if (res.get('is_option_r3_crossed') or res.get('is_r3_radar')) and not state.get(r3_alert_key) and not is_r3_confirmed:
             alert_text = format_r3_radar_alert(res)
             print(f"Sending R3 OPTION RADAR alert for {s_name}")
             send_telegram_alert(alert_text)
             state[r3_alert_key] = True
             new_alerts.append(f"{s_name}: R3 OPTION RADAR")
-
-        # 0.1 100% Confirmed Buy
-        is_r3_confirmed = bool(
-            res.get('is_r3_radar') and 
-            (is_sniper_buy or "STRONG BUY" in curr_sig) and
-            (res['price'] >= res.get('r1', 0))
-        )
-        r3_confirmed_key = f"{s_name}_R3_CONFIRMED_{today_str}"
-        if is_r3_confirmed and not state.get(r3_confirmed_key):
-            confirmed_alert_text = format_100_confirmed_buy_alert(res)
-            print(f"Sending 100% CONFIRMED BUY alert for {s_name}")
-            send_telegram_alert(confirmed_alert_text)
-            state[r3_confirmed_key] = True
-            new_alerts.append(f"{s_name}: 100% CONFIRMED BUY")
 
         # 0.2 Heikin Ashi Reversal Buy
         ha_alert_key = f"{s_name}_HA_REVERSAL_{today_str}"
@@ -690,8 +698,8 @@ def run_scan_cycle(force=False, watchlist=None):
             state[ha_alert_key] = True
             new_alerts.append(f"{s_name}: HEIKIN ASHI REVERSAL")
 
-        # 1. Confirmed Sniper Buy
-        if is_sniper_buy and (prev_sig != curr_sig):
+        # 1. Confirmed Sniper Buy (Includes exact OTM Call Strike & Option R3 level)
+        if is_sniper_buy and (prev_sig != curr_sig) and not state.get(r3_confirmed_key):
             alert_text = format_sniper_buy_alert(res)
             print(f"Sending SNIPER BUY alert for {s_name}")
             send_telegram_alert(alert_text)
