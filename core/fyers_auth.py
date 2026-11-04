@@ -231,7 +231,7 @@ def login_and_generate_token() -> tuple[bool, str]:
     except Exception as e:
         return False, f"Exception during Fyers login: {str(e)}"
 
-_auth_lock = threading.Lock()
+_auth_lock = threading.RLock()
 
 def get_fyers_token(force_refresh: bool = False) -> tuple[bool, str]:
     """
