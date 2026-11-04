@@ -735,11 +735,11 @@ def run_scan_cycle(force=False, watchlist=None):
         is_buy = "BUY" in curr_sig or "BULLISH" in curr_sig
         is_sell = "SELL" in curr_sig or "AVOID" in curr_sig
         
-        # 0. R3 Option Breakout / 100% Confirmed Buy Alert (Fires when Option crosses R3 + RSI Sweet Spot confirmed)
+        # 0. R3 Option Breakout / 100% Confirmed Buy Alert (Fires when Option crosses R3 + Spot at/above R2 + RSI Sweet Spot confirmed)
         r3_confirmed_key = f"{s_name}_R3_CONFIRMED_{today_str}"
         is_r3_confirmed = bool(
-            (is_sniper_buy or "STRONG BUY" in curr_sig) and
-            (res.get('is_option_r3_crossed') or res.get('is_r3_radar') or (res['price'] >= res.get('r1', 0))) and
+            (is_sniper_buy or "STRONG BUY" in curr_sig or res.get('price', 0) >= res.get('r2', 0)) and
+            res.get('is_option_r3_crossed') and
             res.get('is_r3_rsi_confirmed', True)
         )
         if is_r3_confirmed and not state.get(r3_confirmed_key):
@@ -749,9 +749,9 @@ def run_scan_cycle(force=False, watchlist=None):
             state[r3_confirmed_key] = True
             new_alerts.append(f"{s_name}: 100% CONFIRMED BUY")
 
-        # 0.1 Standalone Option R3 Breakout
+        # 0.1 Standalone Option R3 Breakout (Option LTP >= Option R3 + Spot >= R2 + RSI 58-74)
         r3_alert_key = f"{s_name}_R3_{today_str}"
-        if (res.get('is_option_r3_crossed') or res.get('is_r3_radar')) and res.get('is_r3_rsi_confirmed', True) and not state.get(r3_alert_key) and not is_r3_confirmed:
+        if res.get('is_option_r3_crossed') and res.get('is_r3_rsi_confirmed', True) and not state.get(r3_alert_key) and not is_r3_confirmed:
             alert_text = format_r3_radar_alert(res)
             print(f"Sending R3 OPTION RADAR alert for {s_name}")
             send_telegram_alert(alert_text)
