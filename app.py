@@ -736,15 +736,15 @@ def get_nifty_sentiment():
 
 @st.cache_data(ttl=300, show_spinner=False)
 def get_cached_fyers_status():
-    """Checks Fyers API status safely without blocking UI on cold startup."""
+    """Checks Fyers API status safely and logs in automatically if credentials are set."""
     try:
-        from core.fyers_auth import get_cached_token
-        if not get_cached_token():
-            return False, ""
+        import concurrent.futures
         from core.fyers_auth import test_fyers_connection
-        ok_fyers, prof_fyers = test_fyers_connection()
-        if ok_fyers and isinstance(prof_fyers, dict):
-            return True, prof_fyers.get("name", "Connected")
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as ex:
+            fut = ex.submit(test_fyers_connection)
+            ok_fyers, prof_fyers = fut.result(timeout=8.0)
+            if ok_fyers and isinstance(prof_fyers, dict):
+                return True, prof_fyers.get("name", "Connected")
     except Exception:
         pass
     return False, ""
@@ -1339,6 +1339,9 @@ render_logout_button()
 # =============================================================
 # TOP HEADER & LIVE TICKER RIBBON
 # =============================================================
+# Fyers API Live Status Check (Safe, Cached & Non-blocking)
+fyers_connected, fyers_user_name = get_cached_fyers_status()
+
 nifty_data = get_nifty_sentiment()
 if nifty_data:
     n_chg_sign = "+" if nifty_data['change'] >= 0 else ""
@@ -1349,10 +1352,7 @@ if nifty_data:
 else:
     nifty_html = '<div class="ticker-chip"><span>🏛️ <b>NIFTY 50:</b> Connecting...</span></div>'
 
-telegram_html = '<div class="ticker-chip ticker-chip-bot"><div class="pulse-dot"></div><span><b>TELEGRAM BOT:</b> @patel_stock_bot</span><span style="opacity: 0.5">•</span><span>⚡ 5-Min Auto-Scanner Active</span></div>'
-
-# Fyers API Live Status Check (Safe, Cached & Non-blocking)
-fyers_connected, fyers_user_name = get_cached_fyers_status()
+telegram_html = '<div class="ticker-chip ticker-chip-bot"><div class="pulse-dot"></div><span><b>TELEGRAM BOT:</b> @patel_stock_bot</span><span style="opacity: 0.5">•</span><span>⚡ 5-Min Auto-Scanner Active</span></div>' 
 
 if fyers_connected:
     fyers_html = f'<div class="ticker-chip" style="background: rgba(16, 185, 129, 0.15); border: 1px solid rgba(16, 185, 129, 0.4);"><div class="pulse-dot" style="background: #10B981;"></div><span>⚡ <b>FYERS API v3:</b> LIVE ({fyers_user_name})</span></div>'
@@ -1361,6 +1361,13 @@ else:
 
 header_html = f'<div class="brand-container"><div><div style="display: flex; align-items: center; gap: 12px;"><span class="brand-title">🎯 CONFLUENCE PRO</span><span class="brand-badge">INSTITUTIONAL v3.3 | FYERS API v3 LIVE INTEGRATION</span></div><div class="brand-subtitle">Candlestick Price Channels • Hilega-Milega • Brijesh Bhatia Heikin Ashi • Institutional Volume VPA • Precision Targets & Stop-Loss</div></div></div><div class="ticker-bar">{nifty_html}{telegram_html}{fyers_html}</div>'
 st.html(header_html)
+
+if not fyers_connected:
+    with st.expander("⚡ Fyers API કનેક્ટ / રી-કનેક્ટ કરો (વૈકલ્પિક)", expanded=False):
+        st.caption("જો Streamlit Cloud Secrets માં Fyers API ક્રેડેન્શિયલ્સ સેટ હોય અને ટોકન રીફ્રેશ કરવું હોય:")
+        if st.button("🔄 Connect Fyers API Now", key="btn_manual_fyers_connect"):
+            st.cache_data.clear()
+            st.rerun()
 
 # Module Navigation (Dropdown Selector)
 NAV_OPTIONS = [
