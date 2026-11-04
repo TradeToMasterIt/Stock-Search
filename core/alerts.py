@@ -222,3 +222,20 @@ def format_general_buy_alert(res):
         f"━━━━━━━━━━━━━━━━━━━━━\n"
         f"⏰ <i>{now_str}</i> | 🤖 Patel Trading Bot"
     )
+
+
+def format_exit_alert(res_or_trade, reason: str = "Exit Condition Met"):
+    """Formats trade exit / stop-loss alert for Telegram."""
+    sym = res_or_trade.get('symbol', 'N/A')
+    now_str = get_ist_now().strftime('%d %b %Y | %H:%M:%S IST')
+    cmp_price = res_or_trade.get('price', res_or_trade.get('current_price', 0.0))
+    entry = res_or_trade.get('entry_price', 0.0)
+    return (
+        f"🚨 <b>TRADE EXIT ALERT: {sym}</b>\n"
+        f"━━━━━━━━━━━━━━━━━━━━━\n"
+        f"• <b>કારણ:</b> {reason}\n"
+        f"• <b>Entry Price:</b> ₹{entry:,.2f}\n"
+        f"• <b>Current/Exit Price:</b> ₹{cmp_price:,.2f}\n"
+        f"━━━━━━━━━━━━━━━━━━━━━\n"
+        f"⏰ <i>{now_str}</i> | 🤖 Patel Trading Bot"
+    )
