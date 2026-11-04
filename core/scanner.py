@@ -178,7 +178,7 @@ def analyze_stock(sym):
             t2_pct = ((t2 - curr_p) / curr_p) * 100
             # Compute Hybrid Outer Strikes (TC Band + Bollinger Bands) & Overnight Wings
             seller_strikes = calculate_hybrid_option_selling_strikes(sym, curr_p, df_d)
-            earnings_info = check_earnings_blackout(sym, blackout_days=10)
+            earnings_info = {"is_blackout": False} if is_index else check_earnings_blackout(sym, blackout_days=10)
             dead_rules = check_dead_consolidation_rules(df_d, df_w, df_m)
             is_dead_consolidation = dead_rules.get("passes_all", False)
             is_earnings_blackout = earnings_info.get("is_blackout", False)
@@ -278,6 +278,7 @@ def analyze_stock(sym):
         opt_ltp = 0.0
         opt_r3_val = 0.0
         is_option_r3_crossed = False
+        opt_analysis = None
         if is_candidate:
             try:
                 opt_analysis = analyze_option_r3_setup(
