@@ -748,6 +748,15 @@ def run_scan_cycle(force=False, watchlist=None):
     trade_alerts = monitor_active_trades(state)
     new_alerts.extend(trade_alerts)
 
+    # Monitor & Manage Auto-Algo Trading Positions (Target 1, Target 2, Trailing SL, Kill-Switch)
+    try:
+        from .fyers_order_engine import monitor_and_manage_algo_positions
+        algo_mgr_alerts = monitor_and_manage_algo_positions()
+        if algo_mgr_alerts:
+            new_alerts.extend(algo_mgr_alerts)
+    except Exception as algo_m_err:
+        print(f"Error in algo order manager: {algo_m_err}")
+
     today_str = get_ist_now().date().isoformat()
     for res in results:
         if not res:
@@ -775,6 +784,18 @@ def run_scan_cycle(force=False, watchlist=None):
             send_telegram_alert(confirmed_alert_text)
             state[r3_confirmed_key] = True
             new_alerts.append(f"{s_name}: 100% CONFIRMED BUY")
+
+            # Execute Auto-Algo Entry (Paper or Live Fyers broker execution)
+            try:
+                from .fyers_order_engine import execute_algo_entry
+                algo_ok, algo_msg = execute_algo_entry(res)
+                if algo_ok:
+                    print(f"🤖 Auto-Algo Execution Success: {algo_msg}")
+                    new_alerts.append(f"🤖 ALGO EXEC: {s_name}")
+                else:
+                    print(f"🤖 Auto-Algo Skipped/Standby: {algo_msg}")
+            except Exception as algo_err:
+                print(f"Error executing algo entry: {algo_err}")
 
         # 0.1 Standalone Option R3 Breakout (Option LTP >= Option R3 + Spot >= R2 + RSI 58-74)
         r3_alert_key = f"{s_name}_R3_{today_str}"
