@@ -976,8 +976,12 @@ def fetch_scanner_data(clean_sym):
     import time as _time
     now_ts = int(_time.time())
 
+    from core.option_r3_engine import is_index_symbol, normalize_symbol_and_exchange
+    is_idx = is_index_symbol(clean_sym)
+    clean_norm, exchange, display_name = normalize_symbol_and_exchange(clean_sym)
+
     # Handle symbol renames
-    f_sym_base = clean_sym
+    f_sym_base = clean_norm
     if f_sym_base == "GMRINFRA": f_sym_base = "GMRAIRPORT"
     elif f_sym_base in ["MCDOWELL-N", "MCDOWELL_N"]: f_sym_base = "UNITDSPR"
 
@@ -989,7 +993,20 @@ def fetch_scanner_data(clean_sym):
         ok_fyers, fyers_client = get_fyers_client()
         if ok_fyers and fyers_client:
             used_fyers = True
-            f_sym = f"NSE:{f_sym_base}-EQ"
+            if is_idx:
+                if clean_norm == "NIFTY":
+                    f_sym = "NSE:NIFTY50-INDEX"
+                elif clean_norm == "BANKNIFTY":
+                    f_sym = "NSE:NIFTYBANK-INDEX"
+                elif clean_norm == "FINNIFTY":
+                    f_sym = "NSE:FINNIFTY-INDEX"
+                elif clean_norm == "SENSEX":
+                    f_sym = "BSE:SENSEX-INDEX"
+                else:
+                    f_sym = f"NSE:{clean_norm}-INDEX"
+            else:
+                f_sym = f"NSE:{f_sym_base}-EQ"
+
             now_dt = _dt.now()
             to_d = now_dt.strftime("%Y-%m-%d")
             from_d = (now_dt - _td(days=365)).strftime("%Y-%m-%d")
@@ -1029,6 +1046,16 @@ def fetch_scanner_data(clean_sym):
                 df_1h['Date'] = pd.to_datetime(df_1h['Timestamp'], unit='s')
                 df_1h.set_index('Date', inplace=True)
 
+                if is_idx:
+                    if 'Volume' not in df_d.columns or df_d['Volume'].isna().all() or (df_d['Volume'] == 0).all():
+                        df_d['Volume'] = 1_000_000.0
+                    else:
+                        df_d['Volume'] = df_d['Volume'].fillna(1_000_000.0)
+                    if 'Volume' not in df_1h.columns or df_1h['Volume'].isna().all() or (df_1h['Volume'] == 0).all():
+                        df_1h['Volume'] = 1_000_000.0
+                    else:
+                        df_1h['Volume'] = df_1h['Volume'].fillna(1_000_000.0)
+
                 # Resample weekly and monthly in memory (0 network calls)
                 df_w = df_d.resample('W-FRI').agg({
                     'Open': 'first', 'High': 'max', 'Low': 'min', 'Close': 'last', 'Volume': 'sum'
@@ -1047,12 +1074,44 @@ def fetch_scanner_data(clean_sym):
     # 2. Fallback to yfinance only if Fyers was not used
     if not used_fyers:
         try:
-            ticker_sym = f"{clean_sym}.NS"
+            if is_idx:
+                if clean_norm == "NIFTY":
+                    ticker_sym = "^NSEI"
+                elif clean_norm == "BANKNIFTY":
+                    ticker_sym = "^NSEBANK"
+                elif clean_norm == "SENSEX":
+                    ticker_sym = "^BSESN"
+                elif clean_norm == "FINNIFTY":
+                    ticker_sym = "NIFTY_FIN_SERVICE.NS"
+                else:
+                    ticker_sym = f"^{clean_norm}"
+            else:
+                ticker_sym = f"{clean_norm}.NS"
+
             ticker = yf.Ticker(ticker_sym)
-            df_d = ticker.history(period="1y", interval="1d").dropna(subset=['Close', 'High', 'Low', 'Volume'])
+            df_d = ticker.history(period="1y", interval="1d")
+            if is_idx:
+                if 'Volume' not in df_d.columns or df_d['Volume'].isna().all() or (df_d['Volume'] == 0).all():
+                    df_d['Volume'] = 1_000_000.0
+                else:
+                    df_d['Volume'] = df_d['Volume'].fillna(1_000_000.0)
+                df_d = df_d.dropna(subset=['Close', 'High', 'Low'])
+            else:
+                df_d = df_d.dropna(subset=['Close', 'High', 'Low', 'Volume'])
+
             if df_d.empty or len(df_d) < 30:
                 return None
-            df_1h = ticker.history(period="1mo", interval="1h").dropna(subset=['Close', 'High', 'Low', 'Volume'])
+
+            df_1h = ticker.history(period="1mo", interval="1h")
+            if is_idx:
+                if 'Volume' not in df_1h.columns or df_1h['Volume'].isna().all() or (df_1h['Volume'] == 0).all():
+                    df_1h['Volume'] = 1_000_000.0
+                else:
+                    df_1h['Volume'] = df_1h['Volume'].fillna(1_000_000.0)
+                df_1h = df_1h.dropna(subset=['Close', 'High', 'Low'])
+            else:
+                df_1h = df_1h.dropna(subset=['Close', 'High', 'Low', 'Volume'])
+
             if df_1h.empty:
                 return None
 
@@ -1069,9 +1128,17 @@ def fetch_scanner_data(clean_sym):
 
 def scan_stock(sym):
     try:
-        clean_sym = sym.replace(".NS", "").replace(".BO", "").replace("^", "").strip().upper()
-        ticker_sym = f"{clean_sym}.NS"
-        data = fetch_scanner_data(clean_sym)
+        from core.option_r3_engine import is_index_symbol, normalize_symbol_and_exchange, get_accurate_strike_step
+        is_idx = is_index_symbol(sym)
+        clean_norm, exchange, display_name = normalize_symbol_and_exchange(sym)
+        if is_idx:
+            ticker_sym = sym
+            final_sym = display_name
+        else:
+            ticker_sym = f"{clean_norm}.NS"
+            final_sym = clean_norm
+
+        data = fetch_scanner_data(sym)
         if not data:
             return None
         df_d, df_w, df_m, df_1h = data
@@ -1293,7 +1360,7 @@ def scan_stock(sym):
             daily_hm_display = f"🔴 Bear (-{d_bear_gap:.1f})"
             
         return {
-            "Symbol": clean_sym.replace(".NS", ""),
+            "Symbol": final_sym,
             "FullSymbol": ticker_sym,
             "Price (₹)": round(curr_p, 2),
             "Change (%)": round(pct_chg, 2),
@@ -1514,7 +1581,7 @@ if selected_module == "📊 Market Screener (ઓટોમેટિક સ્ક�
             should_scan = False
             is_auto_scan = False
             if basket_changed:
-                st.toast("🌙 બજાર બંધ છે. પસંદ કરેલ બાસ્કેટ સ્કેન કરવા માટે '🚀 Scan Market Now' બટન દબાવો.", icon="ℹ️")
+                st.toast(f"📋 {selected_basket} બાસ્કેટ ફિલ્ટર થઈ ગયું છે. લાઈવ અપડેટ માટે '🚀 Scan Market Now' દબાવો.", icon="ℹ️")
 
     if should_scan:
         st.session_state.is_screener_scanning = True
@@ -1562,9 +1629,22 @@ if selected_module == "📊 Market Screener (ઓટોમેટિક સ્ક�
                 progress_bar.empty()
                 
             if results:
-                df_res = pd.DataFrame(results)
-                df_res = df_res.sort_values(by=["Score", "Change (%)"], ascending=[False, False])
-                st.session_state.screener_results = df_res
+                df_new = pd.DataFrame(results)
+                if st.session_state.screener_results is not None and not st.session_state.screener_results.empty:
+                    # Upsert new results into master dataframe by Symbol
+                    existing_df = st.session_state.screener_results
+                    existing_data = existing_df.to_dict('records')
+                    by_sym = {row['Symbol']: row for row in existing_data}
+                    for row in results:
+                        by_sym[row['Symbol']] = row
+                    merged_records = list(by_sym.values())
+                    df_master = pd.DataFrame(merged_records)
+                else:
+                    df_master = df_new
+                    merged_records = results
+
+                df_master = df_master.sort_values(by=["Score", "Change (%)"], ascending=[False, False])
+                st.session_state.screener_results = df_master
                 now_str = datetime.datetime.now().strftime("%I:%M:%S %p")
                 st.session_state.screener_last_updated = now_str
                 st.session_state.screener_last_scan_ts = time.time()
@@ -1574,7 +1654,7 @@ if selected_module == "📊 Market Screener (ઓટોમેટિક સ્ક�
                     cache_obj = {
                         "timestamp": now_str,
                         "basket": selected_basket,
-                        "data": results
+                        "data": merged_records
                     }
                     with open("screener_cache.json", "w", encoding="utf-8") as f:
                         json.dump(cache_obj, f, indent=2, ensure_ascii=False, default=serialize_screener_data)
@@ -1631,7 +1711,40 @@ if selected_module == "📊 Market Screener (ઓટોમેટિક સ્ક�
         )
 
     if st.session_state.screener_results is not None:
-        df_res = st.session_state.screener_results
+        df_all = st.session_state.screener_results
+
+        # Instant basket filtering on dropdown selection
+        if "Custom Watchlist" in selected_basket:
+            custom_syms = {
+                s.strip().replace(".NS", "").replace(".BO", "").replace("^", "").upper()
+                for s in custom_symbols_text.split(",") if s.strip()
+            }
+            if custom_syms:
+                matched_df = df_all[df_all["Symbol"].apply(
+                    lambda x: str(x).strip().upper() in custom_syms or str(x).replace(" ", "").upper() in custom_syms
+                )]
+                df_res = matched_df if not matched_df.empty else df_all
+            else:
+                df_res = df_all
+        elif selected_basket in BASKETS and "Total F&O" not in selected_basket:
+            from core.option_r3_engine import normalize_symbol_and_exchange
+            basket_keys = set()
+            for s in BASKETS[selected_basket]:
+                clean, _, disp = normalize_symbol_and_exchange(s)
+                basket_keys.update([
+                    clean.upper(),
+                    disp.upper(),
+                    clean.replace(" ", "").upper(),
+                    disp.replace(" ", "").upper(),
+                    s.replace(".NS", "").replace(".BO", "").replace("^", "").upper(),
+                    s.replace(".NS", "").replace(".BO", "").replace("^", "").replace(" ", "").upper()
+                ])
+            matched_df = df_all[df_all["Symbol"].apply(
+                lambda x: str(x).strip().upper() in basket_keys or str(x).replace(" ", "").upper() in basket_keys
+            )]
+            df_res = matched_df if not matched_df.empty else df_all
+        else:
+            df_res = df_all
         
         count_sniper_buy = len(df_res[df_res["Signal"].str.contains("Sniper Dip Buy", na=False)])
         count_buy_dips = len(df_res[df_res["Signal"].str.contains("Buy on Dips", na=False)])
