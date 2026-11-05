@@ -118,6 +118,58 @@ def format_100_confirmed_buy_alert(res):
         f"⏰ <i>{now_str}</i> | 🤖 Patel Trading Bot"
     )
 
+def format_100_confirmed_put_alert(res):
+    s_name = res['symbol']
+    is_idx = res.get('is_index', False)
+    inst_lbl = "ઈન્ડેક્સ" if is_idx else "સ્ટોક"
+    is_gb = res.get('is_gamma_blast', False)
+    if is_gb:
+        headline = f"⚡🩸 <b>{s_name.upper()} 0DTE PUT GAMMA BLAST ALERT! (HERO-ZERO ૧૦૦% પુટ કન્ફર્મ)</b> 🩸⚡"
+    elif is_idx:
+        headline = f"🩸 <b>૧૦૦% કન્ફર્મ {s_name.upper()} પુટ (PE) બાય એલર્ટ! (100% BEARISH PUT BUY)</b> 🩸"
+    else:
+        headline = "🩸 <b>૧૦૦% કન્ફર્મ પુટ (PE) બાય એલર્ટ! (100% BEARISH BREAKDOWN)</b> 🩸"
+    now_str = get_ist_now().strftime('%d %b %Y | %H:%M:%S IST')
+    vol_emoji = "🔥" if res.get('vol_5m', res.get('vol_ratio', 1.0)) >= 1.2 else ""
+    opt_strike_val = res.get('otm_put_strike', res.get('pe_strike', ''))
+    strike_str = f"₹{int(opt_strike_val)} PE" if (isinstance(opt_strike_val, (int, float)) and float(opt_strike_val) > 0) else f"₹{opt_strike_val} PE"
+    contract_lbl = res.get('opt_put_contract_name', f"{strike_str}")
+    opt_ltp_txt = f" (LTP: ₹{res['opt_put_ltp']:.2f})" if res.get('opt_put_ltp') else ""
+    fyers_lbl = f"• <b>Fyers Symbol:</b> <code>{res['opt_put_fyers_symbol']}</code>\n" if res.get('opt_put_fyers_symbol') else ""
+    opt_r3_txt = f"• <b>Put Option R3:</b> ₹{res['opt_put_r3']:.2f} (ક્રોસ થયેલ ✅)\n" if res.get('opt_put_r3') else ""
+    tf_lbl = res.get('timeframe_used', '5m')
+    rsi_val = res.get('rsi_5m', res.get('rsi_15m', 35.0))
+    vol_val = res.get('vol_5m', res.get('vol_15m', res.get('vol_ratio', 1.0)))
+    strike_desc = "Weekly OTM Put" if is_idx else "OTM Put Option Strike"
+    target_gain_txt = "૧૫૦% થી ૪૦૦%+ (ઝીરો-ટુ-હીરો સુપર જેકપોટ પુટ)" if is_gb else "૧૦૦% થી ૨૦૦%+ (ડબલ / મલ્ટિબેગર નફો)"
+    rsi_badge = (
+        f"• <b>⚡ {tf_lbl} RSI Confluence:</b> <b>{rsi_val:.1f}</b> (Bearish Sweet Spot 26-42 ✅ - પેનિક બ્રેકડાઉન)\n"
+        f"• <b>📊 {tf_lbl} Volume Ratio:</b> <b>{vol_val:.1f}x</b> (સંસ્થાકીય વેચાણ વોલ્યુમ 🔥)\n"
+        f"• <b>🎯 {strike_desc}:</b> <b>{strike_str}</b> ({contract_lbl})\n"
+    )
+    return (
+        f"{headline}\n"
+        f"━━━━━━━━━━━━━━━━━━━━━\n"
+        f"📌 <b>{inst_lbl}:</b> {s_name} (LTP: ₹{res['price']:.2f}, {res['change']:+.2f}%)\n"
+        f"📉 <b>સેટઅપ:</b> Support S1/S2 Breakdown + Put Option R3 Rocket + 5m પેનિક કન્ફર્મ!\n"
+        f"🩸 <b>બ્રેકડાઉન:</b> Daily Support તૂટી ગઈ છે, મંદી વેગ પકડી રહી છે.\n"
+        f"{rsi_badge}"
+        f"━━━━━━━━━━━━━━━━━━━━━\n"
+        f"🔥 <b>ACTIONABLE TRADE ENTRY (તાત્કાલિક પુટ ખરીદો):</b>\n"
+        f"• <b>Put Option Buy (PE):</b> <b>{contract_lbl} ખરીદો{opt_ltp_txt}</b>\n"
+        f"• <b>{strike_desc}:</b> <b>{strike_str}</b>\n"
+        f"{fyers_lbl}"
+        f"{opt_r3_txt}"
+        f"• <b>ચુસ્ત પુટ સ્ટોપલોસ:</b> ₹{res.get('opt_put_sl', 0.0):.2f}\n"
+        f"• <b>Target 1 (+35%):</b> ₹{res.get('opt_put_t1', 0.0):.2f} (૫૦% નફો બુક & Trail SL to Cost)\n"
+        f"• <b>Target 2 (+70%):</b> ₹{res.get('opt_put_t2', 0.0):.2f} (વધુ ૩૦% નફો બુક)\n"
+        f"• <b>મલ્ટિબેગર ટાર્ગેટ:</b> {target_gain_txt}\n"
+        f"━━━━━━━━━━━━━━━━━━━━━\n"
+        f"📊 <b>Spot Pivots:</b> P: ₹{res.get('pivot_p', 0):.1f} | S1: ₹{res.get('s1', 0):.1f} | S2: ₹{res.get('s2', 0):.1f} | S3: ₹{res.get('s3', 0):.1f}\n"
+        f"━━━━━━━━━━━━━━━━━━━━━\n"
+        f"⏰ <i>{now_str}</i> | 🤖 Patel Trading Bot"
+    )
+
 def format_ha_reversal_alert(res):
     s_name = res['symbol']
     now_str = get_ist_now().strftime('%d %b %Y | %H:%M:%S IST')

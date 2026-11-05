@@ -2304,6 +2304,19 @@ if selected_module == "🤖 Fyers Auto-Algo Cockpit (ઓટો-આલ્ગો �
             with c_b2:
                 st.caption("💡 ફિલ્ટર સલાહ: ઈન્ડેક્સ માટે 'Only Indices' અથવા સમગ્ર F&O બજાર માટે 'All F&O Stocks + Indices' પસંદ કરો.")
 
+            dir_opts = ["BOTH", "CALL_ONLY", "PUT_ONLY"]
+            curr_d_val = algo_cfg.get("trading_direction", "BOTH")
+            d_idx = 0 if curr_d_val == "BOTH" else (1 if curr_d_val == "CALL_ONLY" else 2)
+            new_direction = st.radio(
+                "🎯 આલ્ગો ટ્રેડિંગ દિશા (Trading Direction Mode):",
+                options=dir_opts,
+                index=d_idx,
+                format_func=lambda x: "🔄 BOTH (Call & Put બંને - ઓલ-વેધર ૩૬૦°)" if x == "BOTH" else ("📈 ONLY CALLS (માત્ર તેજીના કૉલ)" if x == "CALL_ONLY" else "📉 ONLY PUTS (માત્ર મંદીના પુટ)"),
+                horizontal=True,
+                key="radio_trading_direction",
+                help="બુલિશ (Call) અને બેરિશ (Put) બંને ટ્રેડ લેવા માટે BOTH પસંદ કરો."
+            )
+
             st.markdown("##### 🛡️ સંસ્થાકીય જોખમ નિયંત્રણો (Institutional Risk Guards)")
             c_r1, c_r2, c_r3, c_r4 = st.columns(4)
             with c_r1:
@@ -2357,6 +2370,7 @@ if selected_module == "🤖 Fyers Auto-Algo Cockpit (ઓટો-આલ્ગો �
                 algo_cfg["is_enabled"] = new_enabled
                 algo_cfg["mode"] = new_mode
                 algo_cfg["trading_basket"] = new_basket
+                algo_cfg["trading_direction"] = new_direction
                 algo_cfg["max_risk_per_trade"] = float(new_risk_trade)
                 algo_cfg["max_capital_per_trade"] = float(new_cap_trade)
                 algo_cfg["daily_max_loss"] = float(new_daily_loss)
@@ -2427,6 +2441,7 @@ if selected_module == "🤖 Fyers Auto-Algo Cockpit (ઓટો-આલ્ગો �
                             <div>
                                 <span style="font-size: 18px; font-weight: 800; color: #FFFFFF;">{c_name}</span>
                                 <span style="font-size: 11px; background: rgba(56, 189, 248, 0.15); color: #38BDF8; padding: 3px 8px; border-radius: 6px; margin-left: 8px;">{mode_badge}</span>
+                                <span style="font-size: 11px; background: {'rgba(16, 185, 129, 0.2)' if tr.get('opt_type', 'CE') == 'CE' else 'rgba(239, 68, 68, 0.2)'}; color: {'#34D399' if tr.get('opt_type', 'CE') == 'CE' else '#F87171'}; padding: 3px 8px; border-radius: 6px; margin-left: 4px; font-weight: 700;">{'📈 CALL (CE)' if tr.get('opt_type', 'CE') == 'CE' else '📉 PUT (PE)'}</span>
                                 {zero_risk_badge}
                                 <div style="font-size: 12px; color: #94A3B8; margin-top: 4px;">
                                     સિમ્બોલ: <code>{f_sym}</code> | એન્ટ્રી સમય: {tr.get('entry_time', '-')}
@@ -2487,6 +2502,9 @@ if selected_module == "🤖 Fyers Auto-Algo Cockpit (ઓટો-આલ્ગો �
     # Section: Manual On-Demand Algo Test Trigger
     with st.expander("🧪 ટેસ્ટ ટ્રેડ ટ્રિગર કરો (Simulate / Test Algo Order on Any Stock)", expanded=False):
         st.caption("આલ્ગોનો ઓર્ડર ફ્લો, લોટ સાઈઝિંગ અને ટેલિગ્રામ એલર્ટ ટેસ્ટ કરવા માટે કોઈપણ સ્ટોક પર ટેસ્ટ ઓર્ડર આપો:")
+        t_dir_col, t_space = st.columns([2, 4])
+        with t_dir_col:
+            test_type = st.radio("ટેસ્ટ ઓપ્શન પ્રકાર:", options=["Call (CE)", "Put (PE)"], horizontal=True, key="test_algo_type_sel")
         t_col1, t_col2, t_col3, t_col4 = st.columns([2, 1.5, 1.5, 1.5])
         with t_col1:
             test_sym = st.selectbox(
@@ -2501,11 +2519,21 @@ if selected_module == "🤖 Fyers Auto-Algo Cockpit (ઓટો-આલ્ગો �
         with t_col4:
             st.markdown("<div style='height: 28px;'></div>", unsafe_allow_html=True)
             if st.button("🚀 Fire Test Order", type="primary", key="btn_fire_test_algo_order"):
+                is_pe = "PE" in test_type
+                suffix = "PE" if is_pe else "CE"
+                label = "Put" if is_pe else "Call"
                 sim_res = {
                     "symbol": test_sym,
-                    "opt_fyers_symbol": f"NSE:{test_sym}26NOVCE",
-                    "opt_contract_name": f"{test_sym} Test Call",
+                    "opt_type": suffix,
+                    "opt_fyers_symbol": f"NSE:{test_sym}26NOV{suffix}",
+                    "opt_contract_name": f"{test_sym} Test {label}",
                     "opt_ltp": test_price,
+                    "opt_put_ltp": test_price,
+                    "opt_put_fyers_symbol": f"NSE:{test_sym}26NOVPE",
+                    "opt_put_contract_name": f"{test_sym} Test Put",
+                    "opt_put_sl": test_sl,
+                    "opt_put_t1": test_price * 1.35,
+                    "opt_put_t2": test_price * 1.70,
                     "price": test_price,
                     "stop_loss": test_sl,
                     "t1": test_price * 1.35,

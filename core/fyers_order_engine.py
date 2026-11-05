@@ -103,6 +103,7 @@ DEFAULT_ALGO_CONFIG = {
     "is_enabled": False,
     "mode": "PAPER",                     # "PAPER" (Demo) or "LIVE" (Fyers Real Broker)
     "trading_basket": "ALL",            # "ALL", "INDICES", or "MOMENTUM"
+    "trading_direction": "BOTH",        # "BOTH", "CALL_ONLY", or "PUT_ONLY"
     "max_risk_per_trade": 1500.0,       # Risk per trade (1.5% of 1L)
     "max_capital_per_trade": 15000.0,   # Max margin allocated per trade
     "daily_max_loss": 3000.0,           # Daily Kill-Switch limit
@@ -301,9 +302,34 @@ def execute_algo_entry(scan_res: Dict[str, Any]) -> Tuple[bool, str]:
         return False, f"Max concurrent positions reached ({len(active_trades)}/{max_open})"
         
     sym = scan_res.get("symbol", "")
-    fyers_sym = scan_res.get("opt_fyers_symbol", "")
-    contract_name = scan_res.get("opt_contract_name", f"{sym} OTM Call")
-    
+    opt_type = scan_res.get("opt_type", "CE")
+
+    # Safety Check 5.2: Direction Filter (BOTH / CALL_ONLY / PUT_ONLY)
+    trading_dir = cfg.get("trading_direction", "BOTH")
+    if trading_dir == "CALL_ONLY" and opt_type == "PE":
+        return False, f"Skipped {sym}: Algo is restricted to CALL ONLY in settings"
+    elif trading_dir == "PUT_ONLY" and opt_type == "CE":
+        return False, f"Skipped {sym}: Algo is restricted to PUT ONLY in settings"
+
+    # Select exact Call or Put symbols and levels
+    if opt_type == "PE":
+        fyers_sym = scan_res.get("opt_put_fyers_symbol", scan_res.get("opt_fyers_symbol", ""))
+        contract_name = scan_res.get("opt_put_contract_name", scan_res.get("opt_contract_name", f"{sym} OTM Put"))
+        entry_price = float(scan_res.get("opt_put_ltp", scan_res.get("opt_ltp", 0.0)))
+        stop_loss = float(scan_res.get("opt_put_sl", entry_price * 0.80))
+        target_1 = float(scan_res.get("opt_put_t1", entry_price * 1.35))
+        target_2 = float(scan_res.get("opt_put_t2", entry_price * 1.70))
+    else:
+        fyers_sym = scan_res.get("opt_fyers_symbol", "")
+        contract_name = scan_res.get("opt_contract_name", f"{sym} OTM Call")
+        entry_price = float(scan_res.get("opt_ltp", 0.0))
+        stop_loss = float(scan_res.get("stop_loss", entry_price * 0.80))
+        target_1 = float(scan_res.get("t1", entry_price * 1.35))
+        target_2 = float(scan_res.get("t2", entry_price * 1.70))
+
+    if entry_price <= 0:
+        entry_price = float(scan_res.get("price", 0.0))
+
     # Safety Check 5.5: Basket Filter (All / Indices / Momentum)
     basket_choice = cfg.get("trading_basket", "ALL")
     from core.option_r3_engine import is_index_symbol, TOP_MOMENTUM_FNO_BASKET
@@ -319,15 +345,6 @@ def execute_algo_entry(scan_res: Dict[str, Any]) -> Tuple[bool, str]:
     for tr in active_trades:
         if tr.get("symbol") == sym or tr.get("fyers_symbol") == fyers_sym:
             return False, f"Position already active for {sym}"
-            
-    # Entry Pricing & Level Calibration
-    entry_price = float(scan_res.get("opt_ltp", 0.0))
-    if entry_price <= 0:
-        entry_price = float(scan_res.get("price", 0.0)) # Fallback to spot
-        
-    stop_loss = float(scan_res.get("stop_loss", entry_price * 0.80))
-    target_1 = float(scan_res.get("t1", entry_price * 1.35))
-    target_2 = float(scan_res.get("t2", entry_price * 1.70))
     
     lots, total_qty, lot_size, allocated_capital = calculate_algo_quantity(
         symbol=sym,
@@ -364,6 +381,7 @@ def execute_algo_entry(scan_res: Dict[str, Any]) -> Tuple[bool, str]:
     new_trade = {
         "id": trade_id,
         "symbol": sym,
+        "opt_type": opt_type,
         "contract_name": contract_name,
         "fyers_symbol": fyers_sym,
         "mode": trade_mode,

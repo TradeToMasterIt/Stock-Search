@@ -1,6 +1,8 @@
 {
   "is_enabled": false,
   "mode": "PAPER",
+  "trading_basket": "ALL",
+  "trading_direction": "BOTH",
   "max_risk_per_trade": 1500.0,
   "max_capital_per_trade": 15000.0,
   "daily_max_loss": 3000.0,
@@ -14,6 +16,5 @@
   "start_time": "09:20",
   "end_time": "15:00",
   "kill_switch_triggered": false,
-  "last_reset_date": "2026-11-05",
-  "trading_basket": "ALL"
+  "last_reset_date": "2026-11-06"
 }
