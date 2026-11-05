@@ -771,10 +771,17 @@ def run_scan_cycle(force=False, watchlist=None):
         is_buy = "BUY" in curr_sig or "BULLISH" in curr_sig
         is_sell = "SELL" in curr_sig or "AVOID" in curr_sig
         
-        # 0. R3 Option Breakout / 100% Confirmed Buy Alert (Fires when Option crosses R3 + Spot at/above R2 + RSI Sweet Spot confirmed)
+        # 0. R3 Option Breakout / 100% Confirmed Buy Alert
+        # Fires when Option crosses R3 + Spot at/above R1 OR R2 + RSI Sweet Spot confirmed
+        spot_p = res.get('price', 0)
+        spot_r1 = res.get('r1', 0)
+        spot_r2 = res.get('r2', 0)
+        spot_at_or_above_r1 = bool(spot_r1 > 0 and spot_p >= spot_r1)
+        spot_at_or_above_r2 = bool(spot_r2 > 0 and spot_p >= spot_r2)
+
         r3_confirmed_key = f"{s_name}_R3_CONFIRMED_{today_str}"
         is_r3_confirmed = bool(
-            (is_sniper_buy or "STRONG BUY" in curr_sig or res.get('price', 0) >= res.get('r2', 0)) and
+            (spot_at_or_above_r1 or spot_at_or_above_r2 or is_sniper_buy or "STRONG BUY" in curr_sig) and
             res.get('is_option_r3_crossed') and
             res.get('is_r3_rsi_confirmed', True)
         )

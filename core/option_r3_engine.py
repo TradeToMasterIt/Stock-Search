@@ -464,10 +464,14 @@ def analyze_option_r3_setup(
     # Core Strategy: Stock Price crosses Spot R2 AND Option LTP crosses Option Daily R3
     # When Option R3 is broken while Stock is at/above R2, explosive momentum follows towards Spot R3.
     opt_leads_r3 = bool(opt_r3 > 0 and opt_ltp >= opt_r3)
-    spot_breaks_r2 = bool((spot_r2 > 0 and spot_price >= spot_r2) or (spot_r1 > 0 and spot_price >= spot_r1 and spot_is_1h_confirmed))
+    # Dual Trigger: Spot crosses either R1 OR R2
+    spot_breaks_level = bool(
+        (spot_r2 > 0 and spot_price >= spot_r2) or 
+        (spot_r1 > 0 and spot_price >= spot_r1)
+    )
     
-    # Both conditions must align: Option R3 Broken AND Spot R2 Broken / Moving
-    is_option_r3_crossed = bool(opt_leads_r3 and spot_breaks_r2)
+    # Both conditions must align: Option R3 Broken AND Spot at/above R1 or R2
+    is_option_r3_crossed = bool(opt_leads_r3 and spot_breaks_level)
 
     # 100% Confirmed Buy Condition:
     is_100_percent_buy = bool(is_option_r3_crossed and spot_is_bullish and spot_is_1h_confirmed)
