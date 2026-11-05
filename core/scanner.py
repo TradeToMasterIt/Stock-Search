@@ -228,49 +228,71 @@ def analyze_stock(sym):
                 (d_hm_bull or pct_chg >= 2.0)
             )
 
-        # 15-Minute Sweet Spot RSI & Candle Rejection Analysis (for candidate setups)
-        m15_rsi = float(h1_curr['RSI_9'])
-        m15_prev_rsi = float(h1_prev['RSI_9'])
-        m15_rsi_slope = round(m15_rsi - m15_prev_rsi, 2)
-        m15_vol_ratio = h1_vol_ratio
-        is_15m_wick_rejected = False
+        # 5-Minute Fast Sniper Sweet Spot RSI & Candle Rejection Analysis (for candidate setups)
+        # Primary: 5-minute chart for early, timely option entry before gamma blast escapes.
+        # Fallback: 15-minute chart if 5m data is temporarily sparse.
+        m_rsi = float(h1_curr['RSI_9'])
+        m_prev_rsi = float(h1_prev['RSI_9'])
+        m_rsi_slope = round(m_rsi - m_prev_rsi, 2)
+        m_vol_ratio = h1_vol_ratio
+        is_wick_rejected = False
+        timeframe_used = "1H"
         
         is_candidate = bool(is_sniper_buy or is_r3_radar or (curr_p >= r1_val) or (pct_chg >= 0.8))
         if is_candidate:
             try:
-                df_15m = t.history(period="5d", interval="15m").dropna(subset=subset_cols)
-                if df_15m is not None and not df_15m.empty and len(df_15m) >= 20:
-                    if is_index and ('Volume' not in df_15m.columns or df_15m['Volume'].sum() == 0):
-                        df_15m['Volume'] = 1_000_000
-                    df_15m = calculate_volume_analysis(calculate_hilega_milega(df_15m))
-                    c_15m = df_15m.iloc[-1]
-                    p_15m = df_15m.iloc[-2]
-                    m15_rsi = float(c_15m.get('RSI_9', 50.0))
-                    m15_prev_rsi = float(p_15m.get('RSI_9', 50.0))
-                    m15_rsi_slope = round(m15_rsi - m15_prev_rsi, 2)
-                    m15_vol_ratio = float(c_15m.get('Vol_Ratio', 1.0))
+                # 1. Try 5-minute candles first (3 days of 5m data)
+                df_intra = None
+                try:
+                    df_5m = t.history(period="3d", interval="5m").dropna(subset=subset_cols)
+                    if df_5m is not None and not df_5m.empty and len(df_5m) >= 20:
+                        df_intra = df_5m
+                        timeframe_used = "5m"
+                except Exception:
+                    df_intra = None
+                
+                # 2. Fallback to 15-minute if 5m is not available
+                if df_intra is None or df_intra.empty or len(df_intra) < 20:
+                    try:
+                        df_15m = t.history(period="5d", interval="15m").dropna(subset=subset_cols)
+                        if df_15m is not None and not df_15m.empty and len(df_15m) >= 20:
+                            df_intra = df_15m
+                            timeframe_used = "15m"
+                    except Exception:
+                        df_intra = None
+
+                if df_intra is not None and not df_intra.empty and len(df_intra) >= 20:
+                    if is_index and ('Volume' not in df_intra.columns or df_intra['Volume'].sum() == 0):
+                        df_intra['Volume'] = 1_000_000
+                    df_intra = calculate_volume_analysis(calculate_hilega_milega(df_intra))
+                    c_intra = df_intra.iloc[-1]
+                    p_intra = df_intra.iloc[-2]
+                    m_rsi = float(c_intra.get('RSI_9', 50.0))
+                    m_prev_rsi = float(p_intra.get('RSI_9', 50.0))
+                    m_rsi_slope = round(m_rsi - m_prev_rsi, 2)
+                    m_vol_ratio = float(c_intra.get('Vol_Ratio', 1.0))
                     
                     # Upper wick rejection check (Rejection at R2/R3 barrier)
-                    c_h = float(c_15m['High'])
-                    c_l = float(c_15m['Low'])
-                    c_o = float(c_15m['Open'])
-                    c_c = float(c_15m['Close'])
+                    c_h = float(c_intra['High'])
+                    c_l = float(c_intra['Low'])
+                    c_o = float(c_intra['Open'])
+                    c_c = float(c_intra['Close'])
                     total_bar_span = c_h - c_l
                     upper_wick = c_h - max(c_o, c_c)
                     if total_bar_span > 0:
                         wick_ratio = upper_wick / total_bar_span
                         # If more than 45% of candle is a rejected upper wick, it's a trap!
                         if wick_ratio >= 0.45 and c_c < r2_val:
-                            is_15m_wick_rejected = True
+                            is_wick_rejected = True
             except Exception:
                 pass
 
         # Golden RSI Sweet Spot Filter (58 to 74 with Positive Slope & No Upper Wick Rejection)
-        vol_sweet_confirmed = True if is_index else (m15_vol_ratio >= 1.2 or h1_vol_ratio >= 1.3)
+        vol_sweet_confirmed = True if is_index else (m_vol_ratio >= 1.2 or h1_vol_ratio >= 1.3)
         is_r3_rsi_confirmed = bool(
-            (58.0 <= m15_rsi <= 74.0) and
-            (m15_rsi_slope >= -0.5) and
-            (not is_15m_wick_rejected) and
+            (58.0 <= m_rsi <= 74.0) and
+            (m_rsi_slope >= -0.5) and
+            (not is_wick_rejected) and
             vol_sweet_confirmed
         )
 
@@ -367,11 +389,16 @@ def analyze_stock(sym):
             "opt_ltp": opt_ltp,
             "opt_r3": opt_r3_val,
             "is_option_r3_crossed": is_option_r3_crossed,
-            "rsi_15m": round(m15_rsi, 1),
-            "rsi_15m_slope": round(m15_rsi_slope, 1),
+            "rsi_5m": round(m_rsi, 1),
+            "rsi_15m": round(m_rsi, 1),
+            "rsi_5m_slope": round(m_rsi_slope, 1),
+            "rsi_15m_slope": round(m_rsi_slope, 1),
             "is_r3_rsi_confirmed": is_r3_rsi_confirmed,
-            "is_15m_wick_rejected": is_15m_wick_rejected,
-            "vol_15m": round(m15_vol_ratio, 1),
+            "is_5m_wick_rejected": is_wick_rejected,
+            "is_15m_wick_rejected": is_wick_rejected,
+            "vol_5m": round(m_vol_ratio, 1),
+            "vol_15m": round(m_vol_ratio, 1),
+            "timeframe_used": timeframe_used,
             "ha_reversal_buy": ha_reversal_buy,
             "ha_red_count": ha_red_count,
             "ha_donchian_sl": ha_donchian_sl,

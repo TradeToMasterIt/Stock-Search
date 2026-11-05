@@ -35,12 +35,15 @@ def format_r3_radar_alert(res):
     strike_str = f"₹{int(opt_strike_val)} CE" if (isinstance(opt_strike_val, (int, float)) and float(opt_strike_val) > 0) else f"₹{opt_strike_val} CE"
     contract_lbl = res.get('opt_contract_name', f"{strike_str}")
     fyers_lbl = f"• <b>Fyers Symbol:</b> <code>{res['opt_fyers_symbol']}</code>\n" if res.get('opt_fyers_symbol') else ""
-    rsi_15m_val = res.get('rsi_15m')
+    tf_lbl = res.get('timeframe_used', '5m')
+    rsi_val = res.get('rsi_5m', res.get('rsi_15m'))
+    vol_val = res.get('vol_5m', res.get('vol_15m', res.get('vol_ratio', 1.0)))
     strike_desc = "Weekly OTM Strike" if is_idx else "OTM Option Strike"
     rsi_txt = (
-        f"• <b>15m RSI Confluence:</b> <b>{rsi_15m_val:.1f}</b> (Golden Sweet Spot 58-74 ✅ - નો ફેકઆઉટ)\n"
+        f"• <b>⚡ {tf_lbl} RSI Confluence:</b> <b>{rsi_val:.1f}</b> (Golden Sweet Spot 58-74 ✅ - સ્નાઈપર વેગ)\n"
+        f"• <b>📊 {tf_lbl} Volume Ratio:</b> <b>{vol_val:.1f}x</b> (સંસ્થાકીય વોલ્યુમ કન્ફર્મ 🔥)\n"
         f"• <b>🎯 {strike_desc}:</b> <b>{strike_str}</b> ({contract_lbl})\n"
-    ) if rsi_15m_val else f"• <b>🎯 {strike_desc}:</b> <b>{strike_str}</b> ({contract_lbl})\n"
+    ) if rsi_val else f"• <b>🎯 {strike_desc}:</b> <b>{strike_str}</b> ({contract_lbl})\n"
     return (
         f"{headline}\n"
         f"━━━━━━━━━━━━━━━━━━━━━\n"
@@ -79,19 +82,22 @@ def format_100_confirmed_buy_alert(res):
     opt_ltp_txt = f" (LTP: ₹{res['opt_ltp']:.2f})" if res.get('opt_ltp') else ""
     fyers_lbl = f"• <b>Fyers Symbol:</b> <code>{res['opt_fyers_symbol']}</code>\n" if res.get('opt_fyers_symbol') else ""
     opt_r3_txt = f"• <b>Option R3:</b> ₹{res['opt_r3']:.2f} (ક્રોસ થયેલ ✅)\n" if res.get('opt_r3') else ""
-    rsi_15m_val = res.get('rsi_15m', 62.0)
+    tf_lbl = res.get('timeframe_used', '5m')
+    rsi_val = res.get('rsi_5m', res.get('rsi_15m', 62.0))
+    vol_val = res.get('vol_5m', res.get('vol_15m', res.get('vol_ratio', 1.0)))
     strike_desc = "Weekly OTM Strike" if is_idx else "OTM Option Strike"
     asset_action = "Index / Future Buy" if is_idx else "Equity / Future Buy"
     target_gain_txt = "૧૫૦% થી ૪૦૦%+ (ઝીરો-ટુ-હીરો સુપર જેકપોટ)" if is_gb else "૧૦૦% થી ૨૦૦%+ (ડબલ / મલ્ટિબેગર નફો)"
     rsi_badge = (
-        f"• <b>15m RSI Confluence:</b> <b>{rsi_15m_val:.1f}</b> (Golden Sweet Spot 58-74 ✅ - મજબૂત તાજી તેજી)\n"
+        f"• <b>⚡ {tf_lbl} RSI Confluence:</b> <b>{rsi_val:.1f}</b> (Golden Sweet Spot 58-74 ✅ - પ્રારંભિક સ્નાઈપર એન્ટ્રી)\n"
+        f"• <b>📊 {tf_lbl} Volume Ratio:</b> <b>{vol_val:.1f}x</b> (સંસ્થાકીય વોલ્યુમ કન્ફર્મ 🔥)\n"
         f"• <b>🎯 {strike_desc}:</b> <b>{strike_str}</b> ({contract_lbl})\n"
     )
     return (
         f"{headline}\n"
         f"━━━━━━━━━━━━━━━━━━━━━\n"
         f"📌 <b>{inst_lbl}:</b> {s_name} (LTP: ₹{res['price']:.2f}, {res['change']:+.2f}%)\n"
-        f"🎯 <b>સેટઅપ:</b> Sniper Buy + OTM R3 Rocket + 15m RSI કન્ફર્મ!\n"
+        f"🎯 <b>સેટઅપ:</b> Sniper Buy + OTM R3 Rocket + 5m/15m સ્નાઈપર કન્ફર્મ!\n"
         f"⚡ <b>Hilega-Milega 1H:</b> Green &gt; Red (પાણી 50 ની ઉપર - ૧૦૦% ખરીદી પાકી)\n"
         f"{rsi_badge}"
         f"━━━━━━━━━━━━━━━━━━━━━\n"
@@ -168,14 +174,16 @@ def format_sniper_buy_alert(res):
     opt_r3_txt = f"• <b>Option R3 લેવલ:</b> ₹{res['opt_r3']:.2f}\n" if res.get('opt_r3') else ""
     opt_status = " (✅ R3 ક્રોસ થયેલ - રોકેટ બ્રેકઆઉટ!)" if res.get('is_option_r3_crossed') else " (⚠️ R3 ક્રોસ થતાં જ એન્ટ્રી)"
     fyers_lbl = f"• <b>Fyers Symbol:</b> <code>{res['opt_fyers_symbol']}</code>\n" if res.get('opt_fyers_symbol') else ""
-    rsi_15m_val = res.get('rsi_15m')
+    tf_lbl = res.get('timeframe_used', '5m')
+    rsi_val = res.get('rsi_5m', res.get('rsi_15m'))
+    vol_val = res.get('vol_5m', res.get('vol_15m', res.get('vol_ratio', 1.0)))
     strike_desc = "Weekly OTM Strike" if is_idx else "OTM Option Strike"
     asset_action = "Index / Future Buy" if is_idx else "Equity / Future Buy"
     rsi_txt = (
-        f"• <b>15m RSI:</b> <b>{rsi_15m_val:.1f}</b> (Golden Sweet Spot 58-74 ✅)\n"
+        f"• <b>⚡ {tf_lbl} RSI Confluence:</b> <b>{rsi_val:.1f}</b> (Golden Sweet Spot 58-74 ✅)\n"
+        f"• <b>📊 {tf_lbl} Volume Ratio:</b> <b>{vol_val:.1f}x</b> (સંસ્થાકીય વોલ્યુમ કન્ફર્મ 🔥)\n"
         f"• <b>🎯 {strike_desc}:</b> <b>{strike_str}</b> ({contract_lbl})\n"
-    ) if rsi_15m_val else f"• <b>🎯 {strike_desc}:</b> <b>{strike_str}</b> ({contract_lbl})\n"
-
+    ) if rsi_val else f"• <b>🎯 {strike_desc}:</b> <b>{strike_str}</b> ({contract_lbl})\n"
     return (
         f"🎯 <b>SNIPER DIP BUY CONFIRMED!</b> 🎯\n"
         f"━━━━━━━━━━━━━━━━━━━━━\n"
