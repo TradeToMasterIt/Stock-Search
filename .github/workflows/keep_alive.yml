@@ -1,0 +1,22 @@
+name: "Streamlit Cloud 24x7 Keep-Alive"
+
+on:
+  schedule:
+    # Pings Streamlit Cloud every 4 hours 24x7 so it never sleeps
+    - cron: '0 */4 * * *'
+  workflow_dispatch:
+
+jobs:
+  ping-streamlit:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping Streamlit Cloud App
+        run: |
+          echo "Pinging Streamlit Cloud at https://stock-search-ggp.streamlit.app/ ..."
+          HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 30 https://stock-search-ggp.streamlit.app/ || echo "Failed")
+          echo "Streamlit Cloud Response Code: $HTTP_CODE"
+          if [ "$HTTP_CODE" = "200" ] || [ "$HTTP_CODE" = "302" ]; then
+            echo "✅ Streamlit Cloud is AWAKE and RUNNING!"
+          else
+            echo "⚠️ Streamlit Cloud pinged (Code: $HTTP_CODE)"
+          fi

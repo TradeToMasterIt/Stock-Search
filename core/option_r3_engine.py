@@ -464,10 +464,14 @@ def analyze_option_r3_setup(
     # Core Strategy: Stock Price crosses Spot R2 AND Option LTP crosses Option Daily R3
     # When Option R3 is broken while Stock is at/above R2, explosive momentum follows towards Spot R3.
     opt_leads_r3 = bool(opt_r3 > 0 and opt_ltp >= opt_r3)
-    spot_breaks_r2 = bool((spot_r2 > 0 and spot_price >= spot_r2) or (spot_r1 > 0 and spot_price >= spot_r1 and spot_is_1h_confirmed))
+    # Dual Trigger: Spot crosses either R1 OR R2
+    spot_breaks_level = bool(
+        (spot_r2 > 0 and spot_price >= spot_r2) or 
+        (spot_r1 > 0 and spot_price >= spot_r1)
+    )
     
-    # Both conditions must align: Option R3 Broken AND Spot R2 Broken / Moving
-    is_option_r3_crossed = bool(opt_leads_r3 and spot_breaks_r2)
+    # Both conditions must align: Option R3 Broken AND Spot at/above R1 or R2
+    is_option_r3_crossed = bool(opt_leads_r3 and spot_breaks_level)
 
     # 100% Confirmed Buy Condition:
     is_100_percent_buy = bool(is_option_r3_crossed and spot_is_bullish and spot_is_1h_confirmed)
@@ -520,6 +524,172 @@ def analyze_option_r3_setup(
 # -------------------------------------------------------------
 # Specific Telegram Alert Message Formatter
 # -------------------------------------------------------------
+# -------------------------------------------------------------
+# Deep Bearish Put Option R3 Breakout Engine (Mandi Crash Sniper)
+# -------------------------------------------------------------
+def analyze_put_r3_setup(
+    symbol: str,
+    spot_price: float,
+    spot_pct_change: float = 0.0,
+    spot_is_bearish: bool = True,
+    spot_is_1h_confirmed: bool = True,
+    spot_prev_high: float = 0.0,
+    spot_prev_low: float = 0.0,
+    spot_prev_close: float = 0.0,
+    spot_s1: float = 0.0,
+    spot_s2: float = 0.0,
+    spot_s3: float = 0.0,
+    fyers_client: Optional[Any] = None
+) -> Dict[str, Any]:
+    """
+    Executes deep Bearish Put Option R3 Breakout Analysis (Mandi Crash Sniper):
+    1. Selects exact OTM Put Strike & Contract Name (e.g. DLF 28 NOV 680 PE)
+    2. Fetches or calculates Put option contract's historical HLC & Pivots
+    3. Verifies if Put LTP >= Put Daily R3 (True Put Momentum Breakout)
+    4. Verifies if Stock breaks below Spot S1 OR S2 (Bearish Breakdown)
+    5. Computes Put Targets & Trailing Stop Loss
+    """
+    contract = build_option_contract(symbol, spot_price, opt_type="PE")
+    clean_sym = contract["symbol"]
+    strike = contract["strike"]
+    fyers_sym = contract["fyers_symbol"]
+    contract_name = contract["contract_name"]
+
+    opt_ltp = 0.0
+    opt_prev_h = 0.0
+    opt_prev_l = 0.0
+    opt_prev_c = 0.0
+    data_source = "Analytical Calibration"
+
+    if fyers_client is None:
+        try:
+            from core.fyers_auth import _cached_fyers_client, get_cached_token
+            if _cached_fyers_client is not None:
+                fyers_client = _cached_fyers_client
+            elif get_cached_token() is not None:
+                from core.fyers_auth import get_fyers_client
+                ok_f, cl_f = get_fyers_client(force_refresh=False)
+                if ok_f and cl_f:
+                    fyers_client = cl_f
+        except Exception:
+            pass
+
+    # 1. Live Put Option Data from Fyers API if available
+    if fyers_client:
+        try:
+            from core.fyers_auth import safe_fyers_quotes, safe_fyers_history
+            now_dt = datetime.datetime.now()
+            from_d = (now_dt - datetime.timedelta(days=7)).strftime("%Y-%m-%d")
+            to_d = now_dt.strftime("%Y-%m-%d")
+
+            d_hist = {
+                "symbol": fyers_sym,
+                "resolution": "D",
+                "date_format": "1",
+                "range_from": from_d,
+                "range_to": to_d,
+                "cont_flag": "1"
+            }
+            hist_res = safe_fyers_history(fyers_client, d_hist)
+            candles = hist_res.get("candles", []) if isinstance(hist_res, dict) else []
+
+            if candles and len(candles) >= 1:
+                prev_c = candles[-2] if len(candles) >= 2 else candles[-1]
+                opt_prev_h = float(prev_c[2])
+                opt_prev_l = float(prev_c[3])
+                opt_prev_c = float(prev_c[4])
+
+                q_res = safe_fyers_quotes(fyers_client, {"symbols": fyers_sym})
+                if isinstance(q_res, dict) and "d" in q_res and len(q_res["d"]) > 0:
+                    val = q_res["d"][0].get("v", {})
+                    opt_ltp = float(val.get("lp", 0.0))
+                    data_source = "🟢 Fyers API Live Broker Feed"
+        except Exception:
+            pass
+
+    # 2. Resilient Analytical Fallback for Put Options
+    if opt_ltp <= 0 or opt_prev_h <= 0:
+        p_close = spot_prev_close if spot_prev_close > 0 else (spot_price / (1.0 + (spot_pct_change / 100.0)))
+        p_high = spot_prev_high if spot_prev_high > 0 else max(p_close * 1.015, spot_price)
+        p_low = spot_prev_low if spot_prev_low > 0 else (p_close * 0.985)
+
+        step_val = max(1.0, float(contract.get("step", 20)))
+        otm_diff = max(0.0, float(p_close - strike))
+        delta = max(0.20, min(0.50, 0.42 - (otm_diff / (step_val * 8.0))))
+
+        base_extrinsic = max(1.50, p_close * 0.02 - (otm_diff * 0.20))
+        opt_prev_c = round(base_extrinsic, 2)
+        opt_prev_h = round(opt_prev_c + delta * (p_close - p_low), 2)
+        opt_prev_l = round(max(0.30, opt_prev_c - delta * (p_high - p_close)), 2)
+
+        # Put Option LTP rises as underlying spot drops below previous close
+        spot_fall = p_close - spot_price
+        gamma_boost = (0.0015 * (spot_fall ** 2)) if spot_fall > 0 else 0.0
+        opt_ltp = round(max(0.50, opt_prev_c + delta * spot_fall + gamma_boost), 2)
+        data_source = "🔵 Calibrated Option Analytics"
+
+    # Compute Put Option Pivot Points
+    pivots = calculate_option_pivot_levels(opt_prev_h, opt_prev_l, opt_prev_c)
+    put_r3 = pivots["r3"]
+    put_r2 = pivots["r2"]
+    put_r1 = pivots["r1"]
+    put_p = pivots["p"]
+
+    # Put breakout condition: Put LTP >= Put Daily R3
+    put_leads_r3 = bool(put_r3 > 0 and opt_ltp >= put_r3)
+
+    # Spot breakdown: Spot Price <= S1 OR Spot Price <= S2
+    spot_breaks_support = bool(
+        (spot_s2 > 0 and spot_price <= spot_s2) or 
+        (spot_s1 > 0 and spot_price <= spot_s1)
+    )
+
+    is_put_r3_crossed = bool(put_leads_r3 and spot_breaks_support)
+    is_100_percent_put_buy = bool(is_put_r3_crossed and spot_is_bearish and spot_is_1h_confirmed)
+
+    # Risk-Reward for Put Option
+    opt_sl = round(max(0.10, put_r3 * 0.75 if put_r3 > 0 else opt_ltp * 0.75), 2)
+    risk_per_share = max(0.5, opt_ltp - opt_sl)
+    risk_pct = round((risk_per_share / opt_ltp) * 100, 1)
+
+    opt_t1 = round(opt_ltp + (1.5 * risk_per_share), 2)
+    opt_t2 = round(opt_ltp + (2.5 * risk_per_share), 2)
+    t1_pct = round(((opt_t1 - opt_ltp) / opt_ltp) * 100, 1)
+    t2_pct = round(((opt_t2 - opt_ltp) / opt_ltp) * 100, 1)
+    multibagger_target = round(opt_ltp * 2.0, 2)
+
+    return {
+        "symbol": clean_sym,
+        "full_symbol": f"{clean_sym}.NS",
+        "spot_price": spot_price,
+        "spot_change": spot_pct_change,
+        "strike": strike,
+        "opt_type": "PE",
+        "contract_name": contract_name,
+        "fyers_symbol": fyers_sym,
+        "expiry_label": contract["expiry_info"]["label"],
+        "expiry_date": contract["expiry_info"]["date"],
+        "data_source": data_source,
+        "opt_ltp": opt_ltp,
+        "opt_prev_close": opt_prev_c,
+        "opt_pivot": put_p,
+        "opt_r1": put_r1,
+        "opt_r2": put_r2,
+        "opt_r3": put_r3,
+        "is_option_r3_crossed": is_put_r3_crossed,
+        "is_100_percent_buy": is_100_percent_put_buy,
+        "is_gamma_blast": contract.get("is_gamma_blast", False),
+        "is_index": contract.get("is_index", False),
+        "stop_loss": opt_sl,
+        "t1": opt_t1,
+        "t2": opt_t2,
+        "t1_pct": t1_pct,
+        "t2_pct": t2_pct,
+        "multibagger_target": multibagger_target,
+        "risk_pct": risk_pct,
+        "action_command": f"BUY {contract_name}"
+    }
+
 def format_specific_option_r3_alert(res: Dict[str, Any]) -> str:
     """
     Formats institutional, highly-specific Telegram Alert for Option Buying.

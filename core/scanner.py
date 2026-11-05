@@ -23,6 +23,7 @@ from .indicators import (
     calculate_donchian_channel
 )
 from .option_r3_engine import (
+    analyze_put_r3_setup,
     build_option_contract,
     analyze_option_r3_setup,
     TOP_MOMENTUM_FNO_BASKET,
@@ -41,6 +42,7 @@ from .alerts import (
     send_telegram_alert,
     format_r3_radar_alert,
     format_100_confirmed_buy_alert,
+    format_100_confirmed_put_alert,
     format_ha_reversal_alert,
     format_sniper_short_alert,
     format_sniper_buy_alert,
@@ -217,11 +219,15 @@ def analyze_stock(sym):
         opt_fyers_symbol = opt_info["fyers_symbol"]
         otm_call_strike = opt_info["strike"]
         
+        s1_val, s2_val, s3_val = 0.0, 0.0, 0.0
         if pivots:
             p_val = pivots['p']
             r1_val = pivots['r1']
             r2_val = pivots['r2']
             r3_val = pivots['r3']
+            s1_val = pivots.get('s1', 0.0)
+            s2_val = pivots.get('s2', 0.0)
+            s3_val = pivots.get('s3', 0.0)
             is_r3_radar = bool(
                 (pct_chg >= 1.5 or curr_p >= r2_val) and
                 (curr_p >= r1_val) and
@@ -238,7 +244,9 @@ def analyze_stock(sym):
         is_wick_rejected = False
         timeframe_used = "1H"
         
-        is_candidate = bool(is_sniper_buy or is_r3_radar or (curr_p >= r1_val) or (pct_chg >= 0.8))
+        is_candidate_bear = bool(is_sniper_short or (s1_val > 0 and curr_p <= s1_val) or (pct_chg <= -0.8))
+        is_candidate = bool(is_sniper_buy or is_r3_radar or (curr_p >= r1_val) or (pct_chg >= 0.8) or is_candidate_bear)
+        is_lower_wick_rejected = False
         if is_candidate:
             try:
                 # 1. Try 5-minute candles first (3 days of 5m data)
@@ -281,9 +289,12 @@ def analyze_stock(sym):
                     upper_wick = c_h - max(c_o, c_c)
                     if total_bar_span > 0:
                         wick_ratio = upper_wick / total_bar_span
-                        # If more than 45% of candle is a rejected upper wick, it's a trap!
                         if wick_ratio >= 0.45 and c_c < r2_val:
                             is_wick_rejected = True
+                        lower_wick = min(c_o, c_c) - c_l
+                        lower_wick_ratio = lower_wick / total_bar_span
+                        if lower_wick_ratio >= 0.45 and c_c > s2_val:
+                            is_lower_wick_rejected = True
             except Exception:
                 pass
 
@@ -295,13 +306,20 @@ def analyze_stock(sym):
             (not is_wick_rejected) and
             vol_sweet_confirmed
         )
+        # Bearish Sweet Spot Filter (26 to 42 with Downward Momentum & No Lower Wick Rejection)
+        is_put_rsi_confirmed = bool(
+            (26.0 <= m_rsi <= 42.0) and
+            (m_rsi_slope <= 0.5) and
+            (not is_lower_wick_rejected) and
+            vol_sweet_confirmed
+        )
 
-        # Deep Option R3 Analysis (Always run for any bullish or sniper setup)
+        # Deep Option R3 Analysis (Both Call & Put Option Engines)
         opt_ltp = 0.0
         opt_r3_val = 0.0
         is_option_r3_crossed = False
         opt_analysis = None
-        if is_candidate:
+        if is_candidate and not is_candidate_bear:
             try:
                 opt_analysis = analyze_option_r3_setup(
                     symbol=sym,
@@ -322,6 +340,26 @@ def analyze_stock(sym):
                     is_option_r3_crossed = opt_analysis.get("is_option_r3_crossed", False)
                     if is_option_r3_crossed:
                         is_r3_radar = True
+            except Exception:
+                pass
+
+        # Deep Put Option R3 Analysis (Bearish Mandi Setup)
+        opt_put_analysis = None
+        if is_candidate_bear:
+            try:
+                opt_put_analysis = analyze_put_r3_setup(
+                    symbol=sym,
+                    spot_price=curr_p,
+                    spot_pct_change=pct_chg,
+                    spot_is_bearish=d_is_negative,
+                    spot_is_1h_confirmed=is_sniper_short,
+                    spot_prev_high=float(d_prev['High']),
+                    spot_prev_low=float(d_prev['Low']),
+                    spot_prev_close=float(d_prev['Close']),
+                    spot_s1=s1_val,
+                    spot_s2=s2_val,
+                    spot_s3=s3_val
+                )
             except Exception:
                 pass
         
@@ -383,7 +421,20 @@ def analyze_stock(sym):
             "r1": r1_val,
             "r2": r2_val,
             "r3": r3_val,
+            "s1": s1_val,
+            "s2": s2_val,
+            "s3": s3_val,
             "pivot_p": p_val,
+            "opt_put_contract_name": opt_put_analysis.get("contract_name") if opt_put_analysis else "",
+            "opt_put_fyers_symbol": opt_put_analysis.get("fyers_symbol") if opt_put_analysis else "",
+            "opt_put_ltp": opt_put_analysis.get("opt_ltp", 0.0) if opt_put_analysis else 0.0,
+            "opt_put_r3": opt_put_analysis.get("opt_r3", 0.0) if opt_put_analysis else 0.0,
+            "otm_put_strike": opt_put_analysis.get("strike", 0) if opt_put_analysis else 0,
+            "is_put_r3_crossed": opt_put_analysis.get("is_option_r3_crossed", False) if opt_put_analysis else False,
+            "is_put_rsi_confirmed": is_put_rsi_confirmed,
+            "opt_put_sl": opt_put_analysis.get("stop_loss", 0.0) if opt_put_analysis else 0.0,
+            "opt_put_t1": opt_put_analysis.get("t1", 0.0) if opt_put_analysis else 0.0,
+            "opt_put_t2": opt_put_analysis.get("t2", 0.0) if opt_put_analysis else 0.0,
             "opt_contract_name": opt_contract_name,
             "opt_fyers_symbol": opt_fyers_symbol,
             "opt_ltp": opt_ltp,
@@ -748,6 +799,15 @@ def run_scan_cycle(force=False, watchlist=None):
     trade_alerts = monitor_active_trades(state)
     new_alerts.extend(trade_alerts)
 
+    # Monitor & Manage Auto-Algo Trading Positions (Target 1, Target 2, Trailing SL, Kill-Switch)
+    try:
+        from .fyers_order_engine import monitor_and_manage_algo_positions
+        algo_mgr_alerts = monitor_and_manage_algo_positions()
+        if algo_mgr_alerts:
+            new_alerts.extend(algo_mgr_alerts)
+    except Exception as algo_m_err:
+        print(f"Error in algo order manager: {algo_m_err}")
+
     today_str = get_ist_now().date().isoformat()
     for res in results:
         if not res:
@@ -762,10 +822,17 @@ def run_scan_cycle(force=False, watchlist=None):
         is_buy = "BUY" in curr_sig or "BULLISH" in curr_sig
         is_sell = "SELL" in curr_sig or "AVOID" in curr_sig
         
-        # 0. R3 Option Breakout / 100% Confirmed Buy Alert (Fires when Option crosses R3 + Spot at/above R2 + RSI Sweet Spot confirmed)
+        # 0. R3 Option Breakout / 100% Confirmed Buy Alert
+        # Fires when Option crosses R3 + Spot at/above R1 OR R2 + RSI Sweet Spot confirmed
+        spot_p = res.get('price', 0)
+        spot_r1 = res.get('r1', 0)
+        spot_r2 = res.get('r2', 0)
+        spot_at_or_above_r1 = bool(spot_r1 > 0 and spot_p >= spot_r1)
+        spot_at_or_above_r2 = bool(spot_r2 > 0 and spot_p >= spot_r2)
+
         r3_confirmed_key = f"{s_name}_R3_CONFIRMED_{today_str}"
         is_r3_confirmed = bool(
-            (is_sniper_buy or "STRONG BUY" in curr_sig or res.get('price', 0) >= res.get('r2', 0)) and
+            (spot_at_or_above_r1 or spot_at_or_above_r2 or is_sniper_buy or "STRONG BUY" in curr_sig) and
             res.get('is_option_r3_crossed') and
             res.get('is_r3_rsi_confirmed', True)
         )
@@ -775,6 +842,50 @@ def run_scan_cycle(force=False, watchlist=None):
             send_telegram_alert(confirmed_alert_text)
             state[r3_confirmed_key] = True
             new_alerts.append(f"{s_name}: 100% CONFIRMED BUY")
+
+            # Execute Auto-Algo Entry (Paper or Live Fyers broker execution)
+            try:
+                from .fyers_order_engine import execute_algo_entry
+                algo_ok, algo_msg = execute_algo_entry(res)
+                if algo_ok:
+                    print(f"🤖 Auto-Algo Execution Success: {algo_msg}")
+                    new_alerts.append(f"🤖 ALGO EXEC: {s_name}")
+                else:
+                    print(f"🤖 Auto-Algo Skipped/Standby: {algo_msg}")
+            except Exception as algo_err:
+                print(f"Error executing algo entry: {algo_err}")
+
+        # 0.05 Bearish Put Option Breakout / 100% Confirmed Put Buy Alert
+        spot_s1 = res.get('s1', 0)
+        spot_s2 = res.get('s2', 0)
+        spot_at_or_below_s1 = bool(spot_s1 > 0 and spot_p <= spot_s1)
+        spot_at_or_below_s2 = bool(spot_s2 > 0 and spot_p <= spot_s2)
+        r3_put_confirmed_key = f"{s_name}_PUT_R3_CONFIRMED_{today_str}"
+        is_put_r3_confirmed = bool(
+            (spot_at_or_below_s1 or spot_at_or_below_s2 or is_sniper_short or "STRONG SELL" in curr_sig) and
+            res.get('is_put_r3_crossed') and
+            res.get('is_put_rsi_confirmed', True)
+        )
+        if is_put_r3_confirmed and not state.get(r3_put_confirmed_key):
+            confirmed_put_text = format_100_confirmed_put_alert(res)
+            print(f"Sending 100% CONFIRMED PUT BUY (PUT R3 CROSSED) alert for {s_name}")
+            send_telegram_alert(confirmed_put_text)
+            state[r3_put_confirmed_key] = True
+            new_alerts.append(f"{s_name}: 100% CONFIRMED PUT BUY")
+
+            # Execute Auto-Algo Entry for Put Option
+            try:
+                from .fyers_order_engine import execute_algo_entry
+                put_trade_res = res.copy()
+                put_trade_res['opt_type'] = 'PE'
+                algo_ok, algo_msg = execute_algo_entry(put_trade_res)
+                if algo_ok:
+                    print(f"🤖 Auto-Algo Execution (PUT): {algo_msg}")
+                    new_alerts.append(f"🤖 ALGO PUT EXEC: {s_name}")
+                else:
+                    print(f"🤖 Auto-Algo Put Skipped: {algo_msg}")
+            except Exception as algo_err:
+                print(f"Error executing algo put entry: {algo_err}")
 
         # 0.1 Standalone Option R3 Breakout (Option LTP >= Option R3 + Spot >= R2 + RSI 58-74)
         r3_alert_key = f"{s_name}_R3_{today_str}"

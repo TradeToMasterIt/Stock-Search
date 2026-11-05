@@ -42,6 +42,18 @@ from core.option_seller_engine import (
     format_overnight_health_check_alert
 )
 from core.backtester import run_backtest, STRATEGIES
+from core.fyers_order_engine import (
+    load_algo_config,
+    save_algo_config,
+    load_algo_trades,
+    save_algo_trades,
+    calculate_algo_quantity,
+    place_fyers_broker_order,
+    execute_algo_entry,
+    monitor_and_manage_algo_positions,
+    emergency_square_off_all_algo_trades,
+    get_lot_size
+)
 from core.indicators import (
     format_volume,
     calculate_trade_levels,
@@ -1439,6 +1451,7 @@ if not fyers_connected:
 # Module Navigation (Dropdown Selector)
 NAV_OPTIONS = [
     "📊 Market Screener (ઓટોમેટિક સ્કેનર)",
+    "🤖 Fyers Auto-Algo Cockpit (ઓટો-આલ્ગો ટ્રેડિંગ)",
     "🚀 Heikin Ashi Trend Rider (બ્રિજેશ ભાટિયા)",
     "🕯️ Single Stock (ડીપ કેન્ડલસ્ટિક ચાર્ટ્સ)",
     "🛡️ Risk Guardian (લાઈવ પોઝિશન & મોનિટર)",
@@ -2127,6 +2140,451 @@ if selected_module == "📊 Market Screener (ઓટોમેટિક સ્ક�
             """,
             unsafe_allow_html=True
         )
+
+
+# =============================================================
+# TAB 1.5: FYERS AUTO-ALGO TRADING COCKPIT
+# =============================================================
+if selected_module == "🤖 Fyers Auto-Algo Cockpit (ઓટો-આલ્ગો ટ્રેડિંગ)":
+    # Run a live check/update on active positions
+    try:
+        monitor_and_manage_algo_positions()
+    except Exception as e_pos:
+        pass
+
+    algo_cfg = load_algo_config()
+    algo_trades_state = load_algo_trades()
+    active_algo_trades = algo_trades_state.get("active_trades", [])
+    closed_algo_trades = algo_trades_state.get("closed_trades", [])
+    daily_summary = algo_trades_state.get("daily_summary", {})
+
+    is_algo_active = bool(algo_cfg.get("is_enabled", False))
+    algo_mode = algo_cfg.get("mode", "PAPER")
+    is_kill_switch = bool(algo_cfg.get("kill_switch_triggered", False))
+
+    status_badge_color = "#10B981" if is_algo_active else "#F59E0B"
+    status_badge_text = "🟢 ALGO ACTIVE (દોડે છે)" if is_algo_active else "⏸️ ALGO PAUSED (સ્થગિત છે)"
+    mode_badge_color = "#38BDF8" if algo_mode == "PAPER" else "#10B981"
+    mode_badge_text = "📄 PAPER TRADING (શૂન્ય જોખમ)" if algo_mode == "PAPER" else "⚡ LIVE FYERS BROKER"
+    kill_badge_color = "#EF4444" if is_kill_switch else "#10B981"
+    kill_badge_text = "🚨 KILL-SWITCH ACTIVE" if is_kill_switch else "🛡️ RISK SAFE"
+
+    # Header Dashboard
+    algo_header_html = f"""
+    <div style="background: linear-gradient(135deg, rgba(30, 41, 59, 0.9) 0%, rgba(15, 23, 42, 0.98) 100%);
+                border: 1px solid rgba(255,255,255,0.08); border-radius: 16px; padding: 22px 26px; margin-bottom: 22px;
+                box-shadow: 0 8px 25px rgba(0,0,0,0.35);">
+        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 14px;">
+            <div>
+                <div style="font-size: 24px; font-weight: 800; color: #FFFFFF; display: flex; align-items: center; gap: 12px;">
+                    🤖 FYERS AUTO-ALGO TRADING COCKPIT
+                    <span style="font-size: 11px; font-weight: 700; background: {status_badge_color}22; color: {status_badge_color};
+                                 border: 1px solid {status_badge_color}; padding: 4px 10px; border-radius: 9999px;">
+                        {status_badge_text}
+                    </span>
+                    <span style="font-size: 11px; font-weight: 700; background: {mode_badge_color}22; color: {mode_badge_color};
+                                 border: 1px solid {mode_badge_color}; padding: 4px 10px; border-radius: 9999px;">
+                        {mode_badge_text}
+                    </span>
+                    <span style="font-size: 11px; font-weight: 700; background: {kill_badge_color}22; color: {kill_badge_color};
+                                 border: 1px solid {kill_badge_color}; padding: 4px 10px; border-radius: 9999px;">
+                        {kill_badge_text}
+                    </span>
+                </div>
+                <div style="font-size: 13px; color: #94A3B8; margin-top: 6px;">
+                    Fyers API v3 સ્માર્ટ આલ્ગો: <b>૫-મિનિટ ફાસ્ટ સ્નાઈપર</b> + <b>Daily Option R3 Breakout</b> પર ઓટો બાય,
+                    Target 1 પર <b>૫૦% નફો + Trailing SL to Cost (Zero Risk)</b>, Target 2 પર <b>૩૦%</b> અને <b>૧૫:૧૫ EOD Square-off</b>.
+                </div>
+            </div>
+            <div style="text-align: right;">
+                <span style="font-size: 12px; font-weight: 700; color: #F59E0B; background: rgba(245, 158, 11, 0.12);
+                             border: 1px solid rgba(245, 158, 11, 0.3); padding: 6px 14px; border-radius: 10px;">
+                    ⚡ Institutional 3-Stage Profit Scaling
+                </span>
+            </div>
+        </div>
+    </div>
+    """
+    st.html(algo_header_html)
+
+    # Auto refresh if algo is active
+    if is_algo_active and st_autorefresh:
+        st_autorefresh(interval=20 * 1000, key="algo_cockpit_autorefresh")
+
+    # Summary KPI Cards
+    daily_realized = float(daily_summary.get("realized_pnl", 0.0))
+    daily_unrealized = sum(float(t.get("unrealized_pnl", 0.0)) for t in active_algo_trades)
+    total_trades_count = int(daily_summary.get("total_trades", len(closed_algo_trades)))
+    winning_count = int(daily_summary.get("winning_trades", 0))
+    losing_count = int(daily_summary.get("losing_trades", 0))
+    win_rate = (winning_count / max(1, total_trades_count)) * 100.0 if total_trades_count > 0 else 0.0
+
+    kpi1, kpi2, kpi3, kpi4, kpi5 = st.columns(5)
+    with kpi1:
+        st.metric(
+            label="💵 દૈનિક Realized P&L",
+            value=f"₹{daily_realized:+,.2f}",
+            delta=f"{'+' if daily_realized >= 0 else ''}{daily_realized:.2f}",
+            delta_color="normal"
+        )
+    with kpi2:
+        st.metric(
+            label="📊 ઓપન Unrealized P&L",
+            value=f"₹{daily_unrealized:+,.2f}",
+            delta=f"{'+' if daily_unrealized >= 0 else ''}{daily_unrealized:.2f}",
+            delta_color="normal"
+        )
+    with kpi3:
+        st.metric(
+            label="🎯 ખુલ્લી પોઝિશન (Active)",
+            value=f"{len(active_algo_trades)} / {algo_cfg.get('max_open_positions', 2)}"
+        )
+    with kpi4:
+        st.metric(
+            label="📈 વિન-રેટ (Win Rate)",
+            value=f"{win_rate:.1f}%",
+            delta=f"{winning_count}W - {losing_count}L"
+        )
+    with kpi5:
+        max_daily_l = float(algo_cfg.get("daily_max_loss", 3000.0))
+        rem_loss_buffer = max(0.0, max_daily_l + min(0.0, daily_realized))
+        st.metric(
+            label="🛡️ Kill-Switch Buffer",
+            value=f"₹{rem_loss_buffer:,.0f}",
+            delta="બચેલી મર્યાદા" if not is_kill_switch else "TRIGGERED",
+            delta_color="off" if is_kill_switch else "normal"
+        )
+
+    st.markdown("<div style='height: 14px;'></div>", unsafe_allow_html=True)
+
+    # Master Control Deck & Risk Guardian Settings
+    col_ctrl, col_emg = st.columns([3.2, 1.3])
+    with col_ctrl:
+        with st.expander("⚙️ આલ્ગો કંટ્રોલ અને રિસ્ક મેનેજમેન્ટ સેટિંગ્સ (Configure Algo & Risk)", expanded=True):
+            st.markdown("##### 🎛️ મુખ્ય સંચાલન (Master Operations)")
+            c_m1, c_m2, c_m3 = st.columns([1.5, 1.8, 1.5])
+            with c_m1:
+                new_enabled = st.toggle(
+                    "🚀 ઓટો-આલ્ગો ચાલુ કરો (Master Toggle)",
+                    value=is_algo_active,
+                    key="toggle_algo_master"
+                )
+            with c_m2:
+                mode_options = ["PAPER", "LIVE"]
+                curr_mode_idx = 0 if algo_mode == "PAPER" else 1
+                new_mode = st.radio(
+                    "ટ્રેડિંગ મોડ (Trading Mode):",
+                    options=mode_options,
+                    index=curr_mode_idx,
+                    format_func=lambda x: "📄 Paper Trading (વર્ચ્યુઅલ ડેમો - શૂન્ય જોખમ)" if x == "PAPER" else "⚡ Live Fyers API (ઓરિજિનલ બ્રોકર ઓર્ડર)",
+                    horizontal=True,
+                    key="radio_algo_mode"
+                )
+            with c_m3:
+                if is_kill_switch:
+                    if st.button("🔄 Reset Kill-Switch", key="btn_reset_kill_switch", help="દૈનિક કિલ-સ્વિચ રીસેટ કરો"):
+                        algo_cfg["kill_switch_triggered"] = False
+                        save_algo_config(algo_cfg)
+                        st.success("✅ Kill-Switch રીસેટ થઈ ગઈ!")
+                        st.rerun()
+
+            st.markdown("---")
+            c_b1, c_b2 = st.columns([3, 2])
+            with c_b1:
+                basket_opts = ["ALL", "INDICES", "MOMENTUM"]
+                curr_b_val = algo_cfg.get("trading_basket", "ALL")
+                b_idx = 0 if curr_b_val == "ALL" else (1 if curr_b_val == "INDICES" else 2)
+                new_basket = st.selectbox(
+                    "🎯 આલ્ગો ટ્રેડિંગ બાસ્કેટ (Trading Universe Filter):",
+                    options=basket_opts,
+                    index=b_idx,
+                    format_func=lambda x: "🚀 All F&O Stocks + Indices (બધા ૧૮૧ F&O સ્ટોક્સ + ૪ ઈન્ડેક્સ)" if x == "ALL" else ("👑 Only Indices (માત્ર NIFTY & BANKNIFTY)" if x == "INDICES" else "🔥 Top 35 Momentum Leaders (પસંદગીના ટોચના ૩૫ શેરો)"),
+                    help="આલ્ગોએ કયા સ્ટોક્સ પર ઓટોમેટિક ઓર્ડર મૂકવો તે પસંદ કરો."
+                )
+            with c_b2:
+                st.caption("💡 ફિલ્ટર સલાહ: ઈન્ડેક્સ માટે 'Only Indices' અથવા સમગ્ર F&O બજાર માટે 'All F&O Stocks + Indices' પસંદ કરો.")
+
+            dir_opts = ["BOTH", "CALL_ONLY", "PUT_ONLY"]
+            curr_d_val = algo_cfg.get("trading_direction", "BOTH")
+            d_idx = 0 if curr_d_val == "BOTH" else (1 if curr_d_val == "CALL_ONLY" else 2)
+            new_direction = st.radio(
+                "🎯 આલ્ગો ટ્રેડિંગ દિશા (Trading Direction Mode):",
+                options=dir_opts,
+                index=d_idx,
+                format_func=lambda x: "🔄 BOTH (Call & Put બંને - ઓલ-વેધર ૩૬૦°)" if x == "BOTH" else ("📈 ONLY CALLS (માત્ર તેજીના કૉલ)" if x == "CALL_ONLY" else "📉 ONLY PUTS (માત્ર મંદીના પુટ)"),
+                horizontal=True,
+                key="radio_trading_direction",
+                help="બુલિશ (Call) અને બેરિશ (Put) બંને ટ્રેડ લેવા માટે BOTH પસંદ કરો."
+            )
+
+            st.markdown("##### 🛡️ સંસ્થાકીય જોખમ નિયંત્રણો (Institutional Risk Guards)")
+            c_r1, c_r2, c_r3, c_r4 = st.columns(4)
+            with c_r1:
+                new_risk_trade = st.number_input(
+                    "ટ્રેડ દીઠ મહત્તમ રિસ્ક (₹):",
+                    min_value=200.0,
+                    max_value=25000.0,
+                    value=float(algo_cfg.get("max_risk_per_trade", 1500.0)),
+                    step=250.0,
+                    help="મૂડીના ૧-૧.૫% થી વધુ રિસ્ક ક્યારેય ન લેવું."
+                )
+            with c_r2:
+                new_cap_trade = st.number_input(
+                    "ટ્રેડ દીઠ મહત્તમ મૂડી (₹):",
+                    min_value=1000.0,
+                    max_value=100000.0,
+                    value=float(algo_cfg.get("max_capital_per_trade", 15000.0)),
+                    step=1000.0,
+                    help="એક ઓપ્શન ટ્રેડમાં મહત્તમ કેટલા રૂપિયા વાપરવા."
+                )
+            with c_r3:
+                new_daily_loss = st.number_input(
+                    "Daily Kill-Switch Max Loss (₹):",
+                    min_value=500.0,
+                    max_value=50000.0,
+                    value=float(algo_cfg.get("daily_max_loss", 3000.0)),
+                    step=500.0,
+                    help="જો દિવસનો કુલ લોસ આ રકમ વટાવે તો આલ્ગો તાત્કાલિક ફ્રીઝ થઈ જશે!"
+                )
+            with c_r4:
+                new_max_pos = st.number_input(
+                    "મહત્તમ એકસાથે પોઝિશન:",
+                    min_value=1,
+                    max_value=10,
+                    value=int(algo_cfg.get("max_open_positions", 2)),
+                    step=1,
+                    help="એક જ સમયે મહત્તમ કેટલી ખુલ્લી પોઝિશન રાખવી."
+                )
+
+            c_t1, c_t2, c_t3, c_t4 = st.columns(4)
+            with c_t1:
+                new_start_time = st.text_input("એન્ટ્રી શરૂ સમય (IST):", value=str(algo_cfg.get("start_time", "09:20")))
+            with c_t2:
+                new_end_time = st.text_input("નવી એન્ટ્રી બંધ સમય (IST):", value=str(algo_cfg.get("end_time", "15:00")))
+            with c_t3:
+                new_eod_time = st.text_input("Auto Square-off સમય (IST):", value=str(algo_cfg.get("auto_square_off_time", "15:15")))
+            with c_t4:
+                new_trail_cost = st.checkbox("Target 1 પર SL to Cost", value=bool(algo_cfg.get("trail_t1_to_cost", True)), help="૫૦% નફો મળ્યા પછી સ્ટોપલોસ ખરીદભાવ પર લાવવો.")
+
+            if st.button("💾 સેટિંગ્સ સેવ કરો (Save Algo Settings)", type="primary", key="btn_save_algo_config"):
+                algo_cfg["is_enabled"] = new_enabled
+                algo_cfg["mode"] = new_mode
+                algo_cfg["trading_basket"] = new_basket
+                algo_cfg["trading_direction"] = new_direction
+                algo_cfg["max_risk_per_trade"] = float(new_risk_trade)
+                algo_cfg["max_capital_per_trade"] = float(new_cap_trade)
+                algo_cfg["daily_max_loss"] = float(new_daily_loss)
+                algo_cfg["max_open_positions"] = int(new_max_pos)
+                algo_cfg["start_time"] = str(new_start_time).strip()
+                algo_cfg["end_time"] = str(new_end_time).strip()
+                algo_cfg["auto_square_off_time"] = str(new_eod_time).strip()
+                algo_cfg["trail_t1_to_cost"] = bool(new_trail_cost)
+                save_algo_config(algo_cfg)
+                st.success("✅ આલ્ગો સેટિંગ્સ સફળતાપૂર્વક સાચવવામાં આવી!")
+                st.rerun()
+
+    with col_emg:
+        st.markdown(
+            """
+            <div style="background: rgba(239, 68, 68, 0.08); border: 1px solid rgba(239, 68, 68, 0.3);
+                        border-radius: 12px; padding: 16px; text-align: center;">
+                <div style="font-size: 14px; font-weight: 800; color: #EF4444; margin-bottom: 6px;">
+                    🚨 ઈમરજન્સી કિલ-સ્વિચ
+                </div>
+                <div style="font-size: 12px; color: #CBD5E1; margin-bottom: 14px;">
+                    તમામ ચાલુ પોઝિશનને એક ક્લિકમાં તાત્કાલિક બજારભાવે બંધ કરો અને આલ્ગો પોઝ કરો.
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+        if st.button("🚨 EMERGENCY SQUARE-OFF ALL", type="secondary", use_container_width=True, key="btn_emergency_square_off"):
+            c_cnt, c_pnl = emergency_square_off_all_algo_trades()
+            st.error(f"🛑 {c_cnt} પોઝિશન તાત્કાલિક સ્ક્વેર-ઓફ કરી દેવાઈ! P&L: ₹{c_pnl:+.2f}")
+            time.sleep(1)
+            st.rerun()
+
+    st.markdown("<div style='height: 18px;'></div>", unsafe_allow_html=True)
+
+    # Section: Active Algo Positions
+    st.markdown("### 🎯 લાઈવ આલ્ગો પોઝિશન (Live Active Positions)")
+    if not active_algo_trades:
+        st.info("ℹ️ હાલ કોઈ આલ્ગો પોઝિશન સક્રિય નથી. જ્યારે માર્કેટ સ્કેનરમાં ૧૦૦% કન્ફર્મ બાય સિગ્નલ મળશે ત્યારે અહીં ઓટોમેટિક ઓર્ડર દેખાશે.")
+    else:
+        for idx, tr in enumerate(active_algo_trades):
+            sym = tr.get("symbol", "")
+            c_name = tr.get("contract_name", sym)
+            f_sym = tr.get("fyers_symbol", "")
+            t_mode = tr.get("mode", "PAPER")
+            e_price = float(tr.get("entry_price", 0.0))
+            c_price = float(tr.get("current_price", e_price))
+            rem_q = int(tr.get("remaining_qty", tr.get("initial_qty", 0)))
+            init_q = int(tr.get("initial_qty", rem_q))
+            sl = float(tr.get("stop_loss", 0.0))
+            t1 = float(tr.get("target_1", 0.0))
+            t2 = float(tr.get("target_2", 0.0))
+            unrealized = float(tr.get("unrealized_pnl", (c_price - e_price) * rem_q))
+            pnl_pct = float(tr.get("pnl_pct", ((c_price - e_price) / max(0.01, e_price)) * 100))
+            t1_hit = bool(tr.get("t1_hit", False))
+            t2_hit = bool(tr.get("t2_hit", False))
+
+            pnl_color = "#10B981" if unrealized >= 0 else "#EF4444"
+            mode_badge = "📄 PAPER" if t_mode == "PAPER" else "⚡ LIVE"
+            zero_risk_badge = '<span style="background: rgba(16, 185, 129, 0.2); color: #34D399; border: 1px solid #10B981; padding: 2px 8px; border-radius: 9999px; font-size: 11px; font-weight: 700;">🛡️ ZERO RISK (Cost Trailed)</span>' if (t1_hit and sl >= e_price) else ''
+
+            with st.container():
+                st.markdown(
+                    f"""
+                    <div style="background: rgba(30, 41, 59, 0.6); border: 1px solid rgba(255,255,255,0.08);
+                                border-radius: 12px; padding: 16px 20px; margin-bottom: 12px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+                            <div>
+                                <span style="font-size: 18px; font-weight: 800; color: #FFFFFF;">{c_name}</span>
+                                <span style="font-size: 11px; background: rgba(56, 189, 248, 0.15); color: #38BDF8; padding: 3px 8px; border-radius: 6px; margin-left: 8px;">{mode_badge}</span>
+                                <span style="font-size: 11px; background: {'rgba(16, 185, 129, 0.2)' if tr.get('opt_type', 'CE') == 'CE' else 'rgba(239, 68, 68, 0.2)'}; color: {'#34D399' if tr.get('opt_type', 'CE') == 'CE' else '#F87171'}; padding: 3px 8px; border-radius: 6px; margin-left: 4px; font-weight: 700;">{'📈 CALL (CE)' if tr.get('opt_type', 'CE') == 'CE' else '📉 PUT (PE)'}</span>
+                                {zero_risk_badge}
+                                <div style="font-size: 12px; color: #94A3B8; margin-top: 4px;">
+                                    સિમ્બોલ: <code>{f_sym}</code> | એન્ટ્રી સમય: {tr.get('entry_time', '-')}
+                                </div>
+                            </div>
+                            <div style="text-align: right;">
+                                <div style="font-size: 20px; font-weight: 800; color: {pnl_color};">
+                                    {'+' if unrealized >= 0 else ''}₹{unrealized:,.2f} ({'+' if pnl_pct >= 0 else ''}{pnl_pct:.2f}%)
+                                </div>
+                                <div style="font-size: 12px; color: #CBD5E1;">
+                                    LTP: <b>₹{c_price:.2f}</b> (ખરીદ ભાવ: ₹{e_price:.2f})
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True
+                )
+
+                # Action and target tracking row
+                p_c1, p_c2, p_c3, p_c4, p_c5 = st.columns([1.5, 1.5, 1.5, 1.5, 1.5])
+                with p_c1:
+                    st.caption(f"📦 બાકી ક્વોન્ટિટી: **{rem_q} / {init_q}**")
+                with p_c2:
+                    t1_icon = "✅ હાંસલ" if t1_hit else "⏳ લક્ષ્ય"
+                    st.caption(f"🎯 Target 1: **₹{t1:.2f}** ({t1_icon})")
+                with p_c3:
+                    t2_icon = "✅ હાંસલ" if t2_hit else "⏳ લક્ષ્ય"
+                    st.caption(f"🚀 Target 2: **₹{t2:.2f}** ({t2_icon})")
+                with p_c4:
+                    st.caption(f"🛑 Trailing SL: **₹{sl:.2f}**")
+                with p_c5:
+                    if st.button(f"🚪 Exit Trade", key=f"btn_exit_algo_trd_{idx}", help="આ પોઝિશન તાત્કાલિક સ્ક્વેર-ઓફ કરો"):
+                        if t_mode == "LIVE" and f_sym and rem_q > 0:
+                            place_fyers_broker_order(symbol=f_sym, qty=rem_q, side=-1, order_type=2)
+                        tr["status"] = "CLOSED (MANUAL EXIT)"
+                        tr["exit_price"] = c_price
+                        tr["exit_time"] = get_ist_now().strftime("%d %b %Y | %H:%M:%S IST")
+                        tr["realized_pnl"] = unrealized
+                        closed_algo_trades.append(tr)
+                        active_algo_trades.pop(idx)
+                        daily_summary["realized_pnl"] = round(daily_summary.get("realized_pnl", 0.0) + unrealized, 2)
+                        algo_trades_state["active_trades"] = active_algo_trades
+                        algo_trades_state["closed_trades"] = closed_algo_trades
+                        algo_trades_state["daily_summary"] = daily_summary
+                        save_algo_trades(algo_trades_state)
+                        exit_alert_text = (
+                            f"🚪 <b>ALGO MANUAL EXIT!</b>\n"
+                            f"• {c_name} બજારભાવે (₹{c_price:.2f}) સ્ક્વેર-ઓફ કરાયો!\n"
+                            f"• <b>P&L:</b> ₹{unrealized:+.2f}"
+                        )
+                        send_telegram_alert(exit_alert_text)
+                        st.success(f"✅ {c_name} સફળતાપૂર્વક બંધ કરાયો!")
+                        st.rerun()
+
+    st.markdown("<div style='height: 20px;'></div>", unsafe_allow_html=True)
+
+    # Section: Manual On-Demand Algo Test Trigger
+    with st.expander("🧪 ટેસ્ટ ટ્રેડ ટ્રિગર કરો (Simulate / Test Algo Order on Any Stock)", expanded=False):
+        st.caption("આલ્ગોનો ઓર્ડર ફ્લો, લોટ સાઈઝિંગ અને ટેલિગ્રામ એલર્ટ ટેસ્ટ કરવા માટે કોઈપણ સ્ટોક પર ટેસ્ટ ઓર્ડર આપો:")
+        t_dir_col, t_space = st.columns([2, 4])
+        with t_dir_col:
+            test_type = st.radio("ટેસ્ટ ઓપ્શન પ્રકાર:", options=["Call (CE)", "Put (PE)"], horizontal=True, key="test_algo_type_sel")
+        t_col1, t_col2, t_col3, t_col4 = st.columns([2, 1.5, 1.5, 1.5])
+        with t_col1:
+            test_sym = st.selectbox(
+                "ટેસ્ટ સ્ટોક પસંદ કરો:",
+                options=["LT", "TATASTEEL", "RELIANCE", "SBIN", "TCS", "INFY", "BHARTIARTL", "NIFTY"],
+                key="test_algo_sym_select"
+            )
+        with t_col2:
+            test_price = st.number_input("ટેસ્ટ ઓપ્શન LTP (₹):", min_value=1.0, value=25.0, step=1.0, key="test_algo_ltp")
+        with t_col3:
+            test_sl = st.number_input("ટેસ્ટ SL (₹):", min_value=0.5, value=18.0, step=1.0, key="test_algo_sl")
+        with t_col4:
+            st.markdown("<div style='height: 28px;'></div>", unsafe_allow_html=True)
+            if st.button("🚀 Fire Test Order", type="primary", key="btn_fire_test_algo_order"):
+                is_pe = "PE" in test_type
+                suffix = "PE" if is_pe else "CE"
+                label = "Put" if is_pe else "Call"
+                sim_res = {
+                    "symbol": test_sym,
+                    "opt_type": suffix,
+                    "opt_fyers_symbol": f"NSE:{test_sym}26NOV{suffix}",
+                    "opt_contract_name": f"{test_sym} Test {label}",
+                    "opt_ltp": test_price,
+                    "opt_put_ltp": test_price,
+                    "opt_put_fyers_symbol": f"NSE:{test_sym}26NOVPE",
+                    "opt_put_contract_name": f"{test_sym} Test Put",
+                    "opt_put_sl": test_sl,
+                    "opt_put_t1": test_price * 1.35,
+                    "opt_put_t2": test_price * 1.70,
+                    "price": test_price,
+                    "stop_loss": test_sl,
+                    "t1": test_price * 1.35,
+                    "t2": test_price * 1.70
+                }
+                ok_exec, exec_msg = execute_algo_entry(sim_res)
+                if ok_exec:
+                    st.success(f"✅ {exec_msg}")
+                    st.rerun()
+                else:
+                    st.warning(f"⚠️ {exec_msg}")
+
+    st.markdown("<div style='height: 20px;'></div>", unsafe_allow_html=True)
+
+    # Section: Closed Trades History
+    st.markdown("### 📜 આજના પૂર્ણ થયેલા ટ્રેડ્સ (Today's Closed Trades History)")
+    if not closed_algo_trades:
+        st.caption("આજે હજુ સુધી કોઈ ટ્રેડ પૂર્ણ થયો નથી.")
+    else:
+        closed_data = []
+        for ct in reversed(closed_algo_trades):
+            closed_data.append({
+                "સમય": ct.get("exit_time", "-"),
+                "સ્ટોક / કોન્ટ્રાક્ટ": ct.get("contract_name", ct.get("symbol")),
+                "મોડ": ct.get("mode", "PAPER"),
+                "ખરીદ ભાવ": f"₹{float(ct.get('entry_price', 0)):.2f}",
+                "એક્ઝિટ ભાવ": f"₹{float(ct.get('exit_price', 0)):.2f}",
+                "P&L (₹)": f"₹{float(ct.get('realized_pnl', 0)):+,.2f}",
+                "સ્ટેટસ / કારણ": ct.get("status", "CLOSED")
+            })
+        st.dataframe(pd.DataFrame(closed_data), use_container_width=True)
+
+    st.markdown("<div style='height: 20px;'></div>", unsafe_allow_html=True)
+
+    # Educational Rules Banner
+    st.markdown(
+        """
+        <div style="background: rgba(15, 23, 42, 0.7); border: 1px solid rgba(56, 189, 248, 0.25);
+                    border-radius: 14px; padding: 18px 22px;">
+            <div style="font-size: 15px; font-weight: 700; color: #38BDF8; margin-bottom: 8px;">
+                💡 દિગ્ગજ ટ્રેડર્સનો સુવર્ણ નિયમ અને આલ્ગો માર્ગદર્શિકા (Mentor Advice)
+            </div>
+            <div style="font-size: 13px; color: #94A3B8; line-height: 1.7;">
+                1. <b>શરૂઆત હંમેશા Paper Mode થી કરો:</b> જ્યાં સુધી તમે સિસ્ટમના ઓર્ડર ફ્લો અને ટાર્ગેટ હિટ રેટથી ૧૦૦% આશ્વસ્ત ન થાઓ ત્યાં સુધી રિયલ પૈસા ન લગાવવા.<br>
+                2. <b>કોસ્ટ-ટુ-કોસ્ટ ટ્રેઇલિંગ (Zero Risk):</b> Target 1 (+35%) અચીવ થતાં જ અડધી ક્વોન્ટિટીનો નફો ખિસ્સામાં આવી જાય છે અને બાકીની અડધી ક્વોન્ટિટીનો સ્ટોપલોસ ખરીદભાવ પર આવી જવાથી ટ્રેડ <b>શૂન્ય જોખમ (Risk-Free)</b> બની જાય છે.<br>
+                3. <b>Daily Kill-Switch:</b> જો કોઈ દિવસ બજાર અત્યંત અસ્થિર કે સાઇડવેઝ હોય અને દૈનિક લોસ ₹3,000 અડી જાય તો આલ્ગો આપમેળે તે દિવસ માટે ટ્રેડિંગ બંધ કરી દે છે જેથી મૂડીનું રક્ષણ થાય.
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
 
 
 # =============================================================
