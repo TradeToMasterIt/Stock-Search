@@ -2289,6 +2289,21 @@ if selected_module == "🤖 Fyers Auto-Algo Cockpit (ઓટો-આલ્ગો �
                         st.rerun()
 
             st.markdown("---")
+            c_b1, c_b2 = st.columns([3, 2])
+            with c_b1:
+                basket_opts = ["ALL", "INDICES", "MOMENTUM"]
+                curr_b_val = algo_cfg.get("trading_basket", "ALL")
+                b_idx = 0 if curr_b_val == "ALL" else (1 if curr_b_val == "INDICES" else 2)
+                new_basket = st.selectbox(
+                    "🎯 આલ્ગો ટ્રેડિંગ બાસ્કેટ (Trading Universe Filter):",
+                    options=basket_opts,
+                    index=b_idx,
+                    format_func=lambda x: "🚀 All F&O Stocks + Indices (બધા ૧૮૧ F&O સ્ટોક્સ + ૪ ઈન્ડેક્સ)" if x == "ALL" else ("👑 Only Indices (માત્ર NIFTY & BANKNIFTY)" if x == "INDICES" else "🔥 Top 35 Momentum Leaders (પસંદગીના ટોચના ૩૫ શેરો)"),
+                    help="આલ્ગોએ કયા સ્ટોક્સ પર ઓટોમેટિક ઓર્ડર મૂકવો તે પસંદ કરો."
+                )
+            with c_b2:
+                st.caption("💡 ફિલ્ટર સલાહ: ઈન્ડેક્સ માટે 'Only Indices' અથવા સમગ્ર F&O બજાર માટે 'All F&O Stocks + Indices' પસંદ કરો.")
+
             st.markdown("##### 🛡️ સંસ્થાકીય જોખમ નિયંત્રણો (Institutional Risk Guards)")
             c_r1, c_r2, c_r3, c_r4 = st.columns(4)
             with c_r1:
@@ -2341,6 +2356,7 @@ if selected_module == "🤖 Fyers Auto-Algo Cockpit (ઓટો-આલ્ગો �
             if st.button("💾 સેટિંગ્સ સેવ કરો (Save Algo Settings)", type="primary", key="btn_save_algo_config"):
                 algo_cfg["is_enabled"] = new_enabled
                 algo_cfg["mode"] = new_mode
+                algo_cfg["trading_basket"] = new_basket
                 algo_cfg["max_risk_per_trade"] = float(new_risk_trade)
                 algo_cfg["max_capital_per_trade"] = float(new_cap_trade)
                 algo_cfg["daily_max_loss"] = float(new_daily_loss)

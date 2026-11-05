@@ -14,5 +14,6 @@
   "start_time": "09:20",
   "end_time": "15:00",
   "kill_switch_triggered": false,
-  "last_reset_date": "2026-11-05"
+  "last_reset_date": "2026-11-05",
+  "trading_basket": "ALL"
 }

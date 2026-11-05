@@ -102,6 +102,7 @@ def get_lot_size(symbol: str) -> int:
 DEFAULT_ALGO_CONFIG = {
     "is_enabled": False,
     "mode": "PAPER",                     # "PAPER" (Demo) or "LIVE" (Fyers Real Broker)
+    "trading_basket": "ALL",            # "ALL", "INDICES", or "MOMENTUM"
     "max_risk_per_trade": 1500.0,       # Risk per trade (1.5% of 1L)
     "max_capital_per_trade": 15000.0,   # Max margin allocated per trade
     "daily_max_loss": 3000.0,           # Daily Kill-Switch limit
@@ -303,6 +304,17 @@ def execute_algo_entry(scan_res: Dict[str, Any]) -> Tuple[bool, str]:
     fyers_sym = scan_res.get("opt_fyers_symbol", "")
     contract_name = scan_res.get("opt_contract_name", f"{sym} OTM Call")
     
+    # Safety Check 5.5: Basket Filter (All / Indices / Momentum)
+    basket_choice = cfg.get("trading_basket", "ALL")
+    from core.option_r3_engine import is_index_symbol, TOP_MOMENTUM_FNO_BASKET
+    if basket_choice == "INDICES" and not is_index_symbol(sym):
+        return False, f"Skipped {sym}: Algo is restricted to INDICES ONLY in settings"
+    elif basket_choice == "MOMENTUM":
+        clean_s = sym.replace(".NS", "").replace(".BO", "").strip().upper()
+        allowed = [s.replace(".NS", "").replace(".BO", "").strip().upper() for s in TOP_MOMENTUM_FNO_BASKET]
+        if not is_index_symbol(sym) and clean_s not in allowed:
+            return False, f"Skipped {sym}: Algo is restricted to TOP MOMENTUM F&O ONLY in settings"
+            
     # Safety Check 6: Duplicate Position Prevention
     for tr in active_trades:
         if tr.get("symbol") == sym or tr.get("fyers_symbol") == fyers_sym:
