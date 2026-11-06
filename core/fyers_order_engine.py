@@ -330,6 +330,14 @@ def execute_algo_entry(scan_res: Dict[str, Any]) -> Tuple[bool, str]:
     if entry_price <= 0:
         entry_price = float(scan_res.get("price", 0.0))
 
+    # Ensure option stoploss and targets are calibrated to option entry price (never spot index price)
+    if stop_loss >= entry_price or stop_loss <= 0 or (stop_loss > entry_price * 1.5):
+        stop_loss = round(entry_price * 0.80, 2)
+    if target_1 <= entry_price or target_1 > entry_price * 3.0:
+        target_1 = round(entry_price * 1.35, 2)
+    if target_2 <= target_1 or target_2 > entry_price * 4.0:
+        target_2 = round(entry_price * 1.70, 2)
+
     # Safety Check 5.5: Basket Filter (All / Indices / Momentum)
     basket_choice = cfg.get("trading_basket", "ALL")
     from core.option_r3_engine import is_index_symbol, TOP_MOMENTUM_FNO_BASKET

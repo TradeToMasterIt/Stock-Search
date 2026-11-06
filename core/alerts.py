@@ -88,6 +88,11 @@ def format_100_confirmed_buy_alert(res):
     strike_desc = "Weekly OTM Strike" if is_idx else "OTM Option Strike"
     asset_action = "Index / Future Buy" if is_idx else "Equity / Future Buy"
     target_gain_txt = "૧૫૦% થી ૪૦૦%+ (ઝીરો-ટુ-હીરો સુપર જેકપોટ)" if is_gb else "૧૦૦% થી ૨૦૦%+ (ડબલ / મલ્ટિબેગર નફો)"
+    opt_p = float(res.get('opt_ltp', 0.0))
+    opt_sl_calc = round(opt_p * 0.75, 2)
+    opt_t1_calc = round(opt_p * 1.35, 2)
+    opt_t2_calc = round(opt_p * 1.70, 2)
+    opt_multi_calc = round(opt_p * 2.0, 2)
     rsi_badge = (
         f"• <b>⚡ {tf_lbl} RSI Confluence:</b> <b>{rsi_val:.1f}</b> (Golden Sweet Spot 58-74 ✅ - પ્રારંભિક સ્નાઈપર એન્ટ્રી)\n"
         f"• <b>📊 {tf_lbl} Volume Ratio:</b> <b>{vol_val:.1f}x</b> (સંસ્થાકીય વોલ્યુમ કન્ફર્મ 🔥)\n"
@@ -101,19 +106,21 @@ def format_100_confirmed_buy_alert(res):
         f"⚡ <b>Hilega-Milega 1H:</b> Green &gt; Red (પાણી 50 ની ઉપર - ૧૦૦% ખરીદી પાકી)\n"
         f"{rsi_badge}"
         f"━━━━━━━━━━━━━━━━━━━━━\n"
-        f"🔥 <b>ACTIONABLE TRADE ENTRY (તાત્કાલિક એન્ટ્રી):</b>\n"
-        f"• <b>Call Option Buy (CE):</b> <b>{contract_lbl} ખરીદો{opt_ltp_txt}</b>\n"
-        f"• <b>{strike_desc}:</b> <b>{strike_str}</b>\n"
+        f"🔥 <b>ACTIONABLE OPTION ENTRY (ઓપ્શન ખરીદો):</b>\n"
+        f"• <b>Call Option Buy (CE):</b> <b>{contract_lbl} ખરીદો</b>\n"
+        f"• <b>ખરીદ ભાવ (Option LTP):</b> <b>₹{opt_p:.2f}</b>\n"
         f"{fyers_lbl}"
         f"{opt_r3_txt}"
-        f"• <b>{asset_action}:</b> ₹{res['price']:.2f}\n"
-        f"• <b>ચુસ્ત સ્ટોપલોસ:</b> ₹{res['stop_loss']:.2f} (-{res['risk_pct']:.1f}%)\n"
-        f"• <b>Target 1 (1:1.5):</b> ₹{res['t1']:.2f} (+{res['t1_pct']:.1f}%)\n"
-        f"• <b>Target 2 (1:2.5):</b> ₹{res['t2']:.2f} (+{res['t2_pct']:.1f}%)\n"
-        f"• <b>ઓપ્શન ટાર્ગેટ:</b> {target_gain_txt}\n"
+        f"• <b>🛡️ ચુસ્ત ઓપ્શન SL:</b> <b>₹{opt_sl_calc:.2f}</b> (-25%)\n"
+        f"• <b>🎯 Option Target 1 (+35%):</b> <b>₹{opt_t1_calc:.2f}</b> (૫૦% નફો બુક & SL to Cost)\n"
+        f"• <b>🚀 Option Target 2 (+70%):</b> <b>₹{opt_t2_calc:.2f}</b> (વધુ ૩૦% નફો બુક)\n"
+        f"• <b>👑 મલ્ટિબેગર ટાર્ગેટ:</b> <b>₹{opt_multi_calc:.2f}</b> ({target_gain_txt})\n"
         f"━━━━━━━━━━━━━━━━━━━━━\n"
-        f"📊 <b>Spot Pivots:</b> P: ₹{res['pivot_p']:.1f} | R1: ₹{res['r1']:.1f} | R2: ₹{res['r2']:.1f} | R3: ₹{res['r3']:.1f}\n"
-        f"📊 <b>1-Hour Volume:</b> {res['vol_ratio']:.1f}x {vol_emoji}\n"
+        f"📊 <b>Spot {s_name} Levels (કેશ/ઈન્ડેક્સ સંદર્ભ માટે):</b>\n"
+        f"• Spot ભાવ: ₹{res['price']:.2f}\n"
+        f"• Spot Stoploss: ₹{res['stop_loss']:.2f} | Spot Target 1: ₹{res['t1']:.2f}\n"
+        f"• Spot Pivots: P: ₹{res['pivot_p']:.1f} | R1: ₹{res['r1']:.1f} | R2: ₹{res['r2']:.1f} | R3: ₹{res['r3']:.1f}\n"
+        f"• 1-Hour Volume: {res['vol_ratio']:.1f}x {vol_emoji}\n"
         f"━━━━━━━━━━━━━━━━━━━━━\n"
         f"⏰ <i>{now_str}</i> | 🤖 Patel Trading Bot"
     )

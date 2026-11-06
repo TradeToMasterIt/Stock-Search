@@ -297,7 +297,11 @@ def build_option_contract(symbol: str, spot_price: float, opt_type: str = "CE") 
     # Use Weekly Expiry for Indices, Monthly Expiry for Stocks
     is_idx = is_index_symbol(symbol)
     if is_idx:
-        expiry_info = get_current_weekly_expiry(clean_sym)
+        # BSE SENSEX & BANKEX use Monthly expiry symbols in Fyers API (e.g. BSE:SENSEX26NOV80200CE)
+        if clean_sym in ["SENSEX", "BSESN", "BANKEX"] or exchange == "BSE":
+            expiry_info = get_current_monthly_expiry()
+        else:
+            expiry_info = get_current_weekly_expiry(clean_sym)
     else:
         expiry_info = get_current_monthly_expiry()
 
@@ -423,10 +427,30 @@ def analyze_option_r3_setup(
 
                 # Get current LTP
                 q_res = safe_fyers_quotes(fyers_client, {"symbols": fyers_sym})
+                quote_ok = False
                 if isinstance(q_res, dict) and "d" in q_res and len(q_res["d"]) > 0:
                     val = q_res["d"][0].get("v", {})
-                    opt_ltp = float(val.get("lp", 0.0))
-                    data_source = "🟢 Fyers API Live Broker Feed"
+                    if val.get("lp") is not None and float(val.get("lp", 0.0)) > 0:
+                        opt_ltp = float(val.get("lp"))
+                        opt_prev_c = float(val.get("prev_close_price", opt_prev_c))
+                        quote_ok = True
+                        data_source = "🟢 Fyers API Live Broker Feed"
+                
+                # If weekly symbol returned error/None, fallback to monthly symbol in Fyers
+                if not quote_ok:
+                    monthly_exp = get_current_monthly_expiry()
+                    monthly_fyers_sym = f"{exchange}:{clean_sym}{monthly_exp['fyers_code']}{strike}{contract.get('opt_type', 'CE')}"
+                    m_res = safe_fyers_quotes(fyers_client, {"symbols": monthly_fyers_sym})
+                    if isinstance(m_res, dict) and "d" in m_res and len(m_res["d"]) > 0:
+                        m_val = m_res["d"][0].get("v", {})
+                        if m_val.get("lp") is not None and float(m_val.get("lp", 0.0)) > 0:
+                            opt_ltp = float(m_val.get("lp"))
+                            opt_prev_c = float(m_val.get("prev_close_price", opt_ltp))
+                            opt_prev_h = float(m_val.get("high_price", opt_ltp * 1.05))
+                            opt_prev_l = float(m_val.get("low_price", opt_ltp * 0.95))
+                            fyers_sym = monthly_fyers_sym
+                            contract_name = f"{clean_sym} {monthly_exp['label']} {strike} {contract.get('opt_type', 'CE')}"
+                            data_source = "🟢 Fyers API Live Broker Feed (Monthly Active)"
         except Exception:
             pass
 
@@ -441,16 +465,29 @@ def analyze_option_r3_setup(
         otm_diff = max(0.0, float(strike - p_close))
         delta = max(0.20, min(0.50, 0.42 - (otm_diff / (step_val * 8.0))))
 
-        # Static baseline option price at yesterday's close
-        base_extrinsic = max(1.50, p_close * 0.02 - (otm_diff * 0.20))
-        opt_prev_c = round(base_extrinsic, 2)
-        opt_prev_h = round(opt_prev_c + delta * (p_high - p_close), 2)
-        opt_prev_l = round(max(0.30, opt_prev_c + delta * (p_low - p_close)), 2)
+        # Realistic calibration scaled for both equities and high-value indices
+        is_idx = contract.get("is_index", False)
+        if is_idx:
+            # For indices (SENSEX ~80k, NIFTY ~24k), 1-month ATM/OTM is ~0.8%-1.0% of spot
+            extrinsic_pct = 0.010 if not contract.get("is_gamma_blast", False) else 0.003
+            base_extrinsic = max(5.0, (p_close * extrinsic_pct) - (otm_diff * 0.15))
+            opt_prev_c = round(base_extrinsic, 2)
+            opt_prev_h = round(opt_prev_c + delta * (p_high - p_close), 2)
+            opt_prev_l = round(max(1.0, opt_prev_c + delta * (p_low - p_close)), 2)
 
-        # Today's option LTP derived from spot movement
-        spot_move = spot_price - p_close
-        gamma_boost = (0.0015 * (spot_move ** 2)) if spot_move > 0 else 0.0
-        opt_ltp = round(max(0.50, opt_prev_c + delta * spot_move + gamma_boost), 2)
+            spot_move = spot_price - p_close
+            pct_move = (spot_move / max(1.0, p_close)) * 100.0
+            gamma_boost = round(max(0.0, 5.0 * (pct_move ** 1.5)), 2) if spot_move > 0 else 0.0
+            opt_ltp = round(max(1.0, opt_prev_c + delta * spot_move + gamma_boost), 2)
+        else:
+            base_extrinsic = max(1.50, p_close * 0.02 - (otm_diff * 0.20))
+            opt_prev_c = round(base_extrinsic, 2)
+            opt_prev_h = round(opt_prev_c + delta * (p_high - p_close), 2)
+            opt_prev_l = round(max(0.30, opt_prev_c + delta * (p_low - p_close)), 2)
+
+            spot_move = spot_price - p_close
+            gamma_boost = (0.0015 * (spot_move ** 2)) if spot_move > 0 else 0.0
+            opt_ltp = round(max(0.50, opt_prev_c + delta * spot_move + gamma_boost), 2)
         data_source = "🔵 Calibrated Option Analytics"
 
     # Compute Option Pivot Points
