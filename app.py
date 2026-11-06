@@ -2468,33 +2468,25 @@ if selected_module == "🤖 Fyers Auto-Algo Cockpit (ઓટો-આલ્ગો �
             zero_risk_badge = '<span style="background: rgba(16, 185, 129, 0.2); color: #34D399; border: 1px solid #10B981; padding: 2px 8px; border-radius: 9999px; font-size: 11px; font-weight: 700;">🛡️ ZERO RISK (Cost Trailed)</span>' if (t1_hit and sl >= e_price) else ''
 
             with st.container():
-                st.markdown(
-                    f"""
-                    <div style="background: rgba(30, 41, 59, 0.6); border: 1px solid rgba(255,255,255,0.08);
-                                border-radius: 12px; padding: 16px 20px; margin-bottom: 12px;">
-                        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
-                            <div>
-                                <span style="font-size: 18px; font-weight: 800; color: #FFFFFF;">{c_name}</span>
-                                <span style="font-size: 11px; background: rgba(56, 189, 248, 0.15); color: #38BDF8; padding: 3px 8px; border-radius: 6px; margin-left: 8px;">{mode_badge}</span>
-                                <span style="font-size: 11px; background: {'rgba(16, 185, 129, 0.2)' if tr.get('opt_type', 'CE') == 'CE' else 'rgba(239, 68, 68, 0.2)'}; color: {'#34D399' if tr.get('opt_type', 'CE') == 'CE' else '#F87171'}; padding: 3px 8px; border-radius: 6px; margin-left: 4px; font-weight: 700;">{'📈 CALL (CE)' if tr.get('opt_type', 'CE') == 'CE' else '📉 PUT (PE)'}</span>
-                                {zero_risk_badge}
-                                <div style="font-size: 12px; color: #94A3B8; margin-top: 4px;">
-                                    સિમ્બોલ: <code>{f_sym}</code> | એન્ટ્રી સમય: {tr.get('entry_time', '-')}
-                                </div>
-                            </div>
-                            <div style="text-align: right;">
-                                <div style="font-size: 20px; font-weight: 800; color: {pnl_color};">
-                                    {'+' if unrealized >= 0 else ''}₹{unrealized:,.2f} ({'+' if pnl_pct >= 0 else ''}{pnl_pct:.2f}%)
-                                </div>
-                                <div style="font-size: 12px; color: #CBD5E1;">
-                                    LTP: <b>₹{c_price:.2f}</b> (ખરીદ ભાવ: ₹{e_price:.2f})
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                    """,
-                    unsafe_allow_html=True
+                pos_card_html = (
+                    f'<div style="background: rgba(30, 41, 59, 0.75); border: 1px solid rgba(255,255,255,0.1); '
+                    f'border-radius: 12px; padding: 16px 20px; margin-bottom: 12px;">'
+                    f'<div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">'
+                    f'<div>'
+                    f'<span style="font-size: 18px; font-weight: 800; color: #FFFFFF;">{c_name}</span> '
+                    f'<span style="font-size: 11px; background: rgba(56, 189, 248, 0.15); color: #38BDF8; padding: 3px 8px; border-radius: 6px; margin-left: 8px;">{mode_badge}</span> '
+                    f'<span style="font-size: 11px; background: {"rgba(16, 185, 129, 0.2)" if tr.get("opt_type", "CE") == "CE" else "rgba(239, 68, 68, 0.2)"}; color: {"#34D399" if tr.get("opt_type", "CE") == "CE" else "#F87171"}; padding: 3px 8px; border-radius: 6px; margin-left: 4px; font-weight: 700;">{"📈 CALL (CE)" if tr.get("opt_type", "CE") == "CE" else "📉 PUT (PE)"}</span> '
+                    f'{zero_risk_badge}'
+                    f'<div style="font-size: 12px; color: #94A3B8; margin-top: 6px;">સિમ્બોલ: <code>{f_sym}</code> | એન્ટ્રી સમય: {tr.get("entry_time", "-")}</div>'
+                    f'</div>'
+                    f'<div style="text-align: right;">'
+                    f'<div style="font-size: 20px; font-weight: 800; color: {pnl_color};">{"+" if unrealized >= 0 else ""}₹{unrealized:,.2f} ({"+" if pnl_pct >= 0 else ""}{pnl_pct:.2f}%)</div>'
+                    f'<div style="font-size: 12px; color: #CBD5E1; margin-top: 2px;">LTP: <b>₹{c_price:.2f}</b> (ખરીદ ભાવ: ₹{e_price:.2f})</div>'
+                    f'</div>'
+                    f'</div>'
+                    f'</div>'
                 )
+                st.markdown(pos_card_html, unsafe_allow_html=True)
 
                 # Action and target tracking row
                 p_c1, p_c2, p_c3, p_c4, p_c5 = st.columns([1.5, 1.5, 1.5, 1.5, 1.5])
@@ -2557,15 +2549,27 @@ if selected_module == "🤖 Fyers Auto-Algo Cockpit (ઓટો-આલ્ગો �
                 is_pe = "PE" in test_type
                 suffix = "PE" if is_pe else "CE"
                 label = "Put" if is_pe else "Call"
+
+                try:
+                    from core.option_r3_engine import build_option_contract
+                    sample_spots = {"LT": 3600, "TATASTEEL": 150, "RELIANCE": 1300, "SBIN": 800, "TCS": 4100, "INFY": 1850, "BHARTIARTL": 1600, "NIFTY": 24500}
+                    approx_spot = sample_spots.get(test_sym, 1000)
+                    opt_test_info = build_option_contract(test_sym, approx_spot, suffix)
+                    sim_contract_name = opt_test_info["contract_name"]
+                    sim_fyers_sym = opt_test_info["fyers_symbol"]
+                except Exception:
+                    sim_contract_name = f"{test_sym} 26-NOV-2026 {label}"
+                    sim_fyers_sym = f"NSE:{test_sym}26NOV{suffix}"
+
                 sim_res = {
                     "symbol": test_sym,
                     "opt_type": suffix,
-                    "opt_fyers_symbol": f"NSE:{test_sym}26NOV{suffix}",
-                    "opt_contract_name": f"{test_sym} Test {label}",
+                    "opt_fyers_symbol": sim_fyers_sym,
+                    "opt_contract_name": sim_contract_name,
                     "opt_ltp": test_price,
                     "opt_put_ltp": test_price,
-                    "opt_put_fyers_symbol": f"NSE:{test_sym}26NOVPE",
-                    "opt_put_contract_name": f"{test_sym} Test Put",
+                    "opt_put_fyers_symbol": sim_fyers_sym,
+                    "opt_put_contract_name": sim_contract_name,
                     "opt_put_sl": test_sl,
                     "opt_put_t1": test_price * 1.35,
                     "opt_put_t2": test_price * 1.70,
