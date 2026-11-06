@@ -323,19 +323,19 @@ def execute_algo_entry(scan_res: Dict[str, Any]) -> Tuple[bool, str]:
         fyers_sym = scan_res.get("opt_fyers_symbol", "")
         contract_name = scan_res.get("opt_contract_name", f"{sym} OTM Call")
         entry_price = float(scan_res.get("opt_ltp", 0.0))
-        stop_loss = float(scan_res.get("stop_loss", entry_price * 0.80))
-        target_1 = float(scan_res.get("t1", entry_price * 1.35))
-        target_2 = float(scan_res.get("t2", entry_price * 1.70))
+        stop_loss = float(scan_res.get("opt_sl", entry_price * 0.75))
+        target_1 = float(scan_res.get("opt_t1", entry_price * 1.35))
+        target_2 = float(scan_res.get("opt_t2", entry_price * 1.70))
 
     if entry_price <= 0:
         entry_price = float(scan_res.get("price", 0.0))
 
-    # Ensure option stoploss and targets are calibrated to option entry price (never spot index price)
-    if stop_loss >= entry_price or stop_loss <= 0 or (stop_loss > entry_price * 1.5):
-        stop_loss = round(entry_price * 0.80, 2)
-    if target_1 <= entry_price or target_1 > entry_price * 3.0:
+    # Ensure option stoploss and targets are ALWAYS calibrated to option entry price (never spot stock/index price)
+    if stop_loss >= entry_price or stop_loss <= 0:
+        stop_loss = round(entry_price * 0.75, 2)
+    if target_1 <= entry_price or target_1 > entry_price * 2.5:
         target_1 = round(entry_price * 1.35, 2)
-    if target_2 <= target_1 or target_2 > entry_price * 4.0:
+    if target_2 <= target_1 or target_2 > entry_price * 3.5:
         target_2 = round(entry_price * 1.70, 2)
 
     # Safety Check 5.5: Basket Filter (All / Indices / Momentum)
