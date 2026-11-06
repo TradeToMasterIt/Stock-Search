@@ -2153,6 +2153,16 @@ if selected_module == "🤖 Fyers Auto-Algo Cockpit (ઓટો-આલ્ગો �
         pass
 
     algo_cfg = load_algo_config()
+    # Instant bidirectional sync between session state and config on disk
+    if "toggle_algo_master" in st.session_state:
+        if st.session_state["toggle_algo_master"] != algo_cfg.get("is_enabled", False):
+            algo_cfg["is_enabled"] = bool(st.session_state["toggle_algo_master"])
+            save_algo_config(algo_cfg)
+    if "radio_algo_mode" in st.session_state:
+        if st.session_state["radio_algo_mode"] != algo_cfg.get("mode", "PAPER"):
+            algo_cfg["mode"] = str(st.session_state["radio_algo_mode"])
+            save_algo_config(algo_cfg)
+
     algo_trades_state = load_algo_trades()
     active_algo_trades = algo_trades_state.get("active_trades", [])
     closed_algo_trades = algo_trades_state.get("closed_trades", [])
@@ -2262,13 +2272,32 @@ if selected_module == "🤖 Fyers Auto-Algo Cockpit (ઓટો-આલ્ગો �
     with col_ctrl:
         with st.expander("⚙️ આલ્ગો કંટ્રોલ અને રિસ્ક મેનેજમેન્ટ સેટિંગ્સ (Configure Algo & Risk)", expanded=True):
             st.markdown("##### 🎛️ મુખ્ય સંચાલન (Master Operations)")
+            def on_master_toggle_flip():
+                val = bool(st.session_state.get("toggle_algo_master", False))
+                c = load_algo_config()
+                c["is_enabled"] = val
+                save_algo_config(c)
+
+            def on_master_mode_flip():
+                m_val = str(st.session_state.get("radio_algo_mode", "PAPER"))
+                c = load_algo_config()
+                c["mode"] = m_val
+                save_algo_config(c)
+
             c_m1, c_m2, c_m3 = st.columns([1.5, 1.8, 1.5])
             with c_m1:
                 new_enabled = st.toggle(
                     "🚀 ઓટો-આલ્ગો ચાલુ કરો (Master Toggle)",
                     value=is_algo_active,
-                    key="toggle_algo_master"
+                    key="toggle_algo_master",
+                    on_change=on_master_toggle_flip
                 )
+                if new_enabled != is_algo_active:
+                    algo_cfg["is_enabled"] = new_enabled
+                    save_algo_config(algo_cfg)
+                    is_algo_active = new_enabled
+                    st.rerun()
+
             with c_m2:
                 mode_options = ["PAPER", "LIVE"]
                 curr_mode_idx = 0 if algo_mode == "PAPER" else 1
@@ -2278,8 +2307,14 @@ if selected_module == "🤖 Fyers Auto-Algo Cockpit (ઓટો-આલ્ગો �
                     index=curr_mode_idx,
                     format_func=lambda x: "📄 Paper Trading (વર્ચ્યુઅલ ડેમો - શૂન્ય જોખમ)" if x == "PAPER" else "⚡ Live Fyers API (ઓરિજિનલ બ્રોકર ઓર્ડર)",
                     horizontal=True,
-                    key="radio_algo_mode"
+                    key="radio_algo_mode",
+                    on_change=on_master_mode_flip
                 )
+                if new_mode != algo_mode:
+                    algo_cfg["mode"] = new_mode
+                    save_algo_config(algo_cfg)
+                    algo_mode = new_mode
+                    st.rerun()
             with c_m3:
                 if is_kill_switch:
                     if st.button("🔄 Reset Kill-Switch", key="btn_reset_kill_switch", help="દૈનિક કિલ-સ્વિચ રીસેટ કરો"):
@@ -2367,8 +2402,8 @@ if selected_module == "🤖 Fyers Auto-Algo Cockpit (ઓટો-આલ્ગો �
                 new_trail_cost = st.checkbox("Target 1 પર SL to Cost", value=bool(algo_cfg.get("trail_t1_to_cost", True)), help="૫૦% નફો મળ્યા પછી સ્ટોપલોસ ખરીદભાવ પર લાવવો.")
 
             if st.button("💾 સેટિંગ્સ સેવ કરો (Save Algo Settings)", type="primary", key="btn_save_algo_config"):
-                algo_cfg["is_enabled"] = new_enabled
-                algo_cfg["mode"] = new_mode
+                algo_cfg["is_enabled"] = bool(st.session_state.get("toggle_algo_master", is_algo_active))
+                algo_cfg["mode"] = str(st.session_state.get("radio_algo_mode", algo_mode))
                 algo_cfg["trading_basket"] = new_basket
                 algo_cfg["trading_direction"] = new_direction
                 algo_cfg["max_risk_per_trade"] = float(new_risk_trade)
