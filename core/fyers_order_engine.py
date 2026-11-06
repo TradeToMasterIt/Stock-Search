@@ -100,7 +100,7 @@ def get_lot_size(symbol: str) -> int:
 # Configuration Manager
 # -------------------------------------------------------------
 DEFAULT_ALGO_CONFIG = {
-    "is_enabled": False,
+    "is_enabled": True,
     "mode": "PAPER",                     # "PAPER" (Demo) or "LIVE" (Fyers Real Broker)
     "trading_basket": "ALL",            # "ALL", "INDICES", or "MOMENTUM"
     "trading_direction": "BOTH",        # "BOTH", "CALL_ONLY", or "PUT_ONLY"
