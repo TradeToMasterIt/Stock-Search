@@ -85,14 +85,43 @@
       "exit_price": 2167.94,
       "exit_time": "06 Nov 2026 | 14:25:41 IST",
       "realized_pnl": 0.0
+    },
+    {
+      "id": "ALG_20261106143707_CROMPTON",
+      "symbol": "CROMPTON",
+      "opt_type": "CE",
+      "contract_name": "CROMPTON 26 NOV 220 CE",
+      "fyers_symbol": "NSE:CROMPTON26NOV220CE",
+      "mode": "PAPER",
+      "entry_price": 4.76,
+      "current_price": 4.76,
+      "initial_qty": 3000,
+      "remaining_qty": 3000,
+      "lots": 30,
+      "lot_size": 100,
+      "stop_loss": 199.99,
+      "initial_stop_loss": 199.99,
+      "target_1": 238.49,
+      "target_2": 253.89,
+      "allocated_capital": 14280.0,
+      "entry_time": "06 Nov 2026 | 14:37:07 IST",
+      "t1_hit": false,
+      "t2_hit": false,
+      "order_id": "SIMULATED_PAPER_ORDER",
+      "status": "CLOSED (STOP LOSS HIT)",
+      "unrealized_pnl": 0.0,
+      "pnl_pct": 0.0,
+      "exit_price": 4.76,
+      "exit_time": "06 Nov 2026 | 14:42:44 IST",
+      "realized_pnl": 0.0
     }
   ],
   "daily_summary": {
     "date": "2026-11-06",
     "realized_pnl": 0.0,
     "unrealized_pnl": 0.0,
-    "total_trades": 2,
-    "winning_trades": 2,
+    "total_trades": 3,
+    "winning_trades": 3,
     "losing_trades": 0
   }
 }
