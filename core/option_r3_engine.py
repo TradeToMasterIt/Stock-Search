@@ -193,7 +193,7 @@ def get_current_weekly_expiry(symbol: str, ref_date = None):
     else:
         fyers_expiry_code = f"{yy}{month_chars[expiry_date.month]}{dd}"
 
-    expiry_label = f"{expiry_date.day} {mmm} {tag}"
+    expiry_label = f"{expiry_date.strftime('%d-%b-%Y').upper()} {tag}"
     nse_expiry_str = expiry_date.strftime("%d-%b-%Y")
 
     return {
@@ -261,7 +261,7 @@ def get_current_monthly_expiry(ref_date: Optional[datetime.date] = None) -> Dict
         thursdays = [week[calendar.THURSDAY] for week in cal if week[calendar.THURSDAY] != 0]
         expiry_date = datetime.date(next_year, next_month, thursdays[-1])
 
-    expiry_label = expiry_date.strftime("%d %b").upper()       # e.g., "28 NOV"
+    expiry_label = expiry_date.strftime("%d-%b-%Y").upper()       # e.g., "26-NOV-2026" (Full explicit date to avoid confusion)
     fyers_expiry_code = expiry_date.strftime("%y%b").upper()   # e.g., "24NOV" or "26NOV"
     nse_expiry_str = expiry_date.strftime("%d-%b-%Y")          # e.g., "28-Nov-2024"
 

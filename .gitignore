@@ -22,4 +22,6 @@ trades.db
 fyers_token.json
 *.token
 *.log
+earnings_cache.json
+nifty_last_quote.json
 
