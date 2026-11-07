@@ -25,6 +25,78 @@ def send_telegram_alert(msg):
 # -------------------------------------------------------------
 # Alert Message Formatters (Gujarati HTML Format)
 # -------------------------------------------------------------
+def format_pre_r3_radar_alert(res):
+    """Stage 1: Pre-R3 Advance Radar Alert (2-3 Minutes advance notice before blast)."""
+    s_name = res.get('symbol', '')
+    is_idx = res.get('is_index', False)
+    inst_lbl = "ઈન્ડેક્સ" if is_idx else "સ્ટોક"
+    now_str = get_ist_now().strftime('%d %b %Y | %H:%M:%S IST')
+    opt_strike_val = res.get('otm_call_strike', res.get('ce_strike', res.get('strike', '')))
+    strike_str = f"₹{int(opt_strike_val)} CE" if (isinstance(opt_strike_val, (int, float)) and float(opt_strike_val) > 0) else f"₹{opt_strike_val} CE"
+    contract_lbl = res.get('opt_contract_name', res.get('contract_name', f"{strike_str}"))
+    fyers_code = res.get('opt_fyers_symbol', res.get('fyers_symbol', ''))
+    fyers_lbl = f"• <b>Fyers Symbol:</b> <code>{fyers_code}</code>\n" if fyers_code else ""
+    opt_p = float(res.get('opt_ltp', 0.0))
+    opt_r3 = float(res.get('opt_r3', 0.0))
+    tf_lbl = res.get('timeframe_used', '3m')
+    vol_val = res.get('vol_5m', res.get('vol_ratio', 1.0))
+    diff_val = max(0.05, opt_r3 - opt_p)
+    spot_p = float(res.get('price', res.get('spot_price', 0.0)))
+    spot_chg = float(res.get('change', res.get('spot_change', 0.0)))
+    return (
+        f"⚠️ <b>PRE-R3 ADVANCE SNIPER RADAR! (સજ્જ રહો - ૨ મિનિટ વહેલું એલર્ટ)</b> ⚠️\n"
+        f"━━━━━━━━━━━━━━━━━━━━━\n"
+        f"📌 <b>{inst_lbl}:</b> {s_name} (LTP: ₹{spot_p:.2f}, {spot_chg:+.2f}%)\n"
+        f"🎯 <b>ઓપ્શન કોન્ટ્રાક્ટ:</b> <b>{contract_lbl}</b>\n"
+        f"{fyers_lbl}"
+        f"• <b>વર્તમાન ઓપ્શન ભાવ:</b> <b>₹{opt_p:.2f}</b>\n"
+        f"• <b>લક્ષ્ય R3 બ્રેકઆઉટ લેવલ:</b> <b>₹{opt_r3:.2f}</b> (માત્ર ₹{diff_val:.2f} દૂર!)\n"
+        f"• <b>📊 {tf_lbl} વોલ્યુમ સર્જ:</b> <b>{vol_val:.1f}x 🔥</b> (સંસ્થાકીય ખરીદી શરૂ)\n"
+        f"━━━━━━━━━━━━━━━━━━━━━\n"
+        f"💡 <b>એક્શન પ્લાન (Action Plan):</b>\n"
+        f"• ડિમેટ એકાઉન્ટ (Zerodha/Fyers) માં આ સ્ટ્રાઈક વોચલિસ્ટમાં એડ કરીને તૈયાર રાખો.\n"
+        f"• અથવા ₹{opt_p:.2f} પર સસ્તા ભાવે ૫૦% એન્ટ્રી લઈ શકાય (SL: {tf_lbl} કેન્ડલ લો).\n"
+        f"• જેવો ₹{opt_r3:.2f} ક્રોસ થશે એટલે રોકેટ બ્લાસ્ટ કન્ફર્મ થશે!\n"
+        f"━━━━━━━━━━━━━━━━━━━━━\n"
+        f"⏰ <i>{now_str}</i> | 🤖 Patel Trading Bot"
+    )
+
+def format_pre_put_r3_radar_alert(res):
+    """Stage 1: Pre-Put R3 Advance Radar Alert (2-3 Minutes advance notice before breakdown)."""
+    s_name = res.get('symbol', '')
+    is_idx = res.get('is_index', False)
+    inst_lbl = "ઈન્ડેક્સ" if is_idx else "સ્ટોક"
+    now_str = get_ist_now().strftime('%d %b %Y | %H:%M:%S IST')
+    opt_strike_val = res.get('otm_put_strike', res.get('pe_strike', res.get('strike', '')))
+    strike_str = f"₹{int(opt_strike_val)} PE" if (isinstance(opt_strike_val, (int, float)) and float(opt_strike_val) > 0) else f"₹{opt_strike_val} PE"
+    contract_lbl = res.get('opt_put_contract_name', res.get('contract_name', f"{strike_str}"))
+    fyers_code = res.get('opt_put_fyers_symbol', res.get('fyers_symbol', ''))
+    fyers_lbl = f"• <b>Fyers Symbol:</b> <code>{fyers_code}</code>\n" if fyers_code else ""
+    opt_p = float(res.get('opt_put_ltp', res.get('opt_ltp', 0.0)))
+    opt_r3 = float(res.get('opt_put_r3', res.get('opt_r3', 0.0)))
+    tf_lbl = res.get('timeframe_used', '3m')
+    vol_val = res.get('vol_5m', res.get('vol_ratio', 1.0))
+    diff_val = max(0.05, opt_r3 - opt_p)
+    spot_p = float(res.get('price', res.get('spot_price', 0.0)))
+    spot_chg = float(res.get('change', res.get('spot_change', 0.0)))
+    return (
+        f"⚠️ <b>PRE-PUT R3 ADVANCE RADAR! (મંદી સજ્જ રહો - ૨ મિનિટ વહેલું એલર્ટ)</b> ⚠️\n"
+        f"━━━━━━━━━━━━━━━━━━━━━\n"
+        f"📌 <b>{inst_lbl}:</b> {s_name} (LTP: ₹{spot_p:.2f}, {spot_chg:+.2f}%)\n"
+        f"🎯 <b>પુટ કોન્ટ્રાક્ટ:</b> <b>{contract_lbl}</b>\n"
+        f"{fyers_lbl}"
+        f"• <b>વર્તમાન પુટ ભાવ:</b> <b>₹{opt_p:.2f}</b>\n"
+        f"• <b>લક્ષ્ય Put R3 બ્રેકડાઉન:</b> <b>₹{opt_r3:.2f}</b> (માત્ર ₹{diff_val:.2f} દૂર!)\n"
+        f"• <b>📊 {tf_lbl} વોલ્યુમ:</b> <b>{vol_val:.1f}x 🔥</b> (સંસ્થાકીય સેલિંગ શરૂ)\n"
+        f"━━━━━━━━━━━━━━━━━━━━━\n"
+        f"💡 <b>એક્શન પ્લાન (Action Plan):</b>\n"
+        f"• ડિમેટ એકાઉન્ટમાં આ પુટ સ્ટ્રાઈક વોચલિસ્ટમાં એડ કરીને તૈયાર રાખો.\n"
+        f"• અથવા ₹{opt_p:.2f} પર ૫૦% પુટ એન્ટ્રી લઈ શકાય.\n"
+        f"• જેવો ₹{opt_r3:.2f} ક્રોસ થશે એટલે પેનિક ફોલ આવશે!\n"
+        f"━━━━━━━━━━━━━━━━━━━━━\n"
+        f"⏰ <i>{now_str}</i> | 🤖 Patel Trading Bot"
+    )
+
 def format_r3_radar_alert(res):
     s_name = res['symbol']
     is_idx = res.get('is_index', False)

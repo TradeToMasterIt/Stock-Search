@@ -311,6 +311,16 @@ def execute_algo_entry(scan_res: Dict[str, Any]) -> Tuple[bool, str]:
     elif trading_dir == "PUT_ONLY" and opt_type == "CE":
         return False, f"Skipped {sym}: Algo is restricted to PUT ONLY in settings"
 
+    # Safety Check 5.3: Anti-FOMO Chasing Guard (Never chase >8% above R3)
+    if scan_res.get("is_chasing", False) or (opt_type == "PE" and scan_res.get("is_put_chasing", False)):
+        return False, f"Skipped {sym}: Price is overextended (>8% above Option R3 level)"
+
+    # Safety Check 5.4: Late Session (14:15 - 15:00 IST) Volume Guard
+    if curr_time_str > "14:15" and not scan_res.get("is_gamma_blast", False):
+        v_rat = float(scan_res.get("vol_5m", scan_res.get("vol_ratio", 1.0)))
+        if v_rat < 1.5:
+            return False, f"Skipped {sym}: Post-14:15 non-gamma trade requires >= 1.5x volume (current: {v_rat:.1f}x)"
+
     # Select exact Call or Put symbols and levels
     if opt_type == "PE":
         fyers_sym = scan_res.get("opt_put_fyers_symbol", scan_res.get("opt_fyers_symbol", ""))

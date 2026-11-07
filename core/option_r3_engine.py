@@ -500,7 +500,13 @@ def analyze_option_r3_setup(
     # --- Golden Rule Logic: Option Leads, Future Follows ---
     # Core Strategy: Stock Price crosses Spot R2 AND Option LTP crosses Option Daily R3
     # When Option R3 is broken while Stock is at/above R2, explosive momentum follows towards Spot R3.
-    opt_leads_r3 = bool(opt_r3 > 0 and opt_ltp >= opt_r3)
+    # Anti-FOMO Chasing Cap: Option LTP must not be > 8% above R3 (prevents late high entry)
+    is_chasing = bool(opt_r3 > 0 and opt_ltp > opt_r3 * 1.08)
+    opt_leads_r3 = bool(opt_r3 > 0 and opt_ltp >= opt_r3 and not is_chasing)
+
+    # Pre-R3 Advance Radar: Option is in Squeeze Zone (within 2% to 5% below R3)
+    is_pre_r3_radar = bool(opt_r3 > 0 and (opt_r3 * 0.95 <= opt_ltp < opt_r3))
+
     # Dual Trigger: Spot crosses either R1 OR R2
     spot_breaks_level = bool(
         (spot_r2 > 0 and spot_price >= spot_r2) or 
@@ -545,6 +551,8 @@ def analyze_option_r3_setup(
         "opt_r2": opt_r2,
         "opt_r3": opt_r3,
         "is_option_r3_crossed": is_option_r3_crossed,
+        "is_pre_r3_radar": is_pre_r3_radar,
+        "is_chasing": is_chasing,
         "is_100_percent_buy": is_100_percent_buy,
         "is_gamma_blast": contract.get("is_gamma_blast", False),
         "is_index": contract.get("is_index", False),
@@ -672,8 +680,12 @@ def analyze_put_r3_setup(
     put_r1 = pivots["r1"]
     put_p = pivots["p"]
 
-    # Put breakout condition: Put LTP >= Put Daily R3
-    put_leads_r3 = bool(put_r3 > 0 and opt_ltp >= put_r3)
+    # Anti-FOMO Chasing Cap for Put Option: Max 8% above R3
+    is_put_chasing = bool(put_r3 > 0 and opt_ltp > put_r3 * 1.08)
+    put_leads_r3 = bool(put_r3 > 0 and opt_ltp >= put_r3 and not is_put_chasing)
+
+    # Pre-R3 Advance Radar for Put: Option is within 2% to 5% below R3
+    is_pre_put_r3_radar = bool(put_r3 > 0 and (put_r3 * 0.95 <= opt_ltp < put_r3))
 
     # Spot breakdown: Spot Price <= S1 OR Spot Price <= S2
     spot_breaks_support = bool(
@@ -714,6 +726,8 @@ def analyze_put_r3_setup(
         "opt_r2": put_r2,
         "opt_r3": put_r3,
         "is_option_r3_crossed": is_put_r3_crossed,
+        "is_pre_r3_radar": is_pre_put_r3_radar,
+        "is_chasing": is_put_chasing,
         "is_100_percent_buy": is_100_percent_put_buy,
         "is_gamma_blast": contract.get("is_gamma_blast", False),
         "is_index": contract.get("is_index", False),
