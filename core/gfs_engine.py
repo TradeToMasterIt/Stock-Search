@@ -14,7 +14,17 @@ Core Philosophy:
 
 import numpy as np
 import pandas as pd
-from scipy.signal import argrelextrema
+try:
+    from scipy.signal import argrelextrema
+except ImportError:
+    def argrelextrema(data, comparator, order=3):
+        res = []
+        for i in range(order, len(data) - order):
+            val = data[i]
+            window = data[i-order:i+order+1]
+            if comparator(val, np.delete(window, order)).all():
+                res.append(i)
+        return (np.array(res, dtype=int),)
 from typing import Dict, Any, Tuple, Optional
 
 # -------------------------------------------------------------

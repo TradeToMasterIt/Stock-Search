@@ -2,8 +2,10 @@ streamlit
 yfinance
 pandas
 numpy
+scipy
 altair
 requests
 streamlit-autorefresh
 python-dotenv
 fyers-apiv3
+openpyxl
