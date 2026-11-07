@@ -34,7 +34,15 @@
       "plus_di": 28.0,
       "minus_di": 16.0,
       "di_diff": 12.0,
-      "span_20d": 5.0
+      "span_20d": 5.0,
+      "gfs_badge": "💥 GFS 3-TF BUY",
+      "gfs_action": "💥 HIGH-CONFIDENCE GFS ENTRY",
+      "gfs_score": 75,
+      "has_bull_div": true,
+      "has_bear_div": false,
+      "candle_pattern": "HAMMER 🔨",
+      "bb_middle": 24245.1,
+      "bb_lower": 23265.5
     },
     {
       "Symbol": "BANK NIFTY",
@@ -68,7 +76,15 @@
       "plus_di": 28.0,
       "minus_di": 16.0,
       "di_diff": 12.0,
-      "span_20d": 5.0
+      "span_20d": 5.0,
+      "gfs_badge": "💥 GFS 3-TF BUY",
+      "gfs_action": "💥 HIGH-CONFIDENCE GFS ENTRY",
+      "gfs_score": 75,
+      "has_bull_div": true,
+      "has_bear_div": false,
+      "candle_pattern": "HAMMER 🔨",
+      "bb_middle": 57021.8,
+      "bb_lower": 54717.9
     },
     {
       "Symbol": "SENSEX",
@@ -102,7 +118,15 @@
       "plus_di": 28.0,
       "minus_di": 16.0,
       "di_diff": 12.0,
-      "span_20d": 5.0
+      "span_20d": 5.0,
+      "gfs_badge": "💥 GFS 3-TF BUY",
+      "gfs_action": "💥 HIGH-CONFIDENCE GFS ENTRY",
+      "gfs_score": 75,
+      "has_bull_div": true,
+      "has_bear_div": false,
+      "candle_pattern": "HAMMER 🔨",
+      "bb_middle": 78300.2,
+      "bb_lower": 75136.6
     },
     {
       "Symbol": "FINNIFTY",
@@ -136,7 +160,15 @@
       "plus_di": 28.0,
       "minus_di": 16.0,
       "di_diff": 12.0,
-      "span_20d": 5.0
+      "span_20d": 5.0,
+      "gfs_badge": "💥 GFS 3-TF BUY",
+      "gfs_action": "💥 HIGH-CONFIDENCE GFS ENTRY",
+      "gfs_score": 75,
+      "has_bull_div": true,
+      "has_bear_div": false,
+      "candle_pattern": "HAMMER 🔨",
+      "bb_middle": 26271.9,
+      "bb_lower": 25210.4
     },
     {
       "Symbol": "ABCAPITAL",
@@ -170,7 +202,15 @@
       "plus_di": 16.5,
       "minus_di": 21.1,
       "di_diff": 4.6,
-      "span_20d": 11.1
+      "span_20d": 11.1,
+      "gfs_badge": "⚪ NEUTRAL",
+      "gfs_action": "⏳ CONSOLIDATION",
+      "gfs_score": 32,
+      "has_bull_div": false,
+      "has_bear_div": false,
+      "candle_pattern": "STANDARD GREEN 🟢",
+      "bb_middle": 387.0,
+      "bb_lower": 371.8
     },
     {
       "Symbol": "ALKEM",
@@ -204,7 +244,15 @@
       "plus_di": 14.0,
       "minus_di": 21.8,
       "di_diff": 7.8,
-      "span_20d": 8.4
+      "span_20d": 8.4,
+      "gfs_badge": "⚪ NEUTRAL",
+      "gfs_action": "⏳ CONSOLIDATION",
+      "gfs_score": 0,
+      "has_bull_div": false,
+      "has_bear_div": false,
+      "candle_pattern": "STANDARD GREEN 🟢",
+      "bb_middle": 5151.0,
+      "bb_lower": 4949.0
     },
     {
       "Symbol": "ABBOTINDIA",
@@ -238,7 +286,15 @@
       "plus_di": 19.1,
       "minus_di": 17.9,
       "di_diff": 1.2,
-      "span_20d": 9.1
+      "span_20d": 9.1,
+      "gfs_badge": "⚪ NEUTRAL",
+      "gfs_action": "⏳ CONSOLIDATION",
+      "gfs_score": 28,
+      "has_bull_div": false,
+      "has_bear_div": false,
+      "candle_pattern": "STANDARD GREEN 🟢",
+      "bb_middle": 26693.4,
+      "bb_lower": 25646.6
     },
     {
       "Symbol": "AARTIIND",
@@ -272,7 +328,15 @@
       "plus_di": 24.3,
       "minus_di": 16.1,
       "di_diff": 8.2,
-      "span_20d": 9.8
+      "span_20d": 9.8,
+      "gfs_badge": "⚪ NEUTRAL",
+      "gfs_action": "⏳ CONSOLIDATION",
+      "gfs_score": 34,
+      "has_bull_div": false,
+      "has_bear_div": false,
+      "candle_pattern": "STANDARD GREEN 🟢",
+      "bb_middle": 513.1,
+      "bb_lower": 492.9
     },
     {
       "Symbol": "ABB",
@@ -306,7 +370,15 @@
       "plus_di": 15.5,
       "minus_di": 33.9,
       "di_diff": 18.4,
-      "span_20d": 12.2
+      "span_20d": 12.2,
+      "gfs_badge": "⚪ NEUTRAL",
+      "gfs_action": "⏳ CONSOLIDATION",
+      "gfs_score": 42,
+      "has_bull_div": false,
+      "has_bear_div": false,
+      "candle_pattern": "STANDARD GREEN 🟢",
+      "bb_middle": 6937.0,
+      "bb_lower": 6665.0
     },
     {
       "Symbol": "ADANIPOWER",
@@ -340,7 +412,15 @@
       "plus_di": 20.0,
       "minus_di": 28.9,
       "di_diff": 8.9,
-      "span_20d": 14.1
+      "span_20d": 14.1,
+      "gfs_badge": "⚪ NEUTRAL",
+      "gfs_action": "⏳ CONSOLIDATION",
+      "gfs_score": 32,
+      "has_bull_div": false,
+      "has_bear_div": false,
+      "candle_pattern": "STANDARD GREEN 🟢",
+      "bb_middle": 199.8,
+      "bb_lower": 191.9
     },
     {
       "Symbol": "ACC",
@@ -374,7 +454,15 @@
       "plus_di": 22.8,
       "minus_di": 24.9,
       "di_diff": 2.1,
-      "span_20d": 13.2
+      "span_20d": 13.2,
+      "gfs_badge": "⚪ NEUTRAL",
+      "gfs_action": "⏳ CONSOLIDATION",
+      "gfs_score": 38,
+      "has_bull_div": false,
+      "has_bear_div": false,
+      "candle_pattern": "STANDARD GREEN 🟢",
+      "bb_middle": 1210.9,
+      "bb_lower": 1163.5
     },
     {
       "Symbol": "ADANIENT",
@@ -408,7 +496,15 @@
       "plus_di": 14.2,
       "minus_di": 32.4,
       "di_diff": 18.2,
-      "span_20d": 17.8
+      "span_20d": 17.8,
+      "gfs_badge": "👀 GFS WATCH",
+      "gfs_action": "⏳ GFS WATCHLIST (Waiting for Son Dip)",
+      "gfs_score": 51,
+      "has_bull_div": false,
+      "has_bear_div": false,
+      "candle_pattern": "STANDARD GREEN 🟢",
+      "bb_middle": 2718.9,
+      "bb_lower": 2611.2
     },
     {
       "Symbol": "ABFRL",
@@ -442,7 +538,15 @@
       "plus_di": 18.4,
       "minus_di": 23.2,
       "di_diff": 4.8,
-      "span_20d": 17.2
+      "span_20d": 17.2,
+      "gfs_badge": "👀 GFS WATCH",
+      "gfs_action": "⏳ GFS WATCHLIST (Waiting for Son Dip)",
+      "gfs_score": 51,
+      "has_bull_div": false,
+      "has_bear_div": false,
+      "candle_pattern": "STANDARD GREEN 🟢",
+      "bb_middle": 45.3,
+      "bb_lower": 43.5
     },
     {
       "Symbol": "ADANIPORTS",
@@ -476,7 +580,15 @@
       "plus_di": 14.1,
       "minus_di": 23.5,
       "di_diff": 9.4,
-      "span_20d": 8.6
+      "span_20d": 8.6,
+      "gfs_badge": "👀 GFS WATCH",
+      "gfs_action": "⏳ GFS WATCHLIST (Waiting for Son Dip)",
+      "gfs_score": 65,
+      "has_bull_div": false,
+      "has_bear_div": false,
+      "candle_pattern": "STANDARD GREEN 🟢",
+      "bb_middle": 1768.3,
+      "bb_lower": 1698.3
     },
     {
       "Symbol": "AMBUJACEM",
@@ -510,7 +622,15 @@
       "plus_di": 19.0,
       "minus_di": 25.2,
       "di_diff": 6.2,
-      "span_20d": 15.3
+      "span_20d": 15.3,
+      "gfs_badge": "⚪ NEUTRAL",
+      "gfs_action": "⏳ CONSOLIDATION",
+      "gfs_score": 38,
+      "has_bull_div": false,
+      "has_bear_div": false,
+      "candle_pattern": "STANDARD GREEN 🟢",
+      "bb_middle": 367.2,
+      "bb_lower": 352.8
     },
     {
       "Symbol": "APOLLOHOSP",
@@ -544,7 +664,15 @@
       "plus_di": 12.5,
       "minus_di": 25.9,
       "di_diff": 13.3,
-      "span_20d": 18.5
+      "span_20d": 18.5,
+      "gfs_badge": "⚪ NEUTRAL",
+      "gfs_action": "⏳ CONSOLIDATION",
+      "gfs_score": 32,
+      "has_bull_div": false,
+      "has_bear_div": false,
+      "candle_pattern": "STANDARD GREEN 🟢",
+      "bb_middle": 8047.8,
+      "bb_lower": 7732.2
     },
     {
       "Symbol": "ASHOKLEY",
@@ -578,7 +706,15 @@
       "plus_di": 13.7,
       "minus_di": 28.4,
       "di_diff": 14.7,
-      "span_20d": 13.9
+      "span_20d": 13.9,
+      "gfs_badge": "👀 GFS WATCH",
+      "gfs_action": "⏳ GFS WATCHLIST (Waiting for Son Dip)",
+      "gfs_score": 51,
+      "has_bull_div": false,
+      "has_bear_div": false,
+      "candle_pattern": "STANDARD GREEN 🟢",
+      "bb_middle": 150.4,
+      "bb_lower": 144.4
     },
     {
       "Symbol": "APOLLOTYRE",
@@ -612,7 +748,15 @@
       "plus_di": 34.5,
       "minus_di": 14.2,
       "di_diff": 20.4,
-      "span_20d": 12.8
+      "span_20d": 12.8,
+      "gfs_badge": "⚪ NEUTRAL",
+      "gfs_action": "⏳ CONSOLIDATION",
+      "gfs_score": 36,
+      "has_bull_div": false,
+      "has_bear_div": false,
+      "candle_pattern": "STANDARD GREEN 🟢",
+      "bb_middle": 417.0,
+      "bb_lower": 400.7
     },
     {
       "Symbol": "ATUL",
@@ -646,7 +790,15 @@
       "plus_di": 23.0,
       "minus_di": 15.3,
       "di_diff": 7.7,
-      "span_20d": 8.1
+      "span_20d": 8.1,
+      "gfs_badge": "⚪ NEUTRAL",
+      "gfs_action": "⏳ CONSOLIDATION",
+      "gfs_score": 22,
+      "has_bull_div": false,
+      "has_bear_div": false,
+      "candle_pattern": "STANDARD GREEN 🟢",
+      "bb_middle": 6320.4,
+      "bb_lower": 6072.6
     },
     {
       "Symbol": "ASTRAL",
@@ -680,7 +832,15 @@
       "plus_di": 23.7,
       "minus_di": 20.1,
       "di_diff": 3.6,
-      "span_20d": 10.7
+      "span_20d": 10.7,
+      "gfs_badge": "⚪ NEUTRAL",
+      "gfs_action": "⏳ CONSOLIDATION",
+      "gfs_score": 32,
+      "has_bull_div": false,
+      "has_bear_div": false,
+      "candle_pattern": "STANDARD GREEN 🟢",
+      "bb_middle": 1455.9,
+      "bb_lower": 1398.9
     },
     {
       "Symbol": "ASIANPAINT",
@@ -714,7 +874,15 @@
       "plus_di": 9.9,
       "minus_di": 22.8,
       "di_diff": 12.9,
-      "span_20d": 7.0
+      "span_20d": 7.0,
+      "gfs_badge": "⚪ NEUTRAL",
+      "gfs_action": "⏳ CONSOLIDATION",
+      "gfs_score": 12,
+      "has_bull_div": false,
+      "has_bear_div": false,
+      "candle_pattern": "STANDARD GREEN 🟢",
+      "bb_middle": 2378.5,
+      "bb_lower": 2285.3
     },
     {
       "Symbol": "AUBANK",
@@ -748,7 +916,15 @@
       "plus_di": 16.4,
       "minus_di": 25.1,
       "di_diff": 8.6,
-      "span_20d": 9.1
+      "span_20d": 9.1,
+      "gfs_badge": "⚪ NEUTRAL",
+      "gfs_action": "⏳ CONSOLIDATION",
+      "gfs_score": 32,
+      "has_bull_div": false,
+      "has_bear_div": false,
+      "candle_pattern": "STANDARD GREEN 🟢",
+      "bb_middle": 1009.2,
+      "bb_lower": 969.6
     },
     {
       "Symbol": "AUROPHARMA",
@@ -782,7 +958,15 @@
       "plus_di": 14.2,
       "minus_di": 19.2,
       "di_diff": 5.0,
-      "span_20d": 6.4
+      "span_20d": 6.4,
+      "gfs_badge": "⚪ NEUTRAL",
+      "gfs_action": "⏳ CONSOLIDATION",
+      "gfs_score": 27,
+      "has_bull_div": false,
+      "has_bear_div": true,
+      "candle_pattern": "STANDARD RED 🔴",
+      "bb_middle": 1700.2,
+      "bb_lower": 1633.6
     },
     {
       "Symbol": "AXISBANK",
@@ -816,7 +1000,15 @@
       "plus_di": 18.9,
       "minus_di": 11.2,
       "di_diff": 7.8,
-      "span_20d": 9.2
+      "span_20d": 9.2,
+      "gfs_badge": "👀 GFS WATCH",
+      "gfs_action": "⏳ GFS WATCHLIST (Waiting for Son Dip)",
+      "gfs_score": 52,
+      "has_bull_div": false,
+      "has_bear_div": false,
+      "candle_pattern": "STANDARD GREEN 🟢",
+      "bb_middle": 1302.9,
+      "bb_lower": 1251.3
     },
     {
       "Symbol": "BAJAJ-AUTO",
@@ -850,7 +1042,15 @@
       "plus_di": 16.1,
       "minus_di": 27.8,
       "di_diff": 11.7,
-      "span_20d": 18.3
+      "span_20d": 18.3,
+      "gfs_badge": "⚪ NEUTRAL",
+      "gfs_action": "⏳ CONSOLIDATION",
+      "gfs_score": 37,
+      "has_bull_div": false,
+      "has_bear_div": false,
+      "candle_pattern": "STANDARD GREEN 🟢",
+      "bb_middle": 10613.1,
+      "bb_lower": 10196.9
     },
     {
       "Symbol": "BANDHANBNK",
@@ -884,7 +1084,15 @@
       "plus_di": 21.2,
       "minus_di": 22.5,
       "di_diff": 1.4,
-      "span_20d": 23.4
+      "span_20d": 23.4,
+      "gfs_badge": "⚪ NEUTRAL",
+      "gfs_action": "⏳ CONSOLIDATION",
+      "gfs_score": 46,
+      "has_bull_div": false,
+      "has_bear_div": false,
+      "candle_pattern": "STANDARD GREEN 🟢",
+      "bb_middle": 170.8,
+      "bb_lower": 164.2
     },
     {
       "Symbol": "BALKRISIND",
@@ -918,7 +1126,15 @@
       "plus_di": 15.7,
       "minus_di": 23.8,
       "di_diff": 8.1,
-      "span_20d": 16.1
+      "span_20d": 16.1,
+      "gfs_badge": "⚪ NEUTRAL",
+      "gfs_action": "⏳ CONSOLIDATION",
+      "gfs_score": 12,
+      "has_bull_div": false,
+      "has_bear_div": false,
+      "candle_pattern": "STANDARD GREEN 🟢",
+      "bb_middle": 2093.9,
+      "bb_lower": 2011.7
     },
     {
       "Symbol": "BAJFINANCE",
@@ -952,7 +1168,15 @@
       "plus_di": 19.3,
       "minus_di": 20.7,
       "di_diff": 1.4,
-      "span_20d": 10.8
+      "span_20d": 10.8,
+      "gfs_badge": "⚪ NEUTRAL",
+      "gfs_action": "⏳ CONSOLIDATION",
+      "gfs_score": 38,
+      "has_bull_div": false,
+      "has_bear_div": false,
+      "candle_pattern": "STANDARD GREEN 🟢",
+      "bb_middle": 1001.7,
+      "bb_lower": 962.5
     },
     {
       "Symbol": "BAJAJFINSV",
@@ -986,7 +1210,15 @@
       "plus_di": 7.5,
       "minus_di": 22.2,
       "di_diff": 14.7,
-      "span_20d": 10.0
+      "span_20d": 10.0,
+      "gfs_badge": "⚪ NEUTRAL",
+      "gfs_action": "⏳ CONSOLIDATION",
+      "gfs_score": 12,
+      "has_bull_div": false,
+      "has_bear_div": false,
+      "candle_pattern": "STANDARD GREEN 🟢",
+      "bb_middle": 1763.6,
+      "bb_lower": 1694.4
     },
     {
       "Symbol": "BEL",
@@ -1020,7 +1252,15 @@
       "plus_di": 18.1,
       "minus_di": 31.1,
       "di_diff": 13.0,
-      "span_20d": 10.7
+      "span_20d": 10.7,
+      "gfs_badge": "⚪ NEUTRAL",
+      "gfs_action": "⏳ CONSOLIDATION",
+      "gfs_score": 41,
+      "has_bull_div": false,
+      "has_bear_div": false,
+      "candle_pattern": "STANDARD GREEN 🟢",
+      "bb_middle": 384.4,
+      "bb_lower": 369.3
     },
     {
       "Symbol": "BATAINDIA",
@@ -1054,7 +1294,15 @@
       "plus_di": 20.6,
       "minus_di": 17.3,
       "di_diff": 3.3,
-      "span_20d": 8.8
+      "span_20d": 8.8,
+      "gfs_badge": "👀 GFS WATCH",
+      "gfs_action": "⏳ GFS WATCHLIST (Waiting for Son Dip)",
+      "gfs_score": 63,
+      "has_bull_div": false,
+      "has_bear_div": false,
+      "candle_pattern": "STANDARD GREEN 🟢",
+      "bb_middle": 645.0,
+      "bb_lower": 619.5
     },
     {
       "Symbol": "BANKBARODA",
@@ -1088,7 +1336,15 @@
       "plus_di": 13.6,
       "minus_di": 24.4,
       "di_diff": 10.8,
-      "span_20d": 6.8
+      "span_20d": 6.8,
+      "gfs_badge": "⚪ NEUTRAL",
+      "gfs_action": "⏳ CONSOLIDATION",
+      "gfs_score": 10,
+      "has_bull_div": false,
+      "has_bear_div": false,
+      "candle_pattern": "STANDARD GREEN 🟢",
+      "bb_middle": 235.0,
+      "bb_lower": 225.8
     },
     {
       "Symbol": "BHARATFORG",
@@ -1122,7 +1378,15 @@
       "plus_di": 13.1,
       "minus_di": 26.3,
       "di_diff": 13.2,
-      "span_20d": 13.6
+      "span_20d": 13.6,
+      "gfs_badge": "👀 GFS WATCH",
+      "gfs_action": "⏳ GFS WATCHLIST (Waiting for Son Dip)",
+      "gfs_score": 51,
+      "has_bull_div": false,
+      "has_bear_div": false,
+      "candle_pattern": "STANDARD GREEN 🟢",
+      "bb_middle": 1853.3,
+      "bb_lower": 1780.0
     },
     {
       "Symbol": "BERGEPAINT",
@@ -1156,7 +1420,15 @@
       "plus_di": 17.2,
       "minus_di": 17.6,
       "di_diff": 0.4,
-      "span_20d": 8.7
+      "span_20d": 8.7,
+      "gfs_badge": "⚪ NEUTRAL",
+      "gfs_action": "⏳ CONSOLIDATION",
+      "gfs_score": 26,
+      "has_bull_div": false,
+      "has_bear_div": false,
+      "candle_pattern": "STANDARD GREEN 🟢",
+      "bb_middle": 483.4,
+      "bb_lower": 464.5
     },
     {
       "Symbol": "BHARTIARTL",
@@ -1190,7 +1462,15 @@
       "plus_di": 31.1,
       "minus_di": 20.4,
       "di_diff": 10.7,
-      "span_20d": 9.6
+      "span_20d": 9.6,
+      "gfs_badge": "👀 GFS WATCH",
+      "gfs_action": "⏳ GFS WATCHLIST (Waiting for Son Dip)",
+      "gfs_score": 58,
+      "has_bull_div": false,
+      "has_bear_div": false,
+      "candle_pattern": "STANDARD GREEN 🟢",
+      "bb_middle": 1924.0,
+      "bb_lower": 1847.8
     },
     {
       "Symbol": "BHEL",
@@ -1224,7 +1504,15 @@
       "plus_di": 25.7,
       "minus_di": 22.2,
       "di_diff": 3.5,
-      "span_20d": 14.1
+      "span_20d": 14.1,
+      "gfs_badge": "⚪ NEUTRAL",
+      "gfs_action": "⏳ CONSOLIDATION",
+      "gfs_score": 45,
+      "has_bull_div": false,
+      "has_bear_div": true,
+      "candle_pattern": "STANDARD RED 🔴",
+      "bb_middle": 443.3,
+      "bb_lower": 425.9
     },
     {
       "Symbol": "BIOCON",
@@ -1258,7 +1546,15 @@
       "plus_di": 10.7,
       "minus_di": 32.6,
       "di_diff": 21.9,
-      "span_20d": 15.8
+      "span_20d": 15.8,
+      "gfs_badge": "⚪ NEUTRAL",
+      "gfs_action": "⏳ CONSOLIDATION",
+      "gfs_score": 10,
+      "has_bull_div": false,
+      "has_bear_div": true,
+      "candle_pattern": "STANDARD RED 🔴",
+      "bb_middle": 356.2,
+      "bb_lower": 342.2
     },
     {
       "Symbol": "BPCL",
@@ -1292,7 +1588,15 @@
       "plus_di": 17.9,
       "minus_di": 24.5,
       "di_diff": 6.6,
-      "span_20d": 12.0
+      "span_20d": 12.0,
+      "gfs_badge": "⚪ NEUTRAL",
+      "gfs_action": "⏳ CONSOLIDATION",
+      "gfs_score": 37,
+      "has_bull_div": false,
+      "has_bear_div": false,
+      "candle_pattern": "STANDARD GREEN 🟢",
+      "bb_middle": 299.4,
+      "bb_lower": 287.6
     },
     {
       "Symbol": "BOSCHLTD",
@@ -1326,7 +1630,15 @@
       "plus_di": 19.7,
       "minus_di": 25.5,
       "di_diff": 5.8,
-      "span_20d": 13.1
+      "span_20d": 13.1,
+      "gfs_badge": "👀 GFS WATCH",
+      "gfs_action": "⏳ GFS WATCHLIST (Waiting for Son Dip)",
+      "gfs_score": 55,
+      "has_bull_div": false,
+      "has_bear_div": false,
+      "candle_pattern": "STANDARD GREEN 🟢",
+      "bb_middle": 46015.6,
+      "bb_lower": 44193.2
     },
     {
       "Symbol": "CANBK",
@@ -1360,7 +1672,15 @@
       "plus_di": 20.5,
       "minus_di": 21.0,
       "di_diff": 0.5,
-      "span_20d": 8.6
+      "span_20d": 8.6,
+      "gfs_badge": "⚪ NEUTRAL",
+      "gfs_action": "⏳ CONSOLIDATION",
+      "gfs_score": 37,
+      "has_bull_div": false,
+      "has_bear_div": false,
+      "candle_pattern": "STANDARD GREEN 🟢",
+      "bb_middle": 120.7,
+      "bb_lower": 115.9
     },
     {
       "Symbol": "BRITANNIA",
@@ -1394,7 +1714,15 @@
       "plus_di": 14.3,
       "minus_di": 15.7,
       "di_diff": 1.4,
-      "span_20d": 6.2
+      "span_20d": 6.2,
+      "gfs_badge": "⚪ NEUTRAL",
+      "gfs_action": "⏳ CONSOLIDATION",
+      "gfs_score": 27,
+      "has_bull_div": false,
+      "has_bear_div": false,
+      "candle_pattern": "STANDARD GREEN 🟢",
+      "bb_middle": 4859.3,
+      "bb_lower": 4668.7
     },
     {
       "Symbol": "BSOFT",
@@ -1428,7 +1756,15 @@
       "plus_di": 26.4,
       "minus_di": 12.0,
       "di_diff": 14.4,
-      "span_20d": 16.9
+      "span_20d": 16.9,
+      "gfs_badge": "👀 GFS WATCH",
+      "gfs_action": "⏳ GFS WATCHLIST (Waiting for Son Dip)",
+      "gfs_score": 67,
+      "has_bull_div": false,
+      "has_bear_div": false,
+      "candle_pattern": "STANDARD GREEN 🟢",
+      "bb_middle": 321.4,
+      "bb_lower": 308.7
     },
     {
       "Symbol": "CHOLAFIN",
@@ -1462,7 +1798,15 @@
       "plus_di": 10.4,
       "minus_di": 26.2,
       "di_diff": 15.8,
-      "span_20d": 16.7
+      "span_20d": 16.7,
+      "gfs_badge": "⚪ NEUTRAL",
+      "gfs_action": "⏳ CONSOLIDATION",
+      "gfs_score": 22,
+      "has_bull_div": false,
+      "has_bear_div": false,
+      "candle_pattern": "STANDARD GREEN 🟢",
+      "bb_middle": 1605.9,
+      "bb_lower": 1542.9
     },
     {
       "Symbol": "CANFINHOME",
@@ -1496,7 +1840,15 @@
       "plus_di": 13.8,
       "minus_di": 21.1,
       "di_diff": 7.3,
-      "span_20d": 12.0
+      "span_20d": 12.0,
+      "gfs_badge": "⚪ NEUTRAL",
+      "gfs_action": "⏳ CONSOLIDATION",
+      "gfs_score": 12,
+      "has_bull_div": false,
+      "has_bear_div": false,
+      "candle_pattern": "STANDARD GREEN 🟢",
+      "bb_middle": 746.8,
+      "bb_lower": 717.5
     },
     {
       "Symbol": "CHAMBLFERT",
@@ -1530,7 +1882,15 @@
       "plus_di": 17.2,
       "minus_di": 26.5,
       "di_diff": 9.4,
-      "span_20d": 13.5
+      "span_20d": 13.5,
+      "gfs_badge": "⚪ NEUTRAL",
+      "gfs_action": "⏳ CONSOLIDATION",
+      "gfs_score": 36,
+      "has_bull_div": false,
+      "has_bear_div": false,
+      "candle_pattern": "STANDARD GREEN 🟢",
+      "bb_middle": 395.9,
+      "bb_lower": 380.3
     },
     {
       "Symbol": "CIPLA",
@@ -1564,7 +1924,15 @@
       "plus_di": 14.2,
       "minus_di": 19.5,
       "di_diff": 5.3,
-      "span_20d": 9.7
+      "span_20d": 9.7,
+      "gfs_badge": "⚪ NEUTRAL",
+      "gfs_action": "⏳ CONSOLIDATION",
+      "gfs_score": 41,
+      "has_bull_div": false,
+      "has_bear_div": false,
+      "candle_pattern": "STANDARD GREEN 🟢",
+      "bb_middle": 1351.6,
+      "bb_lower": 1298.6
     },
     {
       "Symbol": "COALINDIA",
@@ -1598,7 +1966,15 @@
       "plus_di": 23.0,
       "minus_di": 21.9,
       "di_diff": 1.1,
-      "span_20d": 7.4
+      "span_20d": 7.4,
+      "gfs_badge": "⚡ GFS DIP BUY",
+      "gfs_action": "⚡ ACTIVE GFS DIP INTERSECTION",
+      "gfs_score": 66,
+      "has_bull_div": false,
+      "has_bear_div": false,
+      "candle_pattern": "STANDARD GREEN 🟢",
+      "bb_middle": 413.0,
+      "bb_lower": 400.5
     },
     {
       "Symbol": "COFORGE",
@@ -1632,7 +2008,15 @@
       "plus_di": 19.2,
       "minus_di": 15.0,
       "di_diff": 4.2,
-      "span_20d": 12.7
+      "span_20d": 12.7,
+      "gfs_badge": "👀 GFS WATCH",
+      "gfs_action": "⏳ GFS WATCHLIST (Waiting for Son Dip)",
+      "gfs_score": 67,
+      "has_bull_div": false,
+      "has_bear_div": false,
+      "candle_pattern": "STANDARD GREEN 🟢",
+      "bb_middle": 1971.4,
+      "bb_lower": 1893.3
     },
     {
       "Symbol": "COLPAL",
@@ -1666,7 +2050,15 @@
       "plus_di": 18.5,
       "minus_di": 19.2,
       "di_diff": 0.7,
-      "span_20d": 11.4
+      "span_20d": 11.4,
+      "gfs_badge": "⚪ NEUTRAL",
+      "gfs_action": "⏳ CONSOLIDATION",
+      "gfs_score": 37,
+      "has_bull_div": false,
+      "has_bear_div": false,
+      "candle_pattern": "STANDARD GREEN 🟢",
+      "bb_middle": 1806.3,
+      "bb_lower": 1735.5
     },
     {
       "Symbol": "CROMPTON",
@@ -1700,7 +2092,15 @@
       "plus_di": 14.8,
       "minus_di": 31.6,
       "di_diff": 16.8,
-      "span_20d": 12.1
+      "span_20d": 12.1,
+      "gfs_badge": "⚪ NEUTRAL",
+      "gfs_action": "⏳ CONSOLIDATION",
+      "gfs_score": 27,
+      "has_bull_div": false,
+      "has_bear_div": false,
+      "candle_pattern": "STANDARD GREEN 🟢",
+      "bb_middle": 219.8,
+      "bb_lower": 211.2
     },
     {
       "Symbol": "CONCOR",
@@ -1734,7 +2134,15 @@
       "plus_di": 11.7,
       "minus_di": 22.6,
       "di_diff": 10.9,
-      "span_20d": 15.7
+      "span_20d": 15.7,
+      "gfs_badge": "👀 GFS WATCH",
+      "gfs_action": "⏳ GFS WATCHLIST (Waiting for Son Dip)",
+      "gfs_score": 51,
+      "has_bull_div": false,
+      "has_bear_div": false,
+      "candle_pattern": "STANDARD GREEN 🟢",
+      "bb_middle": 452.4,
+      "bb_lower": 434.5
     },
     {
       "Symbol": "COROMANDEL",
@@ -1768,7 +2176,15 @@
       "plus_di": 16.6,
       "minus_di": 27.6,
       "di_diff": 11.0,
-      "span_20d": 21.0
+      "span_20d": 21.0,
+      "gfs_badge": "⚪ NEUTRAL",
+      "gfs_action": "⏳ CONSOLIDATION",
+      "gfs_score": 26,
+      "has_bull_div": false,
+      "has_bear_div": false,
+      "candle_pattern": "STANDARD GREEN 🟢",
+      "bb_middle": 1793.8,
+      "bb_lower": 1723.4
     },
     {
       "Symbol": "CUB",
@@ -1802,7 +2218,15 @@
       "plus_di": 18.8,
       "minus_di": 21.2,
       "di_diff": 2.4,
-      "span_20d": 12.4
+      "span_20d": 12.4,
+      "gfs_badge": "⚪ NEUTRAL",
+      "gfs_action": "⏳ CONSOLIDATION",
+      "gfs_score": 49,
+      "has_bull_div": false,
+      "has_bear_div": false,
+      "candle_pattern": "STANDARD GREEN 🟢",
+      "bb_middle": 231.9,
+      "bb_lower": 222.8
     },
     {
       "Symbol": "DALBHARAT",
@@ -1836,7 +2260,15 @@
       "plus_di": 21.9,
       "minus_di": 19.4,
       "di_diff": 2.5,
-      "span_20d": 13.9
+      "span_20d": 13.9,
+      "gfs_badge": "⚪ NEUTRAL",
+      "gfs_action": "⏳ CONSOLIDATION",
+      "gfs_score": 38,
+      "has_bull_div": false,
+      "has_bear_div": false,
+      "candle_pattern": "STANDARD GREEN 🟢",
+      "bb_middle": 1718.1,
+      "bb_lower": 1650.7
     },
     {
       "Symbol": "DABUR",
@@ -1870,7 +2302,15 @@
       "plus_di": 24.3,
       "minus_di": 16.4,
       "di_diff": 7.9,
-      "span_20d": 5.9
+      "span_20d": 5.9,
+      "gfs_badge": "⚪ NEUTRAL",
+      "gfs_action": "⏳ CONSOLIDATION",
+      "gfs_score": 38,
+      "has_bull_div": false,
+      "has_bear_div": false,
+      "candle_pattern": "STANDARD GREEN 🟢",
+      "bb_middle": 392.7,
+      "bb_lower": 377.3
     },
     {
       "Symbol": "DEEPAKNTR",
@@ -1904,7 +2344,15 @@
       "plus_di": 23.3,
       "minus_di": 20.5,
       "di_diff": 2.8,
-      "span_20d": 12.2
+      "span_20d": 12.2,
+      "gfs_badge": "⚪ NEUTRAL",
+      "gfs_action": "⏳ CONSOLIDATION",
+      "gfs_score": 47,
+      "has_bull_div": false,
+      "has_bear_div": false,
+      "candle_pattern": "STANDARD GREEN 🟢",
+      "bb_middle": 1630.5,
+      "bb_lower": 1566.5
     },
     {
       "Symbol": "CUMMINSIND",
@@ -1938,7 +2386,15 @@
       "plus_di": 12.0,
       "minus_di": 35.5,
       "di_diff": 23.4,
-      "span_20d": 11.8
+      "span_20d": 11.8,
+      "gfs_badge": "⚪ NEUTRAL",
+      "gfs_action": "⏳ CONSOLIDATION",
+      "gfs_score": 35,
+      "has_bull_div": false,
+      "has_bear_div": false,
+      "candle_pattern": "STANDARD GREEN 🟢",
+      "bb_middle": 4700.2,
+      "bb_lower": 4515.8
     },
     {
       "Symbol": "DIVISLAB",
@@ -1972,7 +2428,15 @@
       "plus_di": 21.5,
       "minus_di": 25.5,
       "di_diff": 4.0,
-      "span_20d": 8.8
+      "span_20d": 8.8,
+      "gfs_badge": "⚪ NEUTRAL",
+      "gfs_action": "⏳ CONSOLIDATION",
+      "gfs_score": 47,
+      "has_bull_div": false,
+      "has_bear_div": false,
+      "candle_pattern": "STANDARD GREEN 🟢",
+      "bb_middle": 9327.4,
+      "bb_lower": 8961.6
     },
     {
       "Symbol": "DIXON",
@@ -2006,7 +2470,15 @@
       "plus_di": 12.0,
       "minus_di": 27.1,
       "di_diff": 15.1,
-      "span_20d": 12.1
+      "span_20d": 12.1,
+      "gfs_badge": "⚪ NEUTRAL",
+      "gfs_action": "⏳ CONSOLIDATION",
+      "gfs_score": 10,
+      "has_bull_div": false,
+      "has_bear_div": false,
+      "candle_pattern": "STANDARD GREEN 🟢",
+      "bb_middle": 12586.8,
+      "bb_lower": 12093.2
     },
     {
       "Symbol": "EICHERMOT",
@@ -2040,7 +2512,15 @@
       "plus_di": 16.7,
       "minus_di": 24.9,
       "di_diff": 8.2,
-      "span_20d": 11.0
+      "span_20d": 11.0,
+      "gfs_badge": "⚪ NEUTRAL",
+      "gfs_action": "⏳ CONSOLIDATION",
+      "gfs_score": 38,
+      "has_bull_div": false,
+      "has_bear_div": false,
+      "candle_pattern": "STANDARD GREEN 🟢",
+      "bb_middle": 7430.2,
+      "bb_lower": 7138.8
     },
     {
       "Symbol": "DRREDDY",
@@ -2074,7 +2554,15 @@
       "plus_di": 25.0,
       "minus_di": 17.9,
       "di_diff": 7.1,
-      "span_20d": 6.9
+      "span_20d": 6.9,
+      "gfs_badge": "⚪ NEUTRAL",
+      "gfs_action": "⏳ CONSOLIDATION",
+      "gfs_score": 40,
+      "has_bull_div": false,
+      "has_bear_div": true,
+      "candle_pattern": "STANDARD RED 🔴",
+      "bb_middle": 1257.7,
+      "bb_lower": 1208.3
     },
     {
       "Symbol": "DLF",
@@ -2108,7 +2596,15 @@
       "plus_di": 21.9,
       "minus_di": 19.3,
       "di_diff": 2.6,
-      "span_20d": 7.3
+      "span_20d": 7.3,
+      "gfs_badge": "⚪ NEUTRAL",
+      "gfs_action": "⏳ CONSOLIDATION",
+      "gfs_score": 42,
+      "has_bull_div": false,
+      "has_bear_div": false,
+      "candle_pattern": "STANDARD GREEN 🟢",
+      "bb_middle": 688.5,
+      "bb_lower": 661.5
     },
     {
       "Symbol": "ESCORTS",
@@ -2142,7 +2638,15 @@
       "plus_di": 19.8,
       "minus_di": 28.0,
       "di_diff": 8.2,
-      "span_20d": 12.3
+      "span_20d": 12.3,
+      "gfs_badge": "⚪ NEUTRAL",
+      "gfs_action": "⏳ CONSOLIDATION",
+      "gfs_score": 43,
+      "has_bull_div": false,
+      "has_bear_div": false,
+      "candle_pattern": "STANDARD GREEN 🟢",
+      "bb_middle": 2806.0,
+      "bb_lower": 2696.0
     },
     {
       "Symbol": "FEDERALBNK",
@@ -2176,7 +2680,15 @@
       "plus_di": 21.4,
       "minus_di": 13.8,
       "di_diff": 7.6,
-      "span_20d": 9.2
+      "span_20d": 9.2,
+      "gfs_badge": "👀 GFS WATCH",
+      "gfs_action": "⏳ GFS WATCHLIST (Waiting for Son Dip)",
+      "gfs_score": 60,
+      "has_bull_div": false,
+      "has_bear_div": false,
+      "candle_pattern": "STANDARD GREEN 🟢",
+      "bb_middle": 341.4,
+      "bb_lower": 327.9
     },
     {
       "Symbol": "EXIDEIND",
@@ -2210,7 +2722,15 @@
       "plus_di": 9.7,
       "minus_di": 32.4,
       "di_diff": 22.7,
-      "span_20d": 20.5
+      "span_20d": 20.5,
+      "gfs_badge": "⚪ NEUTRAL",
+      "gfs_action": "⏳ CONSOLIDATION",
+      "gfs_score": 25,
+      "has_bull_div": false,
+      "has_bear_div": false,
+      "candle_pattern": "STANDARD GREEN 🟢",
+      "bb_middle": 378.4,
+      "bb_lower": 363.5
     },
     {
       "Symbol": "GLENMARK",
@@ -2244,7 +2764,15 @@
       "plus_di": 9.0,
       "minus_di": 23.7,
       "di_diff": 14.7,
-      "span_20d": 13.5
+      "span_20d": 13.5,
+      "gfs_badge": "⚪ NEUTRAL",
+      "gfs_action": "⏳ CONSOLIDATION",
+      "gfs_score": 10,
+      "has_bull_div": false,
+      "has_bear_div": true,
+      "candle_pattern": "STANDARD RED 🔴",
+      "bb_middle": 2271.2,
+      "bb_lower": 2182.2
     },
     {
       "Symbol": "GAIL",
@@ -2278,7 +2806,15 @@
       "plus_di": 11.8,
       "minus_di": 16.1,
       "di_diff": 4.3,
-      "span_20d": 5.3
+      "span_20d": 5.3,
+      "gfs_badge": "⚪ NEUTRAL",
+      "gfs_action": "⏳ CONSOLIDATION",
+      "gfs_score": 22,
+      "has_bull_div": false,
+      "has_bear_div": false,
+      "candle_pattern": "STANDARD GREEN 🟢",
+      "bb_middle": 171.5,
+      "bb_lower": 164.7
     },
     {
       "Symbol": "GRANULES",
@@ -2312,7 +2848,15 @@
       "plus_di": 15.3,
       "minus_di": 19.7,
       "di_diff": 4.4,
-      "span_20d": 13.1
+      "span_20d": 13.1,
+      "gfs_badge": "⚡ GFS DIP BUY",
+      "gfs_action": "⚡ ACTIVE GFS DIP INTERSECTION",
+      "gfs_score": 65,
+      "has_bull_div": false,
+      "has_bear_div": false,
+      "candle_pattern": "STANDARD GREEN 🟢",
+      "bb_middle": 817.1,
+      "bb_lower": 792.3
     },
     {
       "Symbol": "GNFC",
@@ -2346,7 +2890,15 @@
       "plus_di": 18.8,
       "minus_di": 27.4,
       "di_diff": 8.5,
-      "span_20d": 13.1
+      "span_20d": 13.1,
+      "gfs_badge": "⚪ NEUTRAL",
+      "gfs_action": "⏳ CONSOLIDATION",
+      "gfs_score": 32,
+      "has_bull_div": false,
+      "has_bear_div": false,
+      "candle_pattern": "STANDARD GREEN 🟢",
+      "bb_middle": 575.5,
+      "bb_lower": 552.9
     },
     {
       "Symbol": "GODREJPROP",
@@ -2380,7 +2932,15 @@
       "plus_di": 16.0,
       "minus_di": 25.2,
       "di_diff": 9.2,
-      "span_20d": 12.6
+      "span_20d": 12.6,
+      "gfs_badge": "⚪ NEUTRAL",
+      "gfs_action": "⏳ CONSOLIDATION",
+      "gfs_score": 27,
+      "has_bull_div": false,
+      "has_bear_div": false,
+      "candle_pattern": "STANDARD GREEN 🟢",
+      "bb_middle": 1635.4,
+      "bb_lower": 1571.2
     },
     {
       "Symbol": "GODREJCP",
@@ -2414,7 +2974,15 @@
       "plus_di": 12.7,
       "minus_di": 25.2,
       "di_diff": 12.5,
-      "span_20d": 6.8
+      "span_20d": 6.8,
+      "gfs_badge": "⚪ NEUTRAL",
+      "gfs_action": "⏳ CONSOLIDATION",
+      "gfs_score": 12,
+      "has_bull_div": false,
+      "has_bear_div": false,
+      "candle_pattern": "STANDARD GREEN 🟢",
+      "bb_middle": 872.1,
+      "bb_lower": 837.9
     },
     {
       "Symbol": "GRASIM",
@@ -2448,7 +3016,15 @@
       "plus_di": 7.2,
       "minus_di": 28.3,
       "di_diff": 21.1,
-      "span_20d": 12.8
+      "span_20d": 12.8,
+      "gfs_badge": "⚪ NEUTRAL",
+      "gfs_action": "⏳ CONSOLIDATION",
+      "gfs_score": 48,
+      "has_bull_div": false,
+      "has_bear_div": false,
+      "candle_pattern": "STANDARD GREEN 🟢",
+      "bb_middle": 2978.4,
+      "bb_lower": 2861.6
     },
     {
       "Symbol": "HAL",
@@ -2482,7 +3058,15 @@
       "plus_di": 28.3,
       "minus_di": 22.7,
       "di_diff": 5.6,
-      "span_20d": 8.8
+      "span_20d": 8.8,
+      "gfs_badge": "👀 GFS WATCH",
+      "gfs_action": "⏳ GFS WATCHLIST (Waiting for Son Dip)",
+      "gfs_score": 73,
+      "has_bull_div": false,
+      "has_bear_div": false,
+      "candle_pattern": "STANDARD GREEN 🟢",
+      "bb_middle": 5038.9,
+      "bb_lower": 4839.3
     },
     {
       "Symbol": "HAVELLS",
@@ -2516,7 +3100,15 @@
       "plus_di": 30.4,
       "minus_di": 20.9,
       "di_diff": 9.4,
-      "span_20d": 11.0
+      "span_20d": 11.0,
+      "gfs_badge": "⚪ NEUTRAL",
+      "gfs_action": "⏳ CONSOLIDATION",
+      "gfs_score": 27,
+      "has_bull_div": false,
+      "has_bear_div": false,
+      "candle_pattern": "STANDARD GREEN 🟢",
+      "bb_middle": 1143.4,
+      "bb_lower": 1098.6
     },
     {
       "Symbol": "HCLTECH",
@@ -2550,7 +3142,15 @@
       "plus_di": 35.2,
       "minus_di": 13.3,
       "di_diff": 21.8,
-      "span_20d": 16.1
+      "span_20d": 16.1,
+      "gfs_badge": "👀 GFS WATCH",
+      "gfs_action": "⏳ GFS WATCHLIST (Waiting for Son Dip)",
+      "gfs_score": 60,
+      "has_bull_div": false,
+      "has_bear_div": false,
+      "candle_pattern": "STANDARD GREEN 🟢",
+      "bb_middle": 1393.8,
+      "bb_lower": 1338.6
     },
     {
       "Symbol": "HDFCLIFE",
@@ -2584,7 +3184,15 @@
       "plus_di": 19.2,
       "minus_di": 22.3,
       "di_diff": 3.2,
-      "span_20d": 9.8
+      "span_20d": 9.8,
+      "gfs_badge": "👀 GFS WATCH",
+      "gfs_action": "⏳ GFS WATCHLIST (Waiting for Son Dip)",
+      "gfs_score": 52,
+      "has_bull_div": false,
+      "has_bear_div": false,
+      "candle_pattern": "STANDARD GREEN 🟢",
+      "bb_middle": 558.5,
+      "bb_lower": 536.4
     },
     {
       "Symbol": "HDFCAMC",
@@ -2618,7 +3226,15 @@
       "plus_di": 23.9,
       "minus_di": 20.7,
       "di_diff": 3.2,
-      "span_20d": 9.8
+      "span_20d": 9.8,
+      "gfs_badge": "⚪ NEUTRAL",
+      "gfs_action": "⏳ CONSOLIDATION",
+      "gfs_score": 27,
+      "has_bull_div": false,
+      "has_bear_div": false,
+      "candle_pattern": "STANDARD GREEN 🟢",
+      "bb_middle": 2446.6,
+      "bb_lower": 2350.6
     },
     {
       "Symbol": "HINDALCO",
@@ -2652,7 +3268,15 @@
       "plus_di": 14.1,
       "minus_di": 31.3,
       "di_diff": 17.2,
-      "span_20d": 16.2
+      "span_20d": 16.2,
+      "gfs_badge": "⚪ NEUTRAL",
+      "gfs_action": "⏳ CONSOLIDATION",
+      "gfs_score": 38,
+      "has_bull_div": false,
+      "has_bear_div": false,
+      "candle_pattern": "STANDARD GREEN 🟢",
+      "bb_middle": 926.2,
+      "bb_lower": 889.8
     },
     {
       "Symbol": "HDFCBANK",
@@ -2686,7 +3310,15 @@
       "plus_di": 26.6,
       "minus_di": 14.6,
       "di_diff": 12.1,
-      "span_20d": 8.1
+      "span_20d": 8.1,
+      "gfs_badge": "⚪ NEUTRAL",
+      "gfs_action": "⏳ CONSOLIDATION",
+      "gfs_score": 32,
+      "has_bull_div": false,
+      "has_bear_div": false,
+      "candle_pattern": "STANDARD GREEN 🟢",
+      "bb_middle": 743.4,
+      "bb_lower": 714.3
     },
     {
       "Symbol": "HEROMOTOCO",
@@ -2720,7 +3352,15 @@
       "plus_di": 19.6,
       "minus_di": 23.2,
       "di_diff": 3.6,
-      "span_20d": 11.9
+      "span_20d": 11.9,
+      "gfs_badge": "⚪ NEUTRAL",
+      "gfs_action": "⏳ CONSOLIDATION",
+      "gfs_score": 22,
+      "has_bull_div": false,
+      "has_bear_div": false,
+      "candle_pattern": "STANDARD GREEN 🟢",
+      "bb_middle": 5329.5,
+      "bb_lower": 5120.5
     },
     {
       "Symbol": "HINDCOPPER",
@@ -2754,7 +3394,15 @@
       "plus_di": 17.0,
       "minus_di": 35.8,
       "di_diff": 18.8,
-      "span_20d": 15.6
+      "span_20d": 15.6,
+      "gfs_badge": "⚪ NEUTRAL",
+      "gfs_action": "⏳ CONSOLIDATION",
+      "gfs_score": 35,
+      "has_bull_div": false,
+      "has_bear_div": false,
+      "candle_pattern": "STANDARD GREEN 🟢",
+      "bb_middle": 467.6,
+      "bb_lower": 449.3
     },
     {
       "Symbol": "HINDPETRO",
@@ -2788,7 +3436,15 @@
       "plus_di": 21.2,
       "minus_di": 27.4,
       "di_diff": 6.2,
-      "span_20d": 12.1
+      "span_20d": 12.1,
+      "gfs_badge": "⚪ NEUTRAL",
+      "gfs_action": "⏳ CONSOLIDATION",
+      "gfs_score": 22,
+      "has_bull_div": false,
+      "has_bear_div": false,
+      "candle_pattern": "STANDARD GREEN 🟢",
+      "bb_middle": 352.9,
+      "bb_lower": 339.1
     },
     {
       "Symbol": "ICICIGI",
@@ -2822,7 +3478,15 @@
       "plus_di": 32.8,
       "minus_di": 10.8,
       "di_diff": 21.9,
-      "span_20d": 19.5
+      "span_20d": 19.5,
+      "gfs_badge": "⚪ NEUTRAL",
+      "gfs_action": "⏳ CONSOLIDATION",
+      "gfs_score": 47,
+      "has_bull_div": false,
+      "has_bear_div": false,
+      "candle_pattern": "STANDARD GREEN 🟢",
+      "bb_middle": 1713.7,
+      "bb_lower": 1646.5
     },
     {
       "Symbol": "HINDUNILVR",
@@ -2856,7 +3520,15 @@
       "plus_di": 18.5,
       "minus_di": 24.1,
       "di_diff": 5.7,
-      "span_20d": 8.0
+      "span_20d": 8.0,
+      "gfs_badge": "⚪ NEUTRAL",
+      "gfs_action": "⏳ CONSOLIDATION",
+      "gfs_score": 36,
+      "has_bull_div": false,
+      "has_bear_div": false,
+      "candle_pattern": "STANDARD GREEN 🟢",
+      "bb_middle": 1931.7,
+      "bb_lower": 1855.9
     },
     {
       "Symbol": "ICICIPRULI",
@@ -2890,7 +3562,15 @@
       "plus_di": 13.5,
       "minus_di": 30.0,
       "di_diff": 16.5,
-      "span_20d": 14.9
+      "span_20d": 14.9,
+      "gfs_badge": "⚪ NEUTRAL",
+      "gfs_action": "⏳ CONSOLIDATION",
+      "gfs_score": 25,
+      "has_bull_div": false,
+      "has_bear_div": true,
+      "candle_pattern": "STANDARD RED 🔴",
+      "bb_middle": 453.9,
+      "bb_lower": 436.1
     },
     {
       "Symbol": "ICICIBANK",
@@ -2924,7 +3604,15 @@
       "plus_di": 23.8,
       "minus_di": 12.9,
       "di_diff": 10.8,
-      "span_20d": 7.7
+      "span_20d": 7.7,
+      "gfs_badge": "👀 GFS WATCH",
+      "gfs_action": "⏳ GFS WATCHLIST (Waiting for Son Dip)",
+      "gfs_score": 68,
+      "has_bull_div": false,
+      "has_bear_div": false,
+      "candle_pattern": "STANDARD GREEN 🟢",
+      "bb_middle": 1411.0,
+      "bb_lower": 1355.1
     },
     {
       "Symbol": "IGL",
@@ -2958,7 +3646,15 @@
       "plus_di": 19.7,
       "minus_di": 16.6,
       "di_diff": 3.1,
-      "span_20d": 8.7
+      "span_20d": 8.7,
+      "gfs_badge": "⚪ NEUTRAL",
+      "gfs_action": "⏳ CONSOLIDATION",
+      "gfs_score": 37,
+      "has_bull_div": false,
+      "has_bear_div": false,
+      "candle_pattern": "STANDARD GREEN 🟢",
+      "bb_middle": 145.9,
+      "bb_lower": 140.2
     },
     {
       "Symbol": "IEX",
@@ -2992,7 +3688,15 @@
       "plus_di": 17.3,
       "minus_di": 25.5,
       "di_diff": 8.2,
-      "span_20d": 11.6
+      "span_20d": 11.6,
+      "gfs_badge": "⚪ NEUTRAL",
+      "gfs_action": "⏳ CONSOLIDATION",
+      "gfs_score": 41,
+      "has_bull_div": false,
+      "has_bear_div": false,
+      "candle_pattern": "STANDARD GREEN 🟢",
+      "bb_middle": 109.7,
+      "bb_lower": 105.4
     },
     {
       "Symbol": "INDHOTEL",
@@ -3026,7 +3730,15 @@
       "plus_di": 33.1,
       "minus_di": 13.6,
       "di_diff": 19.6,
-      "span_20d": 9.3
+      "span_20d": 9.3,
+      "gfs_badge": "💥 GFS 3-TF BUY",
+      "gfs_action": "💥 HIGH-CONFIDENCE GFS ENTRY",
+      "gfs_score": 91,
+      "has_bull_div": true,
+      "has_bear_div": false,
+      "candle_pattern": "HAMMER 🔨",
+      "bb_middle": 764.4,
+      "bb_lower": 733.5
     },
     {
       "Symbol": "IDFCFIRSTB",
@@ -3060,7 +3772,15 @@
       "plus_di": 15.1,
       "minus_di": 23.8,
       "di_diff": 8.7,
-      "span_20d": 14.9
+      "span_20d": 14.9,
+      "gfs_badge": "👀 GFS WATCH",
+      "gfs_action": "⏳ GFS WATCHLIST (Waiting for Son Dip)",
+      "gfs_score": 52,
+      "has_bull_div": false,
+      "has_bear_div": false,
+      "candle_pattern": "STANDARD GREEN 🟢",
+      "bb_middle": 78.9,
+      "bb_lower": 75.7
     },
     {
       "Symbol": "INDIAMART",
@@ -3094,7 +3814,15 @@
       "plus_di": 13.2,
       "minus_di": 15.2,
       "di_diff": 2.0,
-      "span_20d": 6.3
+      "span_20d": 6.3,
+      "gfs_badge": "👀 GFS WATCH",
+      "gfs_action": "⏳ GFS WATCHLIST (Waiting for Son Dip)",
+      "gfs_score": 51,
+      "has_bull_div": false,
+      "has_bear_div": false,
+      "candle_pattern": "STANDARD GREEN 🟢",
+      "bb_middle": 1643.5,
+      "bb_lower": 1578.4
     },
     {
       "Symbol": "INDIGO",
@@ -3128,7 +3856,15 @@
       "plus_di": 11.8,
       "minus_di": 27.6,
       "di_diff": 15.8,
-      "span_20d": 9.7
+      "span_20d": 9.7,
+      "gfs_badge": "⚪ NEUTRAL",
+      "gfs_action": "⏳ CONSOLIDATION",
+      "gfs_score": 0,
+      "has_bull_div": false,
+      "has_bear_div": false,
+      "candle_pattern": "STANDARD GREEN 🟢",
+      "bb_middle": 4780.6,
+      "bb_lower": 4593.2
     },
     {
       "Symbol": "INDUSTOWER",
@@ -3162,7 +3898,15 @@
       "plus_di": 19.6,
       "minus_di": 17.6,
       "di_diff": 1.9,
-      "span_20d": 9.6
+      "span_20d": 9.6,
+      "gfs_badge": "👀 GFS WATCH",
+      "gfs_action": "⏳ GFS WATCHLIST (Waiting for Son Dip)",
+      "gfs_score": 61,
+      "has_bull_div": false,
+      "has_bear_div": false,
+      "candle_pattern": "STANDARD GREEN 🟢",
+      "bb_middle": 387.1,
+      "bb_lower": 371.8
     },
     {
       "Symbol": "INDUSINDBK",
@@ -3196,7 +3940,15 @@
       "plus_di": 12.5,
       "minus_di": 23.4,
       "di_diff": 10.8,
-      "span_20d": 14.3
+      "span_20d": 14.3,
+      "gfs_badge": "⚪ NEUTRAL",
+      "gfs_action": "⏳ CONSOLIDATION",
+      "gfs_score": 46,
+      "has_bull_div": false,
+      "has_bear_div": false,
+      "candle_pattern": "STANDARD GREEN 🟢",
+      "bb_middle": 894.5,
+      "bb_lower": 859.5
     },
     {
       "Symbol": "INFY",
@@ -3230,7 +3982,15 @@
       "plus_di": 39.9,
       "minus_di": 13.6,
       "di_diff": 26.4,
-      "span_20d": 16.1
+      "span_20d": 16.1,
+      "gfs_badge": "👀 GFS WATCH",
+      "gfs_action": "⏳ GFS WATCHLIST (Waiting for Son Dip)",
+      "gfs_score": 73,
+      "has_bull_div": false,
+      "has_bear_div": false,
+      "candle_pattern": "STANDARD GREEN 🟢",
+      "bb_middle": 1172.8,
+      "bb_lower": 1126.4
     },
     {
       "Symbol": "IOC",
@@ -3264,7 +4024,15 @@
       "plus_di": 19.2,
       "minus_di": 23.9,
       "di_diff": 4.7,
-      "span_20d": 11.0
+      "span_20d": 11.0,
+      "gfs_badge": "⚪ NEUTRAL",
+      "gfs_action": "⏳ CONSOLIDATION",
+      "gfs_score": 48,
+      "has_bull_div": false,
+      "has_bear_div": false,
+      "candle_pattern": "STANDARD GREEN 🟢",
+      "bb_middle": 133.0,
+      "bb_lower": 127.8
     },
     {
       "Symbol": "IRCTC",
@@ -3298,7 +4066,15 @@
       "plus_di": 19.7,
       "minus_di": 17.3,
       "di_diff": 2.3,
-      "span_20d": 7.0
+      "span_20d": 7.0,
+      "gfs_badge": "⚪ NEUTRAL",
+      "gfs_action": "⏳ CONSOLIDATION",
+      "gfs_score": 39,
+      "has_bull_div": false,
+      "has_bear_div": false,
+      "candle_pattern": "STANDARD GREEN 🟢",
+      "bb_middle": 476.0,
+      "bb_lower": 457.3
     },
     {
       "Symbol": "JKCEMENT",
@@ -3332,7 +4108,15 @@
       "plus_di": 18.3,
       "minus_di": 19.0,
       "di_diff": 0.7,
-      "span_20d": 10.9
+      "span_20d": 10.9,
+      "gfs_badge": "⚪ NEUTRAL",
+      "gfs_action": "⏳ CONSOLIDATION",
+      "gfs_score": 29,
+      "has_bull_div": false,
+      "has_bear_div": true,
+      "candle_pattern": "STANDARD RED 🔴",
+      "bb_middle": 5021.5,
+      "bb_lower": 4824.5
     },
     {
       "Symbol": "IPCALAB",
@@ -3366,7 +4150,15 @@
       "plus_di": 8.2,
       "minus_di": 25.0,
       "di_diff": 16.8,
-      "span_20d": 12.3
+      "span_20d": 12.3,
+      "gfs_badge": "⚪ NEUTRAL",
+      "gfs_action": "⏳ CONSOLIDATION",
+      "gfs_score": 37,
+      "has_bull_div": false,
+      "has_bear_div": false,
+      "candle_pattern": "STANDARD GREEN 🟢",
+      "bb_middle": 1869.3,
+      "bb_lower": 1795.9
     },
     {
       "Symbol": "JINDALSTEL",
@@ -3400,7 +4192,15 @@
       "plus_di": 13.2,
       "minus_di": 28.3,
       "di_diff": 15.1,
-      "span_20d": 17.8
+      "span_20d": 17.8,
+      "gfs_badge": "⚪ NEUTRAL",
+      "gfs_action": "⏳ CONSOLIDATION",
+      "gfs_score": 24,
+      "has_bull_div": false,
+      "has_bear_div": true,
+      "candle_pattern": "STANDARD RED 🔴",
+      "bb_middle": 1066.1,
+      "bb_lower": 1024.3
     },
     {
       "Symbol": "ITC",
@@ -3434,7 +4234,15 @@
       "plus_di": 15.5,
       "minus_di": 19.8,
       "di_diff": 4.3,
-      "span_20d": 6.8
+      "span_20d": 6.8,
+      "gfs_badge": "⚪ NEUTRAL",
+      "gfs_action": "⏳ CONSOLIDATION",
+      "gfs_score": 48,
+      "has_bull_div": false,
+      "has_bear_div": false,
+      "candle_pattern": "STANDARD GREEN 🟢",
+      "bb_middle": 268.8,
+      "bb_lower": 258.2
     },
     {
       "Symbol": "JSWSTEEL",
@@ -3468,7 +4276,15 @@
       "plus_di": 19.9,
       "minus_di": 24.8,
       "di_diff": 4.9,
-      "span_20d": 12.0
+      "span_20d": 12.0,
+      "gfs_badge": "⚪ NEUTRAL",
+      "gfs_action": "⏳ CONSOLIDATION",
+      "gfs_score": 47,
+      "has_bull_div": false,
+      "has_bear_div": false,
+      "candle_pattern": "STANDARD GREEN 🟢",
+      "bb_middle": 1240.6,
+      "bb_lower": 1192.0
     },
     {
       "Symbol": "JUBLFOOD",
@@ -3502,7 +4318,15 @@
       "plus_di": 15.4,
       "minus_di": 31.0,
       "di_diff": 15.6,
-      "span_20d": 21.2
+      "span_20d": 21.2,
+      "gfs_badge": "⚪ NEUTRAL",
+      "gfs_action": "⏳ CONSOLIDATION",
+      "gfs_score": 25,
+      "has_bull_div": false,
+      "has_bear_div": false,
+      "candle_pattern": "STANDARD GREEN 🟢",
+      "bb_middle": 426.3,
+      "bb_lower": 409.6
     },
     {
       "Symbol": "KOTAKBANK",
@@ -3536,7 +4360,15 @@
       "plus_di": 32.7,
       "minus_di": 9.1,
       "di_diff": 23.7,
-      "span_20d": 13.1
+      "span_20d": 13.1,
+      "gfs_badge": "👀 GFS WATCH",
+      "gfs_action": "⏳ GFS WATCHLIST (Waiting for Son Dip)",
+      "gfs_score": 69,
+      "has_bull_div": false,
+      "has_bear_div": false,
+      "candle_pattern": "STANDARD GREEN 🟢",
+      "bb_middle": 451.9,
+      "bb_lower": 434.0
     },
     {
       "Symbol": "LALPATHLAB",
@@ -3570,7 +4402,15 @@
       "plus_di": 14.7,
       "minus_di": 18.5,
       "di_diff": 3.8,
-      "span_20d": 9.4
+      "span_20d": 9.4,
+      "gfs_badge": "⚪ NEUTRAL",
+      "gfs_action": "⏳ CONSOLIDATION",
+      "gfs_score": 37,
+      "has_bull_div": false,
+      "has_bear_div": false,
+      "candle_pattern": "STANDARD GREEN 🟢",
+      "bb_middle": 1897.1,
+      "bb_lower": 1822.7
     },
     {
       "Symbol": "LAURUSLABS",
@@ -3604,7 +4444,15 @@
       "plus_di": 23.5,
       "minus_di": 16.7,
       "di_diff": 6.8,
-      "span_20d": 6.5
+      "span_20d": 6.5,
+      "gfs_badge": "👀 GFS WATCH",
+      "gfs_action": "⏳ GFS WATCHLIST (Waiting for Son Dip)",
+      "gfs_score": 65,
+      "has_bull_div": false,
+      "has_bear_div": false,
+      "candle_pattern": "STANDARD GREEN 🟢",
+      "bb_middle": 2080.7,
+      "bb_lower": 1998.3
     },
     {
       "Symbol": "LICHSGFIN",
@@ -3638,7 +4486,15 @@
       "plus_di": 24.7,
       "minus_di": 28.6,
       "di_diff": 3.8,
-      "span_20d": 15.3
+      "span_20d": 15.3,
+      "gfs_badge": "⚪ NEUTRAL",
+      "gfs_action": "⏳ CONSOLIDATION",
+      "gfs_score": 32,
+      "has_bull_div": false,
+      "has_bear_div": true,
+      "candle_pattern": "STANDARD RED 🔴",
+      "bb_middle": 531.4,
+      "bb_lower": 510.6
     },
     {
       "Symbol": "LT",
@@ -3672,7 +4528,15 @@
       "plus_di": 9.5,
       "minus_di": 22.0,
       "di_diff": 12.6,
-      "span_20d": 9.7
+      "span_20d": 9.7,
+      "gfs_badge": "⚪ NEUTRAL",
+      "gfs_action": "⏳ CONSOLIDATION",
+      "gfs_score": 27,
+      "has_bull_div": false,
+      "has_bear_div": false,
+      "candle_pattern": "STANDARD GREEN 🟢",
+      "bb_middle": 3699.6,
+      "bb_lower": 3554.6
     },
     {
       "Symbol": "M&M",
@@ -3706,7 +4570,15 @@
       "plus_di": 14.9,
       "minus_di": 23.3,
       "di_diff": 8.4,
-      "span_20d": 12.1
+      "span_20d": 12.1,
+      "gfs_badge": "⚪ NEUTRAL",
+      "gfs_action": "⏳ CONSOLIDATION",
+      "gfs_score": 28,
+      "has_bull_div": false,
+      "has_bear_div": false,
+      "candle_pattern": "STANDARD GREEN 🟢",
+      "bb_middle": 2979.3,
+      "bb_lower": 2862.5
     },
     {
       "Symbol": "M&MFIN",
@@ -3740,7 +4612,15 @@
       "plus_di": 14.8,
       "minus_di": 28.8,
       "di_diff": 14.0,
-      "span_20d": 15.3
+      "span_20d": 15.3,
+      "gfs_badge": "⚪ NEUTRAL",
+      "gfs_action": "⏳ CONSOLIDATION",
+      "gfs_score": 32,
+      "has_bull_div": false,
+      "has_bear_div": false,
+      "candle_pattern": "STANDARD GREEN 🟢",
+      "bb_middle": 317.8,
+      "bb_lower": 305.3
     },
     {
       "Symbol": "LUPIN",
@@ -3774,7 +4654,15 @@
       "plus_di": 11.1,
       "minus_di": 24.4,
       "di_diff": 13.3,
-      "span_20d": 10.7
+      "span_20d": 10.7,
+      "gfs_badge": "⚪ NEUTRAL",
+      "gfs_action": "⏳ CONSOLIDATION",
+      "gfs_score": 41,
+      "has_bull_div": false,
+      "has_bear_div": false,
+      "candle_pattern": "STANDARD GREEN 🟢",
+      "bb_middle": 2000.8,
+      "bb_lower": 1922.4
     },
     {
       "Symbol": "MANAPPURAM",
@@ -3808,7 +4696,15 @@
       "plus_di": 20.9,
       "minus_di": 23.7,
       "di_diff": 2.7,
-      "span_20d": 9.5
+      "span_20d": 9.5,
+      "gfs_badge": "👀 GFS WATCH",
+      "gfs_action": "⏳ GFS WATCHLIST (Waiting for Son Dip)",
+      "gfs_score": 51,
+      "has_bull_div": false,
+      "has_bear_div": false,
+      "candle_pattern": "STANDARD GREEN 🟢",
+      "bb_middle": 327.2,
+      "bb_lower": 314.2
     },
     {
       "Symbol": "LTTS",
@@ -3842,7 +4738,15 @@
       "plus_di": 35.0,
       "minus_di": 8.7,
       "di_diff": 26.3,
-      "span_20d": 19.7
+      "span_20d": 19.7,
+      "gfs_badge": "👀 GFS WATCH",
+      "gfs_action": "⏳ GFS WATCHLIST (Waiting for Son Dip)",
+      "gfs_score": 52,
+      "has_bull_div": false,
+      "has_bear_div": false,
+      "candle_pattern": "STANDARD GREEN 🟢",
+      "bb_middle": 3751.7,
+      "bb_lower": 3603.2
     },
     {
       "Symbol": "MARUTI",
@@ -3876,7 +4780,15 @@
       "plus_di": 11.2,
       "minus_di": 26.1,
       "di_diff": 14.9,
-      "span_20d": 11.6
+      "span_20d": 11.6,
+      "gfs_badge": "⚪ NEUTRAL",
+      "gfs_action": "⏳ CONSOLIDATION",
+      "gfs_score": 28,
+      "has_bull_div": false,
+      "has_bear_div": false,
+      "candle_pattern": "STANDARD GREEN 🟢",
+      "bb_middle": 11718.8,
+      "bb_lower": 11259.2
     },
     {
       "Symbol": "MARICO",
@@ -3910,7 +4822,15 @@
       "plus_di": 14.2,
       "minus_di": 24.0,
       "di_diff": 9.8,
-      "span_20d": 8.5
+      "span_20d": 8.5,
+      "gfs_badge": "👀 GFS WATCH",
+      "gfs_action": "⏳ GFS WATCHLIST (Waiting for Son Dip)",
+      "gfs_score": 51,
+      "has_bull_div": false,
+      "has_bear_div": false,
+      "candle_pattern": "STANDARD GREEN 🟢",
+      "bb_middle": 792.9,
+      "bb_lower": 761.4
     },
     {
       "Symbol": "METROPOLIS",
@@ -3944,7 +4864,15 @@
       "plus_di": 17.7,
       "minus_di": 23.7,
       "di_diff": 6.0,
-      "span_20d": 17.3
+      "span_20d": 17.3,
+      "gfs_badge": "⚪ NEUTRAL",
+      "gfs_action": "⏳ CONSOLIDATION",
+      "gfs_score": 25,
+      "has_bull_div": false,
+      "has_bear_div": true,
+      "candle_pattern": "STANDARD RED 🔴",
+      "bb_middle": 541.0,
+      "bb_lower": 519.7
     },
     {
       "Symbol": "MGL",
@@ -3978,7 +4906,15 @@
       "plus_di": 17.2,
       "minus_di": 19.5,
       "di_diff": 2.3,
-      "span_20d": 9.5
+      "span_20d": 9.5,
+      "gfs_badge": "⚪ NEUTRAL",
+      "gfs_action": "⏳ CONSOLIDATION",
+      "gfs_score": 26,
+      "has_bull_div": false,
+      "has_bear_div": false,
+      "candle_pattern": "STANDARD GREEN 🟢",
+      "bb_middle": 1075.1,
+      "bb_lower": 1032.9
     },
     {
       "Symbol": "MFSL",
@@ -4012,7 +4948,15 @@
       "plus_di": 9.9,
       "minus_di": 31.6,
       "di_diff": 21.8,
-      "span_20d": 25.4
+      "span_20d": 25.4,
+      "gfs_badge": "⚪ NEUTRAL",
+      "gfs_action": "⏳ CONSOLIDATION",
+      "gfs_score": 10,
+      "has_bull_div": false,
+      "has_bear_div": true,
+      "candle_pattern": "STANDARD RED 🔴",
+      "bb_middle": 1320.8,
+      "bb_lower": 1269.0
     },
     {
       "Symbol": "MCX",
@@ -4046,7 +4990,15 @@
       "plus_di": 19.0,
       "minus_di": 26.6,
       "di_diff": 7.6,
-      "span_20d": 11.3
+      "span_20d": 11.3,
+      "gfs_badge": "⚪ NEUTRAL",
+      "gfs_action": "⏳ CONSOLIDATION",
+      "gfs_score": 32,
+      "has_bull_div": false,
+      "has_bear_div": false,
+      "candle_pattern": "STANDARD GREEN 🟢",
+      "bb_middle": 3225.2,
+      "bb_lower": 3098.8
     },
     {
       "Symbol": "MPHASIS",
@@ -4080,7 +5032,15 @@
       "plus_di": 31.8,
       "minus_di": 11.1,
       "di_diff": 20.6,
-      "span_20d": 15.1
+      "span_20d": 15.1,
+      "gfs_badge": "💥 GFS 3-TF BUY",
+      "gfs_action": "💥 HIGH-CONFIDENCE GFS ENTRY",
+      "gfs_score": 76,
+      "has_bull_div": true,
+      "has_bear_div": false,
+      "candle_pattern": "HAMMER 🔨",
+      "bb_middle": 2475.0,
+      "bb_lower": 2375.0
     },
     {
       "Symbol": "MRF",
@@ -4114,7 +5074,15 @@
       "plus_di": 10.7,
       "minus_di": 20.9,
       "di_diff": 10.3,
-      "span_20d": 4.2
+      "span_20d": 4.2,
+      "gfs_badge": "⚪ NEUTRAL",
+      "gfs_action": "⏳ CONSOLIDATION",
+      "gfs_score": 28,
+      "has_bull_div": false,
+      "has_bear_div": false,
+      "candle_pattern": "STANDARD GREEN 🟢",
+      "bb_middle": 125245.8,
+      "bb_lower": 120334.2
     },
     {
       "Symbol": "MUTHOOTFIN",
@@ -4148,7 +5116,15 @@
       "plus_di": 11.6,
       "minus_di": 34.2,
       "di_diff": 22.7,
-      "span_20d": 12.7
+      "span_20d": 12.7,
+      "gfs_badge": "⚪ NEUTRAL",
+      "gfs_action": "⏳ CONSOLIDATION",
+      "gfs_score": 10,
+      "has_bull_div": false,
+      "has_bear_div": true,
+      "candle_pattern": "STANDARD RED 🔴",
+      "bb_middle": 2650.3,
+      "bb_lower": 2546.3
     },
     {
       "Symbol": "MOTHERSON",
@@ -4182,7 +5158,15 @@
       "plus_di": 17.7,
       "minus_di": 18.2,
       "di_diff": 0.5,
-      "span_20d": 9.3
+      "span_20d": 9.3,
+      "gfs_badge": "👀 GFS WATCH",
+      "gfs_action": "⏳ GFS WATCHLIST (Waiting for Son Dip)",
+      "gfs_score": 63,
+      "has_bull_div": false,
+      "has_bear_div": false,
+      "candle_pattern": "STANDARD GREEN 🟢",
+      "bb_middle": 161.6,
+      "bb_lower": 155.2
     },
     {
       "Symbol": "NAVINFLUOR",
@@ -4216,7 +5200,15 @@
       "plus_di": 17.6,
       "minus_di": 25.2,
       "di_diff": 7.6,
-      "span_20d": 7.9
+      "span_20d": 7.9,
+      "gfs_badge": "👀 GFS WATCH",
+      "gfs_action": "⏳ GFS WATCHLIST (Waiting for Son Dip)",
+      "gfs_score": 52,
+      "has_bull_div": false,
+      "has_bear_div": false,
+      "candle_pattern": "STANDARD GREEN 🟢",
+      "bb_middle": 8248.7,
+      "bb_lower": 7922.0
     },
     {
       "Symbol": "NATIONALUM",
@@ -4250,7 +5242,15 @@
       "plus_di": 21.9,
       "minus_di": 31.1,
       "di_diff": 9.2,
-      "span_20d": 16.7
+      "span_20d": 16.7,
+      "gfs_badge": "⚪ NEUTRAL",
+      "gfs_action": "⏳ CONSOLIDATION",
+      "gfs_score": 48,
+      "has_bull_div": false,
+      "has_bear_div": false,
+      "candle_pattern": "STANDARD GREEN 🟢",
+      "bb_middle": 330.7,
+      "bb_lower": 317.8
     },
     {
       "Symbol": "NMDC",
@@ -4284,7 +5284,15 @@
       "plus_di": 10.0,
       "minus_di": 34.6,
       "di_diff": 24.6,
-      "span_20d": 15.5
+      "span_20d": 15.5,
+      "gfs_badge": "⚪ NEUTRAL",
+      "gfs_action": "⏳ CONSOLIDATION",
+      "gfs_score": 38,
+      "has_bull_div": false,
+      "has_bear_div": false,
+      "candle_pattern": "STANDARD GREEN 🟢",
+      "bb_middle": 73.1,
+      "bb_lower": 70.3
     },
     {
       "Symbol": "NAUKRI",
@@ -4318,7 +5326,15 @@
       "plus_di": 17.6,
       "minus_di": 17.3,
       "di_diff": 0.3,
-      "span_20d": 11.3
+      "span_20d": 11.3,
+      "gfs_badge": "👀 GFS WATCH",
+      "gfs_action": "⏳ GFS WATCHLIST (Waiting for Son Dip)",
+      "gfs_score": 50,
+      "has_bull_div": false,
+      "has_bear_div": false,
+      "candle_pattern": "STANDARD GREEN 🟢",
+      "bb_middle": 1277.8,
+      "bb_lower": 1227.1
     },
     {
       "Symbol": "NESTLEIND",
@@ -4352,7 +5368,15 @@
       "plus_di": 12.7,
       "minus_di": 25.2,
       "di_diff": 12.5,
-      "span_20d": 11.3
+      "span_20d": 11.3,
+      "gfs_badge": "⚪ NEUTRAL",
+      "gfs_action": "⏳ CONSOLIDATION",
+      "gfs_score": 10,
+      "has_bull_div": false,
+      "has_bear_div": true,
+      "candle_pattern": "STANDARD RED 🔴",
+      "bb_middle": 1290.8,
+      "bb_lower": 1240.2
     },
     {
       "Symbol": "OBEROIRLTY",
@@ -4386,7 +5410,15 @@
       "plus_di": 14.8,
       "minus_di": 28.3,
       "di_diff": 13.5,
-      "span_20d": 12.9
+      "span_20d": 12.9,
+      "gfs_badge": "⚪ NEUTRAL",
+      "gfs_action": "⏳ CONSOLIDATION",
+      "gfs_score": 49,
+      "has_bull_div": false,
+      "has_bear_div": true,
+      "candle_pattern": "STANDARD RED 🔴",
+      "bb_middle": 1737.1,
+      "bb_lower": 1668.9
     },
     {
       "Symbol": "NTPC",
@@ -4420,7 +5452,15 @@
       "plus_di": 12.2,
       "minus_di": 24.4,
       "di_diff": 12.2,
-      "span_20d": 8.0
+      "span_20d": 8.0,
+      "gfs_badge": "⚪ NEUTRAL",
+      "gfs_action": "⏳ CONSOLIDATION",
+      "gfs_score": 36,
+      "has_bull_div": false,
+      "has_bear_div": false,
+      "candle_pattern": "STANDARD GREEN 🟢",
+      "bb_middle": 321.5,
+      "bb_lower": 308.8
     },
     {
       "Symbol": "OFSS",
@@ -4454,7 +5494,15 @@
       "plus_di": 12.5,
       "minus_di": 24.0,
       "di_diff": 11.4,
-      "span_20d": 17.3
+      "span_20d": 17.3,
+      "gfs_badge": "⚪ NEUTRAL",
+      "gfs_action": "⏳ CONSOLIDATION",
+      "gfs_score": 49,
+      "has_bull_div": false,
+      "has_bear_div": false,
+      "candle_pattern": "STANDARD GREEN 🟢",
+      "bb_middle": 10593.7,
+      "bb_lower": 10178.3
     },
     {
       "Symbol": "ONGC",
@@ -4488,7 +5536,15 @@
       "plus_di": 15.9,
       "minus_di": 19.7,
       "di_diff": 3.8,
-      "span_20d": 9.2
+      "span_20d": 9.2,
+      "gfs_badge": "⚪ NEUTRAL",
+      "gfs_action": "⏳ CONSOLIDATION",
+      "gfs_score": 27,
+      "has_bull_div": false,
+      "has_bear_div": false,
+      "candle_pattern": "STANDARD GREEN 🟢",
+      "bb_middle": 226.4,
+      "bb_lower": 217.6
     },
     {
       "Symbol": "PERSISTENT",
@@ -4522,7 +5578,15 @@
       "plus_di": 26.0,
       "minus_di": 23.6,
       "di_diff": 2.4,
-      "span_20d": 16.0
+      "span_20d": 16.0,
+      "gfs_badge": "👀 GFS WATCH",
+      "gfs_action": "⏳ GFS WATCHLIST (Waiting for Son Dip)",
+      "gfs_score": 60,
+      "has_bull_div": false,
+      "has_bear_div": false,
+      "candle_pattern": "STANDARD GREEN 🟢",
+      "bb_middle": 5798.4,
+      "bb_lower": 5568.8
     },
     {
       "Symbol": "PETRONET",
@@ -4556,7 +5620,15 @@
       "plus_di": 20.9,
       "minus_di": 14.4,
       "di_diff": 6.6,
-      "span_20d": 6.6
+      "span_20d": 6.6,
+      "gfs_badge": "⚡ GFS DIP BUY",
+      "gfs_action": "⚡ ACTIVE GFS DIP INTERSECTION",
+      "gfs_score": 74,
+      "has_bull_div": true,
+      "has_bear_div": false,
+      "candle_pattern": "STANDARD GREEN 🟢",
+      "bb_middle": 290.1,
+      "bb_lower": 281.3
     },
     {
       "Symbol": "PAGEIND",
@@ -4590,7 +5662,15 @@
       "plus_di": 15.4,
       "minus_di": 21.3,
       "di_diff": 5.9,
-      "span_20d": 9.9
+      "span_20d": 9.9,
+      "gfs_badge": "⚪ NEUTRAL",
+      "gfs_action": "⏳ CONSOLIDATION",
+      "gfs_score": 25,
+      "has_bull_div": false,
+      "has_bear_div": false,
+      "candle_pattern": "STANDARD GREEN 🟢",
+      "bb_middle": 36867.9,
+      "bb_lower": 35422.1
     },
     {
       "Symbol": "PFC",
@@ -4624,7 +5704,15 @@
       "plus_di": 22.2,
       "minus_di": 26.2,
       "di_diff": 4.0,
-      "span_20d": 11.0
+      "span_20d": 11.0,
+      "gfs_badge": "⚪ NEUTRAL",
+      "gfs_action": "⏳ CONSOLIDATION",
+      "gfs_score": 27,
+      "has_bull_div": false,
+      "has_bear_div": false,
+      "candle_pattern": "STANDARD GREEN 🟢",
+      "bb_middle": 339.9,
+      "bb_lower": 326.6
     },
     {
       "Symbol": "PIIND",
@@ -4658,7 +5746,15 @@
       "plus_di": 18.2,
       "minus_di": 26.6,
       "di_diff": 8.4,
-      "span_20d": 15.0
+      "span_20d": 15.0,
+      "gfs_badge": "👀 GFS WATCH",
+      "gfs_action": "⏳ GFS WATCHLIST (Waiting for Son Dip)",
+      "gfs_score": 51,
+      "has_bull_div": false,
+      "has_bear_div": false,
+      "candle_pattern": "STANDARD GREEN 🟢",
+      "bb_middle": 2211.9,
+      "bb_lower": 2124.3
     },
     {
       "Symbol": "PNB",
@@ -4692,7 +5788,15 @@
       "plus_di": 19.1,
       "minus_di": 15.4,
       "di_diff": 3.7,
-      "span_20d": 8.8
+      "span_20d": 8.8,
+      "gfs_badge": "👀 GFS WATCH",
+      "gfs_action": "⏳ GFS WATCHLIST (Waiting for Son Dip)",
+      "gfs_score": 54,
+      "has_bull_div": false,
+      "has_bear_div": false,
+      "candle_pattern": "STANDARD GREEN 🟢",
+      "bb_middle": 117.5,
+      "bb_lower": 112.8
     },
     {
       "Symbol": "PIDILITIND",
@@ -4726,7 +5830,15 @@
       "plus_di": 14.4,
       "minus_di": 19.8,
       "di_diff": 5.4,
-      "span_20d": 9.5
+      "span_20d": 9.5,
+      "gfs_badge": "⚪ NEUTRAL",
+      "gfs_action": "⏳ CONSOLIDATION",
+      "gfs_score": 46,
+      "has_bull_div": false,
+      "has_bear_div": false,
+      "candle_pattern": "STANDARD GREEN 🟢",
+      "bb_middle": 1532.9,
+      "bb_lower": 1472.7
     },
     {
       "Symbol": "POLYCAB",
@@ -4760,7 +5872,15 @@
       "plus_di": 15.0,
       "minus_di": 24.3,
       "di_diff": 9.3,
-      "span_20d": 7.6
+      "span_20d": 7.6,
+      "gfs_badge": "⚪ NEUTRAL",
+      "gfs_action": "⏳ CONSOLIDATION",
+      "gfs_score": 42,
+      "has_bull_div": false,
+      "has_bear_div": false,
+      "candle_pattern": "STANDARD GREEN 🟢",
+      "bb_middle": 8383.4,
+      "bb_lower": 8054.6
     },
     {
       "Symbol": "POWERGRID",
@@ -4794,7 +5914,15 @@
       "plus_di": 11.8,
       "minus_di": 26.1,
       "di_diff": 14.3,
-      "span_20d": 10.5
+      "span_20d": 10.5,
+      "gfs_badge": "👀 GFS WATCH",
+      "gfs_action": "⏳ GFS WATCHLIST (Waiting for Son Dip)",
+      "gfs_score": 51,
+      "has_bull_div": false,
+      "has_bear_div": false,
+      "candle_pattern": "STANDARD GREEN 🟢",
+      "bb_middle": 253.0,
+      "bb_lower": 242.9
     },
     {
       "Symbol": "RBLBANK",
@@ -4828,7 +5956,15 @@
       "plus_di": 15.7,
       "minus_di": 32.2,
       "di_diff": 16.5,
-      "span_20d": 14.9
+      "span_20d": 14.9,
+      "gfs_badge": "⚪ NEUTRAL",
+      "gfs_action": "⏳ CONSOLIDATION",
+      "gfs_score": 37,
+      "has_bull_div": false,
+      "has_bear_div": false,
+      "candle_pattern": "STANDARD GREEN 🟢",
+      "bb_middle": 385.8,
+      "bb_lower": 370.7
     },
     {
       "Symbol": "RAMCOCEM",
@@ -4862,7 +5998,15 @@
       "plus_di": 9.9,
       "minus_di": 29.4,
       "di_diff": 19.5,
-      "span_20d": 14.7
+      "span_20d": 14.7,
+      "gfs_badge": "⚪ NEUTRAL",
+      "gfs_action": "⏳ CONSOLIDATION",
+      "gfs_score": 20,
+      "has_bull_div": false,
+      "has_bear_div": true,
+      "candle_pattern": "STANDARD RED 🔴",
+      "bb_middle": 821.5,
+      "bb_lower": 789.3
     },
     {
       "Symbol": "PVRINOX",
@@ -4896,7 +6040,15 @@
       "plus_di": 35.4,
       "minus_di": 10.4,
       "di_diff": 25.1,
-      "span_20d": 17.5
+      "span_20d": 17.5,
+      "gfs_badge": "👀 GFS WATCH",
+      "gfs_action": "⏳ GFS WATCHLIST (Waiting for Son Dip)",
+      "gfs_score": 66,
+      "has_bull_div": false,
+      "has_bear_div": false,
+      "candle_pattern": "STANDARD GREEN 🟢",
+      "bb_middle": 1415.0,
+      "bb_lower": 1359.0
     },
     {
       "Symbol": "RECLTD",
@@ -4930,7 +6082,15 @@
       "plus_di": 20.1,
       "minus_di": 20.4,
       "di_diff": 0.3,
-      "span_20d": 9.3
+      "span_20d": 9.3,
+      "gfs_badge": "⚪ NEUTRAL",
+      "gfs_action": "⏳ CONSOLIDATION",
+      "gfs_score": 36,
+      "has_bull_div": false,
+      "has_bear_div": false,
+      "candle_pattern": "STANDARD GREEN 🟢",
+      "bb_middle": 314.0,
+      "bb_lower": 301.6
     },
     {
       "Symbol": "SAIL",
@@ -4964,7 +6124,15 @@
       "plus_di": 14.9,
       "minus_di": 21.6,
       "di_diff": 6.7,
-      "span_20d": 13.5
+      "span_20d": 13.5,
+      "gfs_badge": "⚪ NEUTRAL",
+      "gfs_action": "⏳ CONSOLIDATION",
+      "gfs_score": 35,
+      "has_bull_div": false,
+      "has_bear_div": true,
+      "candle_pattern": "STANDARD RED 🔴",
+      "bb_middle": 174.4,
+      "bb_lower": 167.5
     },
     {
       "Symbol": "SBILIFE",
@@ -4998,7 +6166,15 @@
       "plus_di": 7.4,
       "minus_di": 25.6,
       "di_diff": 18.2,
-      "span_20d": 9.5
+      "span_20d": 9.5,
+      "gfs_badge": "⚪ NEUTRAL",
+      "gfs_action": "⏳ CONSOLIDATION",
+      "gfs_score": 15,
+      "has_bull_div": false,
+      "has_bear_div": false,
+      "candle_pattern": "STANDARD GREEN 🟢",
+      "bb_middle": 1689.9,
+      "bb_lower": 1623.7
     },
     {
       "Symbol": "RELIANCE",
@@ -5032,7 +6208,15 @@
       "plus_di": 22.2,
       "minus_di": 25.8,
       "di_diff": 3.6,
-      "span_20d": 8.3
+      "span_20d": 8.3,
+      "gfs_badge": "⚪ NEUTRAL",
+      "gfs_action": "⏳ CONSOLIDATION",
+      "gfs_score": 12,
+      "has_bull_div": false,
+      "has_bear_div": false,
+      "candle_pattern": "STANDARD GREEN 🟢",
+      "bb_middle": 1235.4,
+      "bb_lower": 1187.0
     },
     {
       "Symbol": "SBICARD",
@@ -5066,7 +6250,15 @@
       "plus_di": 13.9,
       "minus_di": 26.6,
       "di_diff": 12.7,
-      "span_20d": 18.3
+      "span_20d": 18.3,
+      "gfs_badge": "⚪ NEUTRAL",
+      "gfs_action": "⏳ CONSOLIDATION",
+      "gfs_score": 22,
+      "has_bull_div": false,
+      "has_bear_div": false,
+      "candle_pattern": "STANDARD GREEN 🟢",
+      "bb_middle": 575.5,
+      "bb_lower": 552.9
     },
     {
       "Symbol": "SHREECEM",
@@ -5100,7 +6292,15 @@
       "plus_di": 19.2,
       "minus_di": 20.4,
       "di_diff": 1.2,
-      "span_20d": 7.3
+      "span_20d": 7.3,
+      "gfs_badge": "⚪ NEUTRAL",
+      "gfs_action": "⏳ CONSOLIDATION",
+      "gfs_score": 12,
+      "has_bull_div": false,
+      "has_bear_div": false,
+      "candle_pattern": "STANDARD GREEN 🟢",
+      "bb_middle": 22909.2,
+      "bb_lower": 22010.8
     },
     {
       "Symbol": "SRF",
@@ -5134,7 +6334,15 @@
       "plus_di": 14.9,
       "minus_di": 17.6,
       "di_diff": 2.8,
-      "span_20d": 6.1
+      "span_20d": 6.1,
+      "gfs_badge": "⚪ NEUTRAL",
+      "gfs_action": "⏳ CONSOLIDATION",
+      "gfs_score": 12,
+      "has_bull_div": false,
+      "has_bear_div": false,
+      "candle_pattern": "STANDARD GREEN 🟢",
+      "bb_middle": 2521.5,
+      "bb_lower": 2422.7
     },
     {
       "Symbol": "SIEMENS",
@@ -5168,7 +6376,15 @@
       "plus_di": 12.6,
       "minus_di": 27.8,
       "di_diff": 15.3,
-      "span_20d": 12.5
+      "span_20d": 12.5,
+      "gfs_badge": "⚪ NEUTRAL",
+      "gfs_action": "⏳ CONSOLIDATION",
+      "gfs_score": 40,
+      "has_bull_div": false,
+      "has_bear_div": true,
+      "candle_pattern": "STANDARD RED 🔴",
+      "bb_middle": 3696.5,
+      "bb_lower": 3551.5
     },
     {
       "Symbol": "SBIN",
@@ -5202,7 +6418,15 @@
       "plus_di": 11.1,
       "minus_di": 21.0,
       "di_diff": 9.9,
-      "span_20d": 6.5
+      "span_20d": 6.5,
+      "gfs_badge": "⚪ NEUTRAL",
+      "gfs_action": "⏳ CONSOLIDATION",
+      "gfs_score": 38,
+      "has_bull_div": false,
+      "has_bear_div": false,
+      "candle_pattern": "STANDARD GREEN 🟢",
+      "bb_middle": 981.9,
+      "bb_lower": 943.3
     },
     {
       "Symbol": "SHRIRAMFIN",
@@ -5236,7 +6460,15 @@
       "plus_di": 12.8,
       "minus_di": 23.7,
       "di_diff": 10.8,
-      "span_20d": 10.8
+      "span_20d": 10.8,
+      "gfs_badge": "⚪ NEUTRAL",
+      "gfs_action": "⏳ CONSOLIDATION",
+      "gfs_score": 32,
+      "has_bull_div": false,
+      "has_bear_div": false,
+      "candle_pattern": "STANDARD GREEN 🟢",
+      "bb_middle": 958.7,
+      "bb_lower": 921.2
     },
     {
       "Symbol": "SUNPHARMA",
@@ -5270,7 +6502,15 @@
       "plus_di": 6.7,
       "minus_di": 21.8,
       "di_diff": 15.1,
-      "span_20d": 9.4
+      "span_20d": 9.4,
+      "gfs_badge": "⚪ NEUTRAL",
+      "gfs_action": "⏳ CONSOLIDATION",
+      "gfs_score": 25,
+      "has_bull_div": false,
+      "has_bear_div": true,
+      "candle_pattern": "STANDARD RED 🔴",
+      "bb_middle": 1794.0,
+      "bb_lower": 1723.6
     },
     {
       "Symbol": "SUNTV",
@@ -5304,7 +6544,15 @@
       "plus_di": 37.9,
       "minus_di": 7.8,
       "di_diff": 30.1,
-      "span_20d": 35.5
+      "span_20d": 35.5,
+      "gfs_badge": "⚪ NEUTRAL",
+      "gfs_action": "⏳ CONSOLIDATION",
+      "gfs_score": 49,
+      "has_bull_div": false,
+      "has_bear_div": false,
+      "candle_pattern": "STANDARD GREEN 🟢",
+      "bb_middle": 650.8,
+      "bb_lower": 625.2
     },
     {
       "Symbol": "SUZLON",
@@ -5338,7 +6586,15 @@
       "plus_di": 24.6,
       "minus_di": 26.5,
       "di_diff": 1.9,
-      "span_20d": 18.8
+      "span_20d": 18.8,
+      "gfs_badge": "⚪ NEUTRAL",
+      "gfs_action": "⏳ CONSOLIDATION",
+      "gfs_score": 27,
+      "has_bull_div": false,
+      "has_bear_div": false,
+      "candle_pattern": "STANDARD GREEN 🟢",
+      "bb_middle": 42.8,
+      "bb_lower": 41.2
     },
     {
       "Symbol": "SYNGENE",
@@ -5372,7 +6628,15 @@
       "plus_di": 24.1,
       "minus_di": 18.2,
       "di_diff": 5.8,
-      "span_20d": 13.8
+      "span_20d": 13.8,
+      "gfs_badge": "⚪ NEUTRAL",
+      "gfs_action": "⏳ CONSOLIDATION",
+      "gfs_score": 24,
+      "has_bull_div": false,
+      "has_bear_div": false,
+      "candle_pattern": "STANDARD GREEN 🟢",
+      "bb_middle": 393.8,
+      "bb_lower": 378.4
     },
     {
       "Symbol": "TATAELXSI",
@@ -5406,7 +6670,15 @@
       "plus_di": 40.3,
       "minus_di": 14.6,
       "di_diff": 25.7,
-      "span_20d": 22.3
+      "span_20d": 22.3,
+      "gfs_badge": "👀 GFS WATCH",
+      "gfs_action": "⏳ GFS WATCHLIST (Waiting for Son Dip)",
+      "gfs_score": 58,
+      "has_bull_div": false,
+      "has_bear_div": false,
+      "candle_pattern": "STANDARD GREEN 🟢",
+      "bb_middle": 3888.6,
+      "bb_lower": 3734.6
     },
     {
       "Symbol": "TATACOMM",
@@ -5440,7 +6712,15 @@
       "plus_di": 26.5,
       "minus_di": 10.6,
       "di_diff": 15.8,
-      "span_20d": 14.3
+      "span_20d": 14.3,
+      "gfs_badge": "⚪ NEUTRAL",
+      "gfs_action": "⏳ CONSOLIDATION",
+      "gfs_score": 30,
+      "has_bull_div": false,
+      "has_bear_div": false,
+      "candle_pattern": "STANDARD GREEN 🟢",
+      "bb_middle": 1777.7,
+      "bb_lower": 1707.9
     },
     {
       "Symbol": "TATACHEM",
@@ -5474,7 +6754,15 @@
       "plus_di": 27.7,
       "minus_di": 20.1,
       "di_diff": 7.6,
-      "span_20d": 24.5
+      "span_20d": 24.5,
+      "gfs_badge": "⚪ NEUTRAL",
+      "gfs_action": "⏳ CONSOLIDATION",
+      "gfs_score": 44,
+      "has_bull_div": false,
+      "has_bear_div": false,
+      "candle_pattern": "STANDARD GREEN 🟢",
+      "bb_middle": 645.8,
+      "bb_lower": 620.5
     },
     {
       "Symbol": "TATACONSUM",
@@ -5508,7 +6796,15 @@
       "plus_di": 22.0,
       "minus_di": 20.1,
       "di_diff": 1.9,
-      "span_20d": 7.5
+      "span_20d": 7.5,
+      "gfs_badge": "⚪ NEUTRAL",
+      "gfs_action": "⏳ CONSOLIDATION",
+      "gfs_score": 26,
+      "has_bull_div": false,
+      "has_bear_div": false,
+      "candle_pattern": "STANDARD GREEN 🟢",
+      "bb_middle": 998.5,
+      "bb_lower": 959.3
     },
     {
       "Symbol": "TECHM",
@@ -5542,7 +6838,15 @@
       "plus_di": 45.3,
       "minus_di": 14.0,
       "di_diff": 31.4,
-      "span_20d": 19.8
+      "span_20d": 19.8,
+      "gfs_badge": "💥 GFS 3-TF BUY",
+      "gfs_action": "💥 HIGH-CONFIDENCE GFS ENTRY",
+      "gfs_score": 81,
+      "has_bull_div": true,
+      "has_bear_div": false,
+      "candle_pattern": "HAMMER 🔨",
+      "bb_middle": 1772.1,
+      "bb_lower": 1700.5
     },
     {
       "Symbol": "TATAPOWER",
@@ -5576,7 +6880,15 @@
       "plus_di": 20.6,
       "minus_di": 22.8,
       "di_diff": 2.1,
-      "span_20d": 11.6
+      "span_20d": 11.6,
+      "gfs_badge": "⚪ NEUTRAL",
+      "gfs_action": "⏳ CONSOLIDATION",
+      "gfs_score": 28,
+      "has_bull_div": false,
+      "has_bear_div": false,
+      "candle_pattern": "STANDARD GREEN 🟢",
+      "bb_middle": 360.9,
+      "bb_lower": 346.8
     },
     {
       "Symbol": "TCS",
@@ -5610,7 +6922,15 @@
       "plus_di": 39.3,
       "minus_di": 10.9,
       "di_diff": 28.4,
-      "span_20d": 18.8
+      "span_20d": 18.8,
+      "gfs_badge": "💥 GFS 3-TF BUY",
+      "gfs_action": "💥 HIGH-CONFIDENCE GFS ENTRY",
+      "gfs_score": 83,
+      "has_bull_div": true,
+      "has_bear_div": false,
+      "candle_pattern": "HAMMER 🔨",
+      "bb_middle": 2440.3,
+      "bb_lower": 2341.8
     },
     {
       "Symbol": "TITAN",
@@ -5644,7 +6964,15 @@
       "plus_di": 11.8,
       "minus_di": 28.3,
       "di_diff": 16.5,
-      "span_20d": 14.5
+      "span_20d": 14.5,
+      "gfs_badge": "👀 GFS WATCH",
+      "gfs_action": "⏳ GFS WATCHLIST (Waiting for Son Dip)",
+      "gfs_score": 61,
+      "has_bull_div": false,
+      "has_bear_div": false,
+      "candle_pattern": "STANDARD GREEN 🟢",
+      "bb_middle": 4489.2,
+      "bb_lower": 4311.5
     },
     {
       "Symbol": "TORNTPHARM",
@@ -5678,7 +7006,15 @@
       "plus_di": 7.9,
       "minus_di": 20.4,
       "di_diff": 12.6,
-      "span_20d": 10.1
+      "span_20d": 10.1,
+      "gfs_badge": "⚪ NEUTRAL",
+      "gfs_action": "⏳ CONSOLIDATION",
+      "gfs_score": 35,
+      "has_bull_div": false,
+      "has_bear_div": false,
+      "candle_pattern": "STANDARD GREEN 🟢",
+      "bb_middle": 4650.1,
+      "bb_lower": 4467.7
     },
     {
       "Symbol": "TATASTEEL",
@@ -5712,7 +7048,15 @@
       "plus_di": 18.2,
       "minus_di": 21.5,
       "di_diff": 3.3,
-      "span_20d": 12.3
+      "span_20d": 12.3,
+      "gfs_badge": "⚪ NEUTRAL",
+      "gfs_action": "⏳ CONSOLIDATION",
+      "gfs_score": 36,
+      "has_bull_div": false,
+      "has_bear_div": false,
+      "candle_pattern": "STANDARD GREEN 🟢",
+      "bb_middle": 179.0,
+      "bb_lower": 172.0
     },
     {
       "Symbol": "TORNTPOWER",
@@ -5746,7 +7090,15 @@
       "plus_di": 22.0,
       "minus_di": 23.0,
       "di_diff": 1.0,
-      "span_20d": 9.8
+      "span_20d": 9.8,
+      "gfs_badge": "👀 GFS WATCH",
+      "gfs_action": "⏳ GFS WATCHLIST (Waiting for Son Dip)",
+      "gfs_score": 51,
+      "has_bull_div": false,
+      "has_bear_div": false,
+      "candle_pattern": "STANDARD GREEN 🟢",
+      "bb_middle": 1238.6,
+      "bb_lower": 1189.5
     },
     {
       "Symbol": "TRENT",
@@ -5780,7 +7132,15 @@
       "plus_di": 28.7,
       "minus_di": 19.3,
       "di_diff": 9.4,
-      "span_20d": 15.5
+      "span_20d": 15.5,
+      "gfs_badge": "👀 GFS WATCH",
+      "gfs_action": "⏳ GFS WATCHLIST (Waiting for Son Dip)",
+      "gfs_score": 58,
+      "has_bull_div": false,
+      "has_bear_div": false,
+      "candle_pattern": "STANDARD GREEN 🟢",
+      "bb_middle": 2988.3,
+      "bb_lower": 2869.9
     },
     {
       "Symbol": "UBL",
@@ -5814,7 +7174,15 @@
       "plus_di": 16.5,
       "minus_di": 17.7,
       "di_diff": 1.2,
-      "span_20d": 12.4
+      "span_20d": 12.4,
+      "gfs_badge": "👀 GFS WATCH",
+      "gfs_action": "⏳ GFS WATCHLIST (Waiting for Son Dip)",
+      "gfs_score": 51,
+      "has_bull_div": false,
+      "has_bear_div": false,
+      "candle_pattern": "STANDARD GREEN 🟢",
+      "bb_middle": 1213.6,
+      "bb_lower": 1165.6
     },
     {
       "Symbol": "TVSMOTOR",
@@ -5848,7 +7216,15 @@
       "plus_di": 16.4,
       "minus_di": 25.1,
       "di_diff": 8.7,
-      "span_20d": 11.4
+      "span_20d": 11.4,
+      "gfs_badge": "👀 GFS WATCH",
+      "gfs_action": "⏳ GFS WATCHLIST (Waiting for Son Dip)",
+      "gfs_score": 65,
+      "has_bull_div": false,
+      "has_bear_div": false,
+      "candle_pattern": "STANDARD GREEN 🟢",
+      "bb_middle": 4136.1,
+      "bb_lower": 3972.2
     },
     {
       "Symbol": "ULTRACEMCO",
@@ -5882,7 +7258,15 @@
       "plus_di": 15.5,
       "minus_di": 18.3,
       "di_diff": 2.7,
-      "span_20d": 7.1
+      "span_20d": 7.1,
+      "gfs_badge": "⚪ NEUTRAL",
+      "gfs_action": "⏳ CONSOLIDATION",
+      "gfs_score": 43,
+      "has_bull_div": false,
+      "has_bear_div": false,
+      "candle_pattern": "STANDARD GREEN 🟢",
+      "bb_middle": 11125.1,
+      "bb_lower": 10688.9
     },
     {
       "Symbol": "VEDL",
@@ -5916,7 +7300,15 @@
       "plus_di": 19.0,
       "minus_di": 27.4,
       "di_diff": 8.4,
-      "span_20d": 9.6
+      "span_20d": 9.6,
+      "gfs_badge": "⚪ NEUTRAL",
+      "gfs_action": "⏳ CONSOLIDATION",
+      "gfs_score": 37,
+      "has_bull_div": false,
+      "has_bear_div": false,
+      "candle_pattern": "STANDARD GREEN 🟢",
+      "bb_middle": 251.0,
+      "bb_lower": 241.2
     },
     {
       "Symbol": "WIPRO",
@@ -5950,7 +7342,15 @@
       "plus_di": 38.6,
       "minus_di": 13.2,
       "di_diff": 25.5,
-      "span_20d": 15.7
+      "span_20d": 15.7,
+      "gfs_badge": "👀 GFS WATCH",
+      "gfs_action": "⏳ GFS WATCHLIST (Waiting for Son Dip)",
+      "gfs_score": 73,
+      "has_bull_div": false,
+      "has_bear_div": false,
+      "candle_pattern": "STANDARD GREEN 🟢",
+      "bb_middle": 186.2,
+      "bb_lower": 178.9
     },
     {
       "Symbol": "UPL",
@@ -5984,7 +7384,15 @@
       "plus_di": 26.1,
       "minus_di": 29.0,
       "di_diff": 2.9,
-      "span_20d": 19.4
+      "span_20d": 19.4,
+      "gfs_badge": "⚪ NEUTRAL",
+      "gfs_action": "⏳ CONSOLIDATION",
+      "gfs_score": 37,
+      "has_bull_div": false,
+      "has_bear_div": false,
+      "candle_pattern": "STANDARD GREEN 🟢",
+      "bb_middle": 545.3,
+      "bb_lower": 524.0
     },
     {
       "Symbol": "ZEEL",
@@ -6018,7 +7426,15 @@
       "plus_di": 13.7,
       "minus_di": 29.4,
       "di_diff": 15.7,
-      "span_20d": 16.5
+      "span_20d": 16.5,
+      "gfs_badge": "⚪ NEUTRAL",
+      "gfs_action": "⏳ CONSOLIDATION",
+      "gfs_score": 22,
+      "has_bull_div": false,
+      "has_bear_div": false,
+      "candle_pattern": "STANDARD GREEN 🟢",
+      "bb_middle": 73.3,
+      "bb_lower": 70.4
     },
     {
       "Symbol": "VOLTAS",
@@ -6052,7 +7468,15 @@
       "plus_di": 10.4,
       "minus_di": 28.6,
       "di_diff": 18.2,
-      "span_20d": 14.2
+      "span_20d": 14.2,
+      "gfs_badge": "⚪ NEUTRAL",
+      "gfs_action": "⏳ CONSOLIDATION",
+      "gfs_score": 37,
+      "has_bull_div": false,
+      "has_bear_div": false,
+      "candle_pattern": "STANDARD GREEN 🟢",
+      "bb_middle": 1049.7,
+      "bb_lower": 1008.5
     },
     {
       "Symbol": "ZYDUSLIFE",
@@ -6086,7 +7510,15 @@
       "plus_di": 18.4,
       "minus_di": 19.1,
       "di_diff": 0.7,
-      "span_20d": 11.3
+      "span_20d": 11.3,
+      "gfs_badge": "⚪ NEUTRAL",
+      "gfs_action": "⏳ CONSOLIDATION",
+      "gfs_score": 42,
+      "has_bull_div": false,
+      "has_bear_div": false,
+      "candle_pattern": "STANDARD GREEN 🟢",
+      "bb_middle": 1145.5,
+      "bb_lower": 1100.5
     }
   ]
 }
