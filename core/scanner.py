@@ -38,8 +38,10 @@ from .option_seller_engine import (
     format_option_selling_setup_alert,
     format_overnight_health_check_alert
 )
+from .gfs_engine import evaluate_gfs_confluence
 from .alerts import (
     send_telegram_alert,
+    format_gfs_swing_alert,
     format_pre_r3_radar_alert,
     format_pre_put_r3_radar_alert,
     format_r3_radar_alert,
@@ -155,6 +157,9 @@ def analyze_stock(sym):
         
         curr_p = d_curr['Close']
         pct_chg = ((curr_p - d_prev['Close']) / d_prev['Close']) * 100
+        
+        # GFS Multi-Timeframe Confluence & Scipy RSI Divergence Engine
+        gfs_eval = evaluate_gfs_confluence(df_m, df_w, df_d, curr_p)
         strike_step = 20 if curr_p < 500 else (50 if curr_p < 2500 else 100)
         
         if is_sniper_short:
@@ -457,6 +462,18 @@ def analyze_stock(sym):
             "wing_pe_strike": wing_pe_strike,
             "is_dead_consolidation": is_dead_consolidation,
             "is_earnings_blackout": is_earnings_blackout,
+            "gfs_score": gfs_eval.get("gfs_score", 0),
+            "gfs_action": gfs_eval.get("gfs_action", "⚪ NEUTRAL"),
+            "gfs_badge": gfs_eval.get("gfs_badge", "⚪ NEUTRAL"),
+            "is_gfs_high_confidence": gfs_eval.get("is_gfs_high_confidence", False),
+            "has_bull_div": gfs_eval.get("has_bull_div", False),
+            "bull_div_bars": gfs_eval.get("bull_div_bars"),
+            "has_bear_div": gfs_eval.get("has_bear_div", False),
+            "bear_div_bars": gfs_eval.get("bear_div_bars"),
+            "bb_middle": gfs_eval.get("bb_middle", 0.0),
+            "bb_lower": gfs_eval.get("bb_lower", 0.0),
+            "bb_support_active": gfs_eval.get("bb_support_active", False),
+            "candle_pattern": gfs_eval.get("candle_pattern", "STANDARD GREEN 🟢"),
             "earnings_badge": earnings_info.get("status_badge", "🟢 SAFE"),
             "is_r3_radar": is_r3_radar,
             "is_pre_r3_radar": is_pre_r3_radar,
@@ -975,6 +992,15 @@ def run_scan_cycle(force=False, watchlist=None):
             send_telegram_alert(ha_alert_text)
             state[ha_alert_key] = True
             new_alerts.append(f"{s_name}: HEIKIN ASHI REVERSAL")
+
+        # 0.3 GFS Swing Multibagger Dip Alert (Grandfather-Father-Son 3-TF Confluence)
+        gfs_alert_key = f"{s_name}_GFS_SWING_{today_str}"
+        if res.get('is_gfs_high_confidence') and not state.get(gfs_alert_key):
+            gfs_alert_text = format_gfs_swing_alert(res)
+            print(f"Sending GFS SWING MULTIBAGGER alert for {s_name}")
+            send_telegram_alert(gfs_alert_text)
+            state[gfs_alert_key] = True
+            new_alerts.append(f"{s_name}: GFS SWING MULTIBAGGER")
 
         # 1. Confirmed Sniper Buy (Includes exact OTM Call Strike & Option R3 level)
         if is_sniper_buy and (prev_sig != curr_sig) and not state.get(r3_confirmed_key):

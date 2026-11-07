@@ -378,3 +378,43 @@ def format_exit_alert(res_or_trade, reason: str = "Exit Condition Met"):
         f"━━━━━━━━━━━━━━━━━━━━━\n"
         f"⏰ <i>{now_str}</i> | 🤖 Patel Trading Bot"
     )
+
+def format_gfs_swing_alert(res):
+    """Formats GFS Swing & Positional Multibagger Dip Alert (Grandfather, Father, Son Confluence)."""
+    s_name = res['symbol']
+    now_str = get_ist_now().strftime('%d %b %Y | %H:%M:%S IST')
+    p = float(res['price'])
+    rsi_m = float(res.get('rsi_m', 60.0))
+    rsi_w = float(res.get('rsi_w', 60.0))
+    rsi_d = float(res.get('rsi_d', 42.0))
+    c_pat = res.get('candle_pattern', 'HAMMER 🔨')
+    bb_m = float(res.get('bb_middle', p))
+    div_txt = "\n• 💥 <b>RSI Bullish Divergence:</b> સંસ્થાકીય એક્યુમ્યુલેશન કન્ફર્મ!" if res.get('has_bull_div') else ""
+    sl = round(min(res.get('bb_lower', p * 0.95), p * 0.96), 2)
+    risk_pct = round(((p - sl) / p) * 100, 1)
+    t1 = round(p * 1.08, 2)
+    t2 = round(p * 1.15, 2)
+    t3 = round(p * 1.25, 2)
+    return (
+        f"🏔️ <b>GFS SWING MULTIBAGGER DIP BUY! (Grandfather-Father-Son)</b> 🏔️\n"
+        f"━━━━━━━━━━━━━━━━━━━━━\n"
+        f"📌 <b>સ્ટોક:</b> {s_name} (Cash / Delivery / Swing)\n"
+        f"💰 <b>ખરીદ ભાવ (LTP):</b> ₹{p:.2f} ({res['change']:+.2f}%)\n"
+        f"🎯 <b>સેટઅપ:</b> {res.get('gfs_action', 'HIGH-CONFIDENCE GFS ENTRY')}\n"
+        f"━━━━━━━━━━━━━━━━━━━━━\n"
+        f"🛡️ <b>Stop Loss (Swing):</b> ₹{sl:.2f} (-{risk_pct}%)\n"
+        f"🎯 <b>Target 1 (શોર્ટ ટર્મ):</b> ₹{t1:.2f} (+8.0%)\n"
+        f"🎯 <b>Target 2 (સ્વિંગ ટાર્ગેટ):</b> ₹{t2:.2f} (+15.0%)\n"
+        f"🚀 <b>Target 3 (પોઝિશનલ જેકપોટ):</b> ₹{t3:.2f} (+25.0%)\n"
+        f"━━━━━━━━━━━━━━━━━━━━━\n"
+        f"📊 <b>GFS Multi-Timeframe Matrix:</b>\n"
+        f"   • 👴 <b>Grandfather (Monthly RSI):</b> {rsi_m:.1f} (તેજી ✅)\n"
+        f"   • 👨 <b>Father (Weekly RSI):</b> {rsi_w:.1f} (તેજી ✅)\n"
+        f"   • 👦 <b>Son (Daily RSI Dip):</b> {rsi_d:.1f} (સસ્તો સપોર્ટ ઝોન ✅)\n"
+        f"   • 🛡️ <b>Bollinger Support:</b> 20 SMA ₹{bb_m:.1f} નજીક | <b>કેન્ડલ:</b> {c_pat}"
+        f"{div_txt}\n"
+        f"━━━━━━━━━━━━━━━━━━━━━\n"
+        f"💡 <b>ટ્રેડિંગ સલાહ:</b> આ કેશ ડિલિવરી / પોઝિશનલ સ્વિંગ ટ્રેડ છે. ૫૦% કેશમાં અથવા ડીપ In-The-Money (ITM) કોલમાં ૧ થી ૩ અઠવાડિયા માટે હોલ્ડ કરી શકાય.\n"
+        f"⏰ <i>{now_str}</i> | 🤖 Patel Trading Bot"
+    )
+
