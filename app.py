@@ -1146,6 +1146,74 @@ def fetch_scanner_data(clean_sym):
         except Exception:
             return None
 
+def scan_gfs_stock(sym):
+    """
+    Dedicated GFS Multi-Timeframe Evaluator for Swing & Positional Radar.
+    Evaluates Monthly RSI (Grandfather), Weekly RSI (Father), Daily RSI Dip (Son),
+    Bollinger Bands 20 SMA Support, and Scipy Bullish Divergence.
+    """
+    try:
+        from core.option_r3_engine import is_index_symbol, normalize_symbol_and_exchange
+        from core.gfs_engine import evaluate_gfs_confluence
+        is_idx = is_index_symbol(sym)
+        clean_norm, exchange, display_name = normalize_symbol_and_exchange(sym)
+        final_sym = display_name if is_idx else clean_norm
+
+        data = fetch_scanner_data(sym)
+        if not data:
+            return None
+        df_d, df_w, df_m, _ = data
+        if df_d.empty or len(df_d) < 30:
+            return None
+
+        curr_p = float(df_d['Close'].iloc[-1])
+        prev_p = float(df_d['Close'].iloc[-2]) if len(df_d) >= 2 else curr_p
+        pct_chg = ((curr_p - prev_p) / prev_p) * 100
+
+        # Calculate Hilega-Milega on df_m, df_w, df_d if RSI_9 not present
+        if 'RSI_9' not in df_d.columns:
+            from core.indicators import calculate_hilega_milega
+            df_d = calculate_hilega_milega(df_d)
+            df_w = calculate_hilega_milega(df_w)
+            df_m = calculate_hilega_milega(df_m)
+
+        gfs_res = evaluate_gfs_confluence(df_m, df_w, df_d, curr_p)
+
+        # Risk & Targets for Swing Trading
+        sl = round(min(gfs_res.get('bb_lower', curr_p * 0.95), curr_p * 0.96), 2)
+        risk_pct = round(((curr_p - sl) / curr_p) * 100, 1)
+        t1 = round(curr_p * 1.08, 2)
+        t2 = round(curr_p * 1.15, 2)
+        t3 = round(curr_p * 1.25, 2)
+
+        return {
+            "Symbol": final_sym,
+            "FullSymbol": sym if is_idx else f"{clean_norm}.NS",
+            "Price": round(curr_p, 2),
+            "Change": round(pct_chg, 2),
+            "RSI_M": gfs_res["rsi_m"],
+            "RSI_W": gfs_res["rsi_w"],
+            "RSI_D": gfs_res["rsi_d"],
+            "BB_Middle": gfs_res["bb_middle"],
+            "BB_Lower": gfs_res["bb_lower"],
+            "BB_Support": "✅ સપોર્ટ નજીક" if gfs_res["bb_support_active"] else "❌ દૂર",
+            "Candle_Pattern": gfs_res["candle_pattern"],
+            "Has_Bull_Div": gfs_res["has_bull_div"],
+            "Has_Bear_Div": gfs_res["has_bear_div"],
+            "GFS_Action": gfs_res["gfs_action"],
+            "GFS_Badge": gfs_res["gfs_badge"],
+            "GFS_Score": gfs_res["gfs_score"],
+            "StopLoss": sl,
+            "RiskPct": risk_pct,
+            "Target1": t1,
+            "Target2": t2,
+            "Target3": t3,
+            "Is_High_Confidence": gfs_res["is_gfs_high_confidence"]
+        }
+    except Exception:
+        return None
+
+
 def scan_stock(sym):
     try:
         from core.option_r3_engine import is_index_symbol, normalize_symbol_and_exchange, get_accurate_strike_step
@@ -1473,6 +1541,7 @@ NAV_OPTIONS = [
     "📊 Market Screener (ઓટોમેટિક સ્કેનર)",
     "🤖 Fyers Auto-Algo Cockpit (ઓટો-આલ્ગો ટ્રેડિંગ)",
     "🚀 Heikin Ashi Trend Rider (બ્રિજેશ ભાટિયા)",
+    "🏔️ GFS Multi-Timeframe Swing (ગ્રાન્ડફાધર-ફાધર-સન)",
     "🕯️ Single Stock (ડીપ કેન્ડલસ્ટિક ચાર્ટ્સ)",
     "🛡️ Risk Guardian (લાઈવ પોઝિશન & મોનિટર)",
     "🎯 Melting Straddles (ડૉ. ગાંગુલી 0DTE)",
@@ -3268,6 +3337,206 @@ if selected_module == "🚀 Heikin Ashi Trend Rider (બ્રિજેશ ભ�
                     use_container_width=True,
                     key=f"dl_raw_csv_{snap_id}"
                 )
+
+
+# =============================================================
+# TAB 2.5: GFS MULTI-TIMEFRAME SWING SCANNER (GRANDFATHER, FATHER, SON)
+# =============================================================
+if selected_module == "🏔️ GFS Multi-Timeframe Swing (ગ્રાન્ડફાધર-ફાધર-સન)":
+    gfs_header_html = (
+        '<div style="background: linear-gradient(135deg, rgba(30, 41, 59, 0.85) 0%, rgba(15, 23, 42, 0.95) 100%); '
+        'border: 1px solid rgba(255,255,255,0.08); border-radius: 16px; padding: 22px 26px; margin-bottom: 22px; '
+        'box-shadow: 0 8px 25px rgba(0,0,0,0.3);">'
+        '<div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 14px;">'
+        '<div>'
+        '<div style="font-size: 22px; font-weight: 800; color: #FFFFFF; display: flex; align-items: center; gap: 10px;">'
+        '🏔️ GFS MULTI-TIMEFRAME SWING & POSITIONAL SCANNER'
+        '<span style="font-size: 11px; font-weight: 700; background: rgba(56, 189, 248, 0.2); color: #38BDF8; '
+        'border: 1px solid #38BDF8; padding: 3px 10px; border-radius: 9999px;">GRANDFATHER • FATHER • SON</span>'
+        '</div>'
+        '<div style="font-size: 13.5px; color: #94A3B8; margin-top: 6px;">'
+        'Monthly & Weekly RSI >= 60 ટ્રેન્ડ ફિલ્ટર • Daily RSI 37-49 સસ્તો પુલબેક સપોર્ટ • Scipy RSI Bullish Divergence • Bollinger Bands 20 SMA બાઉન્સ'
+        '</div>'
+        '</div>'
+        '<div style="text-align: right;">'
+        '<span style="font-size: 12px; font-weight: 700; color: #10B981; background: rgba(16, 185, 129, 0.12); '
+        'border: 1px solid rgba(16, 185, 129, 0.3); padding: 6px 14px; border-radius: 10px;">'
+        '🎯 Swing Target: +8% | +15% | +25%+'
+        '</span>'
+        '</div>'
+        '</div>'
+        '</div>'
+    )
+    st.html(gfs_header_html)
+
+    # Strategy explanation expander
+    with st.expander("📖 GFS (Grandfather, Father, Son) સિસ્ટમના ૪ સુવર્ણ નિયમો (Strategy Rules & How To Trade)", expanded=False):
+        st.markdown("""
+        1. 👴 **Grandfather (Monthly RSI >= 60 - મોટો ટ્રેન્ડ):** મંથલી ચાર્ટ પર RSI 60 ની ઉપર હોવો જોઈએ. આ દર્શાવે છે કે મોટા સંસ્થાકીય રોકાણકારો (FII / DII) વર્ષોથી આ સ્ટોકમાં ખરીદી કરી રહ્યા છે.
+        2. 👨 **Father (Weekly RSI >= 60 - માધ્યમિક મોમેન્ટમ):** વીકલી ચાર્ટ પર RSI 60 ની ઉપર હોવો જોઈએ. આ દર્શાવે છે કે મધ્યમ ગાળામાં પણ સ્ટોકમાં મજબૂત બુલિશ મોમેન્ટમ અકબંધ છે.
+        3. 👦 **Son (Daily RSI 37-49 - સસ્તો ખરીદ ઝોન):** ડેઇલી ચાર્ટ પર RSI ઘટીને 37 થી 49.5 વચ્ચે આવવો જોઈએ. આને "હેલ્ધી પુલબેક" કહેવાય છે. સારા સ્ટોકમાં સસ્તા ભાવે એન્ટ્રી લેવાની આ શ્રેષ્ઠ તક છે.
+        4. 🛡️ **Bollinger Bands Support & Reversal Trigger:**
+           - સ્ટોકનો ભાવ ડેઇલી ચાર્ટ પર **૨૦ SMA (Middle Band)** અથવા **Lower Band** ના સપોર્ટ ઝોનમાં હોવો જોઈએ.
+           - સપોર્ટ પર **Hammer 🔨** કે **Doji ➕** કેન્ડલ બને અથવા **Bullish Divergence 💥** બને એટલે ૧૦૦% કન્ફર્મ સ્વિંગ બાય એન્ટ્રી!
+        5. 💰 **રિસ્ક અને ટાર્ગેટ્સ:**
+           - **Stop Loss:** સપોર્ટ કેન્ડલનો લો (માત્ર ૪% થી ૫% રિસ્ક).
+           - **Targets:** શોર્ટ-ટર્મ **+૮%**, સ્વિંગ **+૧૫%**, અને પોઝિશનલ જેકપોટ **+૨૫% થી +૩૫%**.
+        """)
+
+    # Controls
+    if "gfs_results" not in st.session_state:
+        st.session_state.gfs_results = None
+
+    with st.container():
+        c_gfs1, c_gfs2, c_gfs3 = st.columns([2.4, 1.6, 1.4])
+        with c_gfs1:
+            gfs_basket_choice = st.selectbox(
+                "સ્કેન કરવા માટે સ્ટોક બાસ્કેટ પસંદ કરો:",
+                options=list(BASKETS.keys()) + ["✍️ Custom Watchlist (પોતાની લિસ્ટ નાખો)"],
+                index=2,
+                key="gfs_basket_select_box"
+            )
+        with c_gfs2:
+            gfs_filter_choice = st.selectbox(
+                "સેટઅપ ફિલ્ટર:",
+                options=[
+                    "બધા પરિણામો (All Analyzed Stocks)",
+                    "💥 માત્ર High-Confidence GFS 3-TF Setups",
+                    "⚡ માત્ર GFS Dip Buys (સપોર્ટ ઝોન)",
+                    "💥 માત્ર RSI Bullish Divergence વાળા"
+                ],
+                index=0,
+                key="gfs_filter_choice_box"
+            )
+        with c_gfs3:
+            st.markdown("<div style='height: 28px;'></div>", unsafe_allow_html=True)
+            gfs_scan_btn = st.button("🚀 Scan GFS Setups Now", type="primary", use_container_width=True, key="btn_gfs_scan")
+
+    # Scanning Action
+    if gfs_scan_btn or st.session_state.gfs_results is None:
+        if "Custom Watchlist" in gfs_basket_choice:
+            tickers_gfs = ["RELIANCE", "TCS", "INFY", "LODHA", "HDFCBANK", "SBIN", "BHARTIARTL", "TRENT"]
+        else:
+            tickers_gfs = BASKETS.get(gfs_basket_choice, DEFAULT_WATCHLIST)
+
+        total_gfs = len(tickers_gfs)
+        gfs_results_list = []
+        progress_gfs = st.progress(0, text="GFS Multi-Timeframe સ્કેનિંગ શરૂ થઈ રહ્યું છે...")
+        with ThreadPoolExecutor(max_workers=6) as executor:
+            future_to_stock = {executor.submit(scan_gfs_stock, sym): sym for sym in tickers_gfs}
+            completed = 0
+            for future in as_completed(future_to_stock):
+                completed += 1
+                progress_gfs.progress(completed / total_gfs, text=f"GFS સ્કેનિંગ પ્રગતિમાં છે... ({completed}/{total_gfs} શેરો)")
+                try:
+                    res = future.result(timeout=10)
+                    if res:
+                        gfs_results_list.append(res)
+                except Exception:
+                    pass
+        progress_gfs.empty()
+        if gfs_results_list:
+            df_gfs_all = pd.DataFrame(gfs_results_list)
+            df_gfs_all = df_gfs_all.sort_values(by=["Is_High_Confidence", "GFS_Score", "Change"], ascending=[False, False, False])
+            st.session_state.gfs_results = df_gfs_all
+
+    # Display Results
+    if st.session_state.gfs_results is not None and not st.session_state.gfs_results.empty:
+        df_gfs_display = st.session_state.gfs_results.copy()
+
+        # Apply user filter
+        if "High-Confidence" in gfs_filter_choice:
+            df_gfs_display = df_gfs_display[df_gfs_display["Is_High_Confidence"] == True]
+        elif "GFS Dip Buys" in gfs_filter_choice:
+            df_gfs_display = df_gfs_display[df_gfs_display["GFS_Badge"].str.contains("DIP BUY|3-TF", na=False)]
+        elif "Bullish Divergence" in gfs_filter_choice:
+            df_gfs_display = df_gfs_display[df_gfs_display["Has_Bull_Div"] == True]
+
+        # Summary Metric Chips
+        total_scanned = len(st.session_state.gfs_results)
+        high_conf_count = int(st.session_state.gfs_results["Is_High_Confidence"].sum())
+        bull_div_count = int(st.session_state.gfs_results["Has_Bull_Div"].sum())
+        dip_count = int(st.session_state.gfs_results["GFS_Badge"].str.contains("DIP", na=False).sum())
+
+        m_col1, m_col2, m_col3, m_col4 = st.columns(4)
+        with m_col1:
+            st.markdown(f'<div class="metric-card"><div class="metric-value">{total_scanned}</div><div class="metric-label">કુલ સ્કેન કરેલા સ્ટોક્સ</div></div>', unsafe_allow_html=True)
+        with m_col2:
+            st.markdown(f'<div class="metric-card"><div class="metric-value" style="color: #34D399;">{high_conf_count}</div><div class="metric-label">💥 High-Confidence GFS Setups</div></div>', unsafe_allow_html=True)
+        with m_col3:
+            st.markdown(f'<div class="metric-card"><div class="metric-value" style="color: #FCD34D;">{bull_div_count}</div><div class="metric-label">💥 RSI Bullish Divergences</div></div>', unsafe_allow_html=True)
+        with m_col4:
+            st.markdown(f'<div class="metric-card"><div class="metric-value" style="color: #60A5FA;">{dip_count}</div><div class="metric-label">⚡ Active GFS Dips</div></div>', unsafe_allow_html=True)
+
+        st.divider()
+
+        # View Selector: Visual Cards or Data Table
+        view_opt = st.radio("ડિસ્પ્લે ફોર્મેટ પસંદ કરો:", options=["🗂️ Visual Strategy Cards (કાર્ડ્સ)", "📊 Pro Data Table (વિગતવાર ટેબલ)"], horizontal=True, key="gfs_view_toggle")
+
+        if "Cards" in view_opt:
+            if df_gfs_display.empty:
+                st.info("પસંદ કરેલા ફિલ્ટરમાં હાલ કોઈ સ્ટોક નથી. કૃપા કરીને ફિલ્ટર બદલો અથવા 'બધા પરિણામો' પસંદ કરો.")
+            else:
+                card_cols = st.columns(3)
+                for idx, row in df_gfs_display.reset_index(drop=True).iterrows():
+                    c_idx = idx % 3
+                    div_badge = '<span style="font-size: 10px; font-weight: 700; color: #FCD34D; background: rgba(245, 158, 11, 0.2); padding: 2px 7px; border-radius: 6px; border: 1px solid rgba(245, 158, 11, 0.4);">💥 Bullish Div</span>' if row["Has_Bull_Div"] else ""
+                    gfs_badge = f'<span style="font-size: 10px; font-weight: 700; color: #34D399; background: rgba(16, 185, 129, 0.15); padding: 2px 7px; border-radius: 6px; border: 1px solid rgba(16, 185, 129, 0.3);">{row["GFS_Badge"]}</span>'
+                    chg_color = "#34D399" if row["Change"] >= 0 else "#F87171"
+                    chg_bg = "rgba(16, 185, 129, 0.15)" if row["Change"] >= 0 else "rgba(239, 68, 68, 0.15)"
+                    chg_arrow = "▲" if row["Change"] >= 0 else "▼"
+
+                    gfs_card_html = (
+                        f'<div class="stock-card" style="border: 1px solid rgba(56, 189, 248, 0.2);">'
+                        f'<div style="display: flex; justify-content: space-between; align-items: flex-start;">'
+                        f'<div><div style="font-size: 22px; font-weight: 800; color: #FFFFFF; font-family: monospace;">{row["Symbol"]}</div>'
+                        f'<div style="display: flex; gap: 6px; margin-top: 4px;">{gfs_badge}{div_badge}</div></div>'
+                        f'<div style="text-align: right;"><div style="font-size: 20px; font-weight: 800; color: #F8FAFC; font-family: monospace;">₹{row["Price"]:.2f}</div>'
+                        f'<span style="font-size: 12px; font-weight: 700; color: {chg_color}; background: {chg_bg}; padding: 2px 8px; border-radius: 6px;">{chg_arrow} {row["Change"]:+.2f}%</span></div>'
+                        f'</div>'
+                        f'<div style="margin: 14px 0 10px 0; background: rgba(15, 23, 42, 0.7); border: 1px solid rgba(255, 255, 255, 0.06); border-radius: 8px; padding: 10px;">'
+                        f'<div style="font-size: 11.5px; color: #94A3B8; display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; text-align: center;">'
+                        f'<div>👴 <b>Monthly:</b><br><span style="color: #38BDF8; font-weight: 700;">{row["RSI_M"]:.1f}</span></div>'
+                        f'<div>👨 <b>Weekly:</b><br><span style="color: #38BDF8; font-weight: 700;">{row["RSI_W"]:.1f}</span></div>'
+                        f'<div>👦 <b>Daily Dip:</b><br><span style="color: #34D399; font-weight: 700;">{row["RSI_D"]:.1f}</span></div>'
+                        f'</div>'
+                        f'</div>'
+                        f'<div style="font-size: 11px; color: #94A3B8; margin-bottom: 8px; display: flex; flex-wrap: wrap; gap: 6px;">'
+                        f'<span style="background: rgba(30, 41, 59, 0.6); padding: 3px 8px; border-radius: 5px;">🛡️ 20 SMA: ₹{row["BB_Middle"]:.1f} ({row["BB_Support"]})</span>'
+                        f'<span style="background: rgba(30, 41, 59, 0.6); padding: 3px 8px; border-radius: 5px;">🕯️ કેન્ડલ: {row["Candle_Pattern"]}</span>'
+                        f'</div>'
+                        f'<div style="background: rgba(16, 185, 129, 0.08); border: 1px solid rgba(16, 185, 129, 0.2); border-radius: 8px; padding: 8px 10px; font-size: 11px; color: #D1FAE5;">'
+                        f'🛡️ <b>Swing SL:</b> ₹{row["StopLoss"]:.2f} (-{row["RiskPct"]}%)<br>'
+                        f'🎯 <b>Target 1 (+8%):</b> ₹{row["Target1"]:.2f} | 🎯 <b>Target 2 (+15%):</b> ₹{row["Target2"]:.2f}<br>'
+                        f'🚀 <b>Target 3 (+25% Multibagger):</b> ₹{row["Target3"]:.2f}'
+                        f'</div>'
+                        f'</div>'
+                    )
+                    with card_cols[c_idx]:
+                        st.html(gfs_card_html)
+        else:
+            # Data Table
+            table_gfs_cols = [
+                "Symbol", "Price", "Change", "GFS_Badge", "GFS_Action", "RSI_M", "RSI_W", "RSI_D",
+                "BB_Support", "Candle_Pattern", "Has_Bull_Div", "StopLoss", "Target1", "Target2", "Target3"
+            ]
+            st.dataframe(
+                df_gfs_display[table_gfs_cols],
+                use_container_width=True,
+                hide_index=True,
+                column_config={
+                    "Price": st.column_config.NumberColumn("Price (₹)", format="₹%.2f"),
+                    "Change": st.column_config.NumberColumn("Change (%)", format="%+.2f%%"),
+                    "RSI_M": st.column_config.NumberColumn("Monthly RSI", format="%.1f"),
+                    "RSI_W": st.column_config.NumberColumn("Weekly RSI", format="%.1f"),
+                    "RSI_D": st.column_config.NumberColumn("Daily RSI", format="%.1f"),
+                    "StopLoss": st.column_config.NumberColumn("Swing SL (₹)", format="₹%.2f"),
+                    "Target1": st.column_config.NumberColumn("Target 1 (+8%)", format="₹%.2f"),
+                    "Target2": st.column_config.NumberColumn("Target 2 (+15%)", format="₹%.2f"),
+                    "Target3": st.column_config.NumberColumn("Target 3 (+25%)", format="₹%.2f")
+                }
+            )
+
 
 # =============================================================
 # TAB 3: SINGLE STOCK DEEP CANDLESTICK ANALYSIS
