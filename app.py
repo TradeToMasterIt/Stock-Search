@@ -2062,7 +2062,7 @@ if selected_module == "📊 Market Screener (ઓટોમેટિક સ્ક�
                 # OPTION B: Pro Data Table
                 table_cols = [
                     "Symbol", "Price (₹)", "Change (%)", "Signal", "Score",
-                    "Daily HM", "1H Trigger", "pivot_status", "otm_call_strike",
+                    "gfs_badge", "Daily HM", "1H Trigger", "pivot_status", "otm_call_strike",
                     "Target 1 (₹)", "Target 2 (₹)", "Stop Loss (1H)",
                     "1H Vol Ratio", "Daily TC Band"
                 ]
@@ -2072,6 +2072,9 @@ if selected_module == "📊 Market Screener (ઓટોમેટિક સ્ક�
                     width="stretch",
                     hide_index=True,
                     column_config={
+                        "gfs_badge": st.column_config.TextColumn(
+                            "GFS Swing Setup"
+                        ),
                         "Score": st.column_config.NumberColumn(
                             "Score (%)",
                             format="%d%%"
