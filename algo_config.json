@@ -1,5 +1,5 @@
 {
-  "is_enabled": false,
+  "is_enabled": true,
   "mode": "PAPER",
   "trading_basket": "ALL",
   "trading_direction": "BOTH",

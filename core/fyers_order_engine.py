@@ -100,7 +100,7 @@ def get_lot_size(symbol: str) -> int:
 # Configuration Manager
 # -------------------------------------------------------------
 DEFAULT_ALGO_CONFIG = {
-    "is_enabled": False,
+    "is_enabled": True,
     "mode": "PAPER",                     # "PAPER" (Demo) or "LIVE" (Fyers Real Broker)
     "trading_basket": "ALL",            # "ALL", "INDICES", or "MOMENTUM"
     "trading_direction": "BOTH",        # "BOTH", "CALL_ONLY", or "PUT_ONLY"
@@ -311,6 +311,16 @@ def execute_algo_entry(scan_res: Dict[str, Any]) -> Tuple[bool, str]:
     elif trading_dir == "PUT_ONLY" and opt_type == "CE":
         return False, f"Skipped {sym}: Algo is restricted to PUT ONLY in settings"
 
+    # Safety Check 5.3: Anti-FOMO Chasing Guard (Never chase >8% above R3)
+    if scan_res.get("is_chasing", False) or (opt_type == "PE" and scan_res.get("is_put_chasing", False)):
+        return False, f"Skipped {sym}: Price is overextended (>8% above Option R3 level)"
+
+    # Safety Check 5.4: Late Session (14:15 - 15:00 IST) Volume Guard
+    if curr_time_str > "14:15" and not scan_res.get("is_gamma_blast", False):
+        v_rat = float(scan_res.get("vol_5m", scan_res.get("vol_ratio", 1.0)))
+        if v_rat < 1.5:
+            return False, f"Skipped {sym}: Post-14:15 non-gamma trade requires >= 1.5x volume (current: {v_rat:.1f}x)"
+
     # Select exact Call or Put symbols and levels
     if opt_type == "PE":
         fyers_sym = scan_res.get("opt_put_fyers_symbol", scan_res.get("opt_fyers_symbol", ""))
@@ -323,12 +333,20 @@ def execute_algo_entry(scan_res: Dict[str, Any]) -> Tuple[bool, str]:
         fyers_sym = scan_res.get("opt_fyers_symbol", "")
         contract_name = scan_res.get("opt_contract_name", f"{sym} OTM Call")
         entry_price = float(scan_res.get("opt_ltp", 0.0))
-        stop_loss = float(scan_res.get("stop_loss", entry_price * 0.80))
-        target_1 = float(scan_res.get("t1", entry_price * 1.35))
-        target_2 = float(scan_res.get("t2", entry_price * 1.70))
+        stop_loss = float(scan_res.get("opt_sl", entry_price * 0.75))
+        target_1 = float(scan_res.get("opt_t1", entry_price * 1.35))
+        target_2 = float(scan_res.get("opt_t2", entry_price * 1.70))
 
     if entry_price <= 0:
         entry_price = float(scan_res.get("price", 0.0))
+
+    # Ensure option stoploss and targets are ALWAYS calibrated to option entry price (never spot stock/index price)
+    if stop_loss >= entry_price or stop_loss <= 0:
+        stop_loss = round(entry_price * 0.75, 2)
+    if target_1 <= entry_price or target_1 > entry_price * 2.5:
+        target_1 = round(entry_price * 1.35, 2)
+    if target_2 <= target_1 or target_2 > entry_price * 3.5:
+        target_2 = round(entry_price * 1.70, 2)
 
     # Safety Check 5.5: Basket Filter (All / Indices / Momentum)
     basket_choice = cfg.get("trading_basket", "ALL")

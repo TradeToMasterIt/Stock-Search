@@ -38,8 +38,12 @@ from .option_seller_engine import (
     format_option_selling_setup_alert,
     format_overnight_health_check_alert
 )
+from .gfs_engine import evaluate_gfs_confluence
 from .alerts import (
     send_telegram_alert,
+    format_gfs_swing_alert,
+    format_pre_r3_radar_alert,
+    format_pre_put_r3_radar_alert,
     format_r3_radar_alert,
     format_100_confirmed_buy_alert,
     format_100_confirmed_put_alert,
@@ -153,6 +157,9 @@ def analyze_stock(sym):
         
         curr_p = d_curr['Close']
         pct_chg = ((curr_p - d_prev['Close']) / d_prev['Close']) * 100
+        
+        # GFS Multi-Timeframe Confluence & Scipy RSI Divergence Engine
+        gfs_eval = evaluate_gfs_confluence(df_m, df_w, df_d, curr_p)
         strike_step = 20 if curr_p < 500 else (50 if curr_p < 2500 else 100)
         
         if is_sniper_short:
@@ -234,32 +241,44 @@ def analyze_stock(sym):
                 (d_hm_bull or pct_chg >= 2.0)
             )
 
-        # 5-Minute Fast Sniper Sweet Spot RSI & Candle Rejection Analysis (for candidate setups)
-        # Primary: 5-minute chart for early, timely option entry before gamma blast escapes.
-        # Fallback: 15-minute chart if 5m data is temporarily sparse.
+        # Ultra-Fast Candle Sweet Spot RSI, Direction & Rejection Analysis (2m/3m -> 5m -> 15m)
+        # Primary: 2m/3m ultra-fast chart for timely option entry before gamma blast escapes.
+        # Secondary: 5-minute chart; Fallback: 15-minute chart.
         m_rsi = float(h1_curr['RSI_9'])
         m_prev_rsi = float(h1_prev['RSI_9'])
         m_rsi_slope = round(m_rsi - m_prev_rsi, 2)
         m_vol_ratio = h1_vol_ratio
         is_wick_rejected = False
         timeframe_used = "1H"
+        is_candle_green = bool(h1_curr['Close'] >= h1_curr['Open'])
+        is_candle_red = bool(h1_curr['Close'] <= h1_curr['Open'])
         
         is_candidate_bear = bool(is_sniper_short or (s1_val > 0 and curr_p <= s1_val) or (pct_chg <= -0.8))
         is_candidate = bool(is_sniper_buy or is_r3_radar or (curr_p >= r1_val) or (pct_chg >= 0.8) or is_candidate_bear)
         is_lower_wick_rejected = False
         if is_candidate:
             try:
-                # 1. Try 5-minute candles first (3 days of 5m data)
+                # 1. Try 2m/3m ultra-fast intraday candles first (2 days data)
                 df_intra = None
                 try:
-                    df_5m = t.history(period="3d", interval="5m").dropna(subset=subset_cols)
-                    if df_5m is not None and not df_5m.empty and len(df_5m) >= 20:
-                        df_intra = df_5m
-                        timeframe_used = "5m"
+                    df_2m = t.history(period="2d", interval="2m").dropna(subset=subset_cols)
+                    if df_2m is not None and not df_2m.empty and len(df_2m) >= 20:
+                        df_intra = df_2m
+                        timeframe_used = "3m"
                 except Exception:
                     df_intra = None
+
+                # 2. Try 5-minute candles if 2m is not available (3 days data)
+                if df_intra is None or df_intra.empty or len(df_intra) < 20:
+                    try:
+                        df_5m = t.history(period="3d", interval="5m").dropna(subset=subset_cols)
+                        if df_5m is not None and not df_5m.empty and len(df_5m) >= 20:
+                            df_intra = df_5m
+                            timeframe_used = "5m"
+                    except Exception:
+                        df_intra = None
                 
-                # 2. Fallback to 15-minute if 5m is not available
+                # 3. Fallback to 15-minute if 5m is not available
                 if df_intra is None or df_intra.empty or len(df_intra) < 20:
                     try:
                         df_15m = t.history(period="5d", interval="15m").dropna(subset=subset_cols)
@@ -280,11 +299,15 @@ def analyze_stock(sym):
                     m_rsi_slope = round(m_rsi - m_prev_rsi, 2)
                     m_vol_ratio = float(c_intra.get('Vol_Ratio', 1.0))
                     
-                    # Upper wick rejection check (Rejection at R2/R3 barrier)
+                    # Candle Color & Span Analysis (Mandates Green for CE / Red for PE)
                     c_h = float(c_intra['High'])
                     c_l = float(c_intra['Low'])
                     c_o = float(c_intra['Open'])
                     c_c = float(c_intra['Close'])
+                    is_candle_green = bool(c_c >= c_o)
+                    is_candle_red = bool(c_c <= c_o)
+
+                    # Upper wick rejection check (Rejection at R2/R3 barrier)
                     total_bar_span = c_h - c_l
                     upper_wick = c_h - max(c_o, c_c)
                     if total_bar_span > 0:
@@ -298,19 +321,39 @@ def analyze_stock(sym):
             except Exception:
                 pass
 
-        # Golden RSI Sweet Spot Filter (58 to 74 with Positive Slope & No Upper Wick Rejection)
-        vol_sweet_confirmed = True if is_index else (m_vol_ratio >= 1.2 or h1_vol_ratio >= 1.3)
+        # Intraday Timing & Institutional Volume Guard:
+        # - Post-15:00 IST: Fresh entries BLOCKED (30m to close, delivery/liquidity hazard)
+        # - 14:15 - 15:00 IST: 0DTE Gamma Blast on expiry days ALLOWED; non-gamma requires Vol >= 1.5x
+        # - Pre-14:15 IST: Strict Base Volume >= 1.0x (Eliminates 0.1x dead volume traps like CROMPTON)
+        now_ist = get_ist_now()
+        curr_min_val = now_ist.hour * 60 + now_ist.minute
+        time_1415 = 14 * 60 + 15
+        time_1500 = 15 * 60
+        is_after_1415 = bool(curr_min_val >= time_1415)
+        is_after_1500 = bool(curr_min_val >= time_1500)
+        is_gamma_blast = opt_info.get("is_gamma_blast", False)
+
+        if is_after_1500:
+            vol_sweet_confirmed = False
+        elif is_after_1415:
+            vol_sweet_confirmed = True if is_index else (is_gamma_blast or m_vol_ratio >= 1.5)
+        else:
+            vol_sweet_confirmed = True if is_index else (m_vol_ratio >= 1.0)
+
+        # Golden RSI Sweet Spot Filter (58 to 74 with Positive Slope, Green Candle & Strict Volume)
         is_r3_rsi_confirmed = bool(
             (58.0 <= m_rsi <= 74.0) and
             (m_rsi_slope >= -0.5) and
             (not is_wick_rejected) and
+            is_candle_green and
             vol_sweet_confirmed
         )
-        # Bearish Sweet Spot Filter (26 to 42 with Downward Momentum & No Lower Wick Rejection)
+        # Bearish Sweet Spot Filter (26 to 42 with Downward Momentum, Red Candle & Strict Volume)
         is_put_rsi_confirmed = bool(
             (26.0 <= m_rsi <= 42.0) and
             (m_rsi_slope <= 0.5) and
             (not is_lower_wick_rejected) and
+            is_candle_red and
             vol_sweet_confirmed
         )
 
@@ -363,6 +406,10 @@ def analyze_stock(sym):
             except Exception:
                 pass
         
+        is_pre_r3_radar = bool(opt_analysis.get("is_pre_r3_radar", False)) if opt_analysis else False
+        is_chasing = bool(opt_analysis.get("is_chasing", False)) if opt_analysis else False
+        is_pre_put_r3_radar = bool(opt_put_analysis.get("is_pre_r3_radar", False)) if opt_put_analysis else False
+        is_put_chasing = bool(opt_put_analysis.get("is_chasing", False)) if opt_put_analysis else False
         is_gamma_blast = opt_analysis.get("is_gamma_blast", False) if opt_analysis else opt_info.get("is_gamma_blast", False)
 
         # Heikin Ashi Brijesh Bhatia System
@@ -415,8 +462,24 @@ def analyze_stock(sym):
             "wing_pe_strike": wing_pe_strike,
             "is_dead_consolidation": is_dead_consolidation,
             "is_earnings_blackout": is_earnings_blackout,
+            "gfs_score": gfs_eval.get("gfs_score", 0),
+            "gfs_action": gfs_eval.get("gfs_action", "⚪ NEUTRAL"),
+            "gfs_badge": gfs_eval.get("gfs_badge", "⚪ NEUTRAL"),
+            "is_gfs_high_confidence": gfs_eval.get("is_gfs_high_confidence", False),
+            "has_bull_div": gfs_eval.get("has_bull_div", False),
+            "bull_div_bars": gfs_eval.get("bull_div_bars"),
+            "has_bear_div": gfs_eval.get("has_bear_div", False),
+            "bear_div_bars": gfs_eval.get("bear_div_bars"),
+            "bb_middle": gfs_eval.get("bb_middle", 0.0),
+            "bb_lower": gfs_eval.get("bb_lower", 0.0),
+            "bb_support_active": gfs_eval.get("bb_support_active", False),
+            "candle_pattern": gfs_eval.get("candle_pattern", "STANDARD GREEN 🟢"),
             "earnings_badge": earnings_info.get("status_badge", "🟢 SAFE"),
             "is_r3_radar": is_r3_radar,
+            "is_pre_r3_radar": is_pre_r3_radar,
+            "is_chasing": is_chasing,
+            "is_pre_put_r3_radar": is_pre_put_r3_radar,
+            "is_put_chasing": is_put_chasing,
             "otm_call_strike": otm_call_strike,
             "r1": r1_val,
             "r2": r2_val,
@@ -438,6 +501,9 @@ def analyze_stock(sym):
             "opt_contract_name": opt_contract_name,
             "opt_fyers_symbol": opt_fyers_symbol,
             "opt_ltp": opt_ltp,
+            "opt_sl": round(opt_ltp * 0.75, 2) if opt_ltp > 0 else 0.0,
+            "opt_t1": round(opt_ltp * 1.35, 2) if opt_ltp > 0 else 0.0,
+            "opt_t2": round(opt_ltp * 1.70, 2) if opt_ltp > 0 else 0.0,
             "opt_r3": opt_r3_val,
             "is_option_r3_crossed": is_option_r3_crossed,
             "rsi_5m": round(m_rsi, 1),
@@ -445,6 +511,8 @@ def analyze_stock(sym):
             "rsi_5m_slope": round(m_rsi_slope, 1),
             "rsi_15m_slope": round(m_rsi_slope, 1),
             "is_r3_rsi_confirmed": is_r3_rsi_confirmed,
+            "is_candle_green": is_candle_green,
+            "is_candle_red": is_candle_red,
             "is_5m_wick_rejected": is_wick_rejected,
             "is_15m_wick_rejected": is_wick_rejected,
             "vol_5m": round(m_vol_ratio, 1),
@@ -822,8 +890,26 @@ def run_scan_cycle(force=False, watchlist=None):
         is_buy = "BUY" in curr_sig or "BULLISH" in curr_sig
         is_sell = "SELL" in curr_sig or "AVOID" in curr_sig
         
+        # -1. Pre-R3 Advance Radar (Call Side - 2 to 3 minutes advance notice before blast)
+        pre_r3_key = f"{s_name}_PRE_R3_{today_str}"
+        if res.get('is_pre_r3_radar') and not res.get('is_option_r3_crossed') and not state.get(pre_r3_key):
+            pre_alert_text = format_pre_r3_radar_alert(res)
+            print(f"Sending PRE-R3 ADVANCE RADAR alert for {s_name}")
+            send_telegram_alert(pre_alert_text)
+            state[pre_r3_key] = True
+            new_alerts.append(f"{s_name}: PRE-R3 ADVANCE RADAR")
+
+        # -1.05 Pre-Put R3 Advance Radar (Put Side - 2 to 3 minutes advance notice before breakdown)
+        pre_put_r3_key = f"{s_name}_PRE_PUT_R3_{today_str}"
+        if res.get('is_pre_put_r3_radar') and not res.get('is_put_r3_crossed') and not state.get(pre_put_r3_key):
+            pre_put_alert_text = format_pre_put_r3_radar_alert(res)
+            print(f"Sending PRE-PUT R3 ADVANCE RADAR alert for {s_name}")
+            send_telegram_alert(pre_put_alert_text)
+            state[pre_put_r3_key] = True
+            new_alerts.append(f"{s_name}: PRE-PUT R3 ADVANCE RADAR")
+
         # 0. R3 Option Breakout / 100% Confirmed Buy Alert
-        # Fires when Option crosses R3 + Spot at/above R1 OR R2 + RSI Sweet Spot confirmed
+        # Fires when Option crosses R3 + Spot at/above R1 OR R2 + RSI Sweet Spot confirmed (Anti-FOMO protected)
         spot_p = res.get('price', 0)
         spot_r1 = res.get('r1', 0)
         spot_r2 = res.get('r2', 0)
@@ -834,7 +920,8 @@ def run_scan_cycle(force=False, watchlist=None):
         is_r3_confirmed = bool(
             (spot_at_or_above_r1 or spot_at_or_above_r2 or is_sniper_buy or "STRONG BUY" in curr_sig) and
             res.get('is_option_r3_crossed') and
-            res.get('is_r3_rsi_confirmed', True)
+            res.get('is_r3_rsi_confirmed', True) and
+            not res.get('is_chasing', False)
         )
         if is_r3_confirmed and not state.get(r3_confirmed_key):
             confirmed_alert_text = format_100_confirmed_buy_alert(res)
@@ -864,7 +951,8 @@ def run_scan_cycle(force=False, watchlist=None):
         is_put_r3_confirmed = bool(
             (spot_at_or_below_s1 or spot_at_or_below_s2 or is_sniper_short or "STRONG SELL" in curr_sig) and
             res.get('is_put_r3_crossed') and
-            res.get('is_put_rsi_confirmed', True)
+            res.get('is_put_rsi_confirmed', True) and
+            not res.get('is_put_chasing', False)
         )
         if is_put_r3_confirmed and not state.get(r3_put_confirmed_key):
             confirmed_put_text = format_100_confirmed_put_alert(res)
@@ -889,7 +977,7 @@ def run_scan_cycle(force=False, watchlist=None):
 
         # 0.1 Standalone Option R3 Breakout (Option LTP >= Option R3 + Spot >= R2 + RSI 58-74)
         r3_alert_key = f"{s_name}_R3_{today_str}"
-        if res.get('is_option_r3_crossed') and res.get('is_r3_rsi_confirmed', True) and not state.get(r3_alert_key) and not is_r3_confirmed:
+        if res.get('is_option_r3_crossed') and res.get('is_r3_rsi_confirmed', True) and not res.get('is_chasing', False) and not state.get(r3_alert_key) and not is_r3_confirmed:
             alert_text = format_r3_radar_alert(res)
             print(f"Sending R3 OPTION RADAR alert for {s_name}")
             send_telegram_alert(alert_text)
@@ -904,6 +992,15 @@ def run_scan_cycle(force=False, watchlist=None):
             send_telegram_alert(ha_alert_text)
             state[ha_alert_key] = True
             new_alerts.append(f"{s_name}: HEIKIN ASHI REVERSAL")
+
+        # 0.3 GFS Swing Multibagger Dip Alert (Grandfather-Father-Son 3-TF Confluence)
+        gfs_alert_key = f"{s_name}_GFS_SWING_{today_str}"
+        if res.get('is_gfs_high_confidence') and not state.get(gfs_alert_key):
+            gfs_alert_text = format_gfs_swing_alert(res)
+            print(f"Sending GFS SWING MULTIBAGGER alert for {s_name}")
+            send_telegram_alert(gfs_alert_text)
+            state[gfs_alert_key] = True
+            new_alerts.append(f"{s_name}: GFS SWING MULTIBAGGER")
 
         # 1. Confirmed Sniper Buy (Includes exact OTM Call Strike & Option R3 level)
         if is_sniper_buy and (prev_sig != curr_sig) and not state.get(r3_confirmed_key):

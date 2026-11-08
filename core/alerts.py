@@ -25,6 +25,78 @@ def send_telegram_alert(msg):
 # -------------------------------------------------------------
 # Alert Message Formatters (Gujarati HTML Format)
 # -------------------------------------------------------------
+def format_pre_r3_radar_alert(res):
+    """Stage 1: Pre-R3 Advance Radar Alert (2-3 Minutes advance notice before blast)."""
+    s_name = res.get('symbol', '')
+    is_idx = res.get('is_index', False)
+    inst_lbl = "ઈન્ડેક્સ" if is_idx else "સ્ટોક"
+    now_str = get_ist_now().strftime('%d %b %Y | %H:%M:%S IST')
+    opt_strike_val = res.get('otm_call_strike', res.get('ce_strike', res.get('strike', '')))
+    strike_str = f"₹{int(opt_strike_val)} CE" if (isinstance(opt_strike_val, (int, float)) and float(opt_strike_val) > 0) else f"₹{opt_strike_val} CE"
+    contract_lbl = res.get('opt_contract_name', res.get('contract_name', f"{strike_str}"))
+    fyers_code = res.get('opt_fyers_symbol', res.get('fyers_symbol', ''))
+    fyers_lbl = f"• <b>Fyers Symbol:</b> <code>{fyers_code}</code>\n" if fyers_code else ""
+    opt_p = float(res.get('opt_ltp', 0.0))
+    opt_r3 = float(res.get('opt_r3', 0.0))
+    tf_lbl = res.get('timeframe_used', '3m')
+    vol_val = res.get('vol_5m', res.get('vol_ratio', 1.0))
+    diff_val = max(0.05, opt_r3 - opt_p)
+    spot_p = float(res.get('price', res.get('spot_price', 0.0)))
+    spot_chg = float(res.get('change', res.get('spot_change', 0.0)))
+    return (
+        f"⚠️ <b>PRE-R3 ADVANCE SNIPER RADAR! (સજ્જ રહો - ૨ મિનિટ વહેલું એલર્ટ)</b> ⚠️\n"
+        f"━━━━━━━━━━━━━━━━━━━━━\n"
+        f"📌 <b>{inst_lbl}:</b> {s_name} (LTP: ₹{spot_p:.2f}, {spot_chg:+.2f}%)\n"
+        f"🎯 <b>ઓપ્શન કોન્ટ્રાક્ટ:</b> <b>{contract_lbl}</b>\n"
+        f"{fyers_lbl}"
+        f"• <b>વર્તમાન ઓપ્શન ભાવ:</b> <b>₹{opt_p:.2f}</b>\n"
+        f"• <b>લક્ષ્ય R3 બ્રેકઆઉટ લેવલ:</b> <b>₹{opt_r3:.2f}</b> (માત્ર ₹{diff_val:.2f} દૂર!)\n"
+        f"• <b>📊 {tf_lbl} વોલ્યુમ સર્જ:</b> <b>{vol_val:.1f}x 🔥</b> (સંસ્થાકીય ખરીદી શરૂ)\n"
+        f"━━━━━━━━━━━━━━━━━━━━━\n"
+        f"💡 <b>એક્શન પ્લાન (Action Plan):</b>\n"
+        f"• ડિમેટ એકાઉન્ટ (Zerodha/Fyers) માં આ સ્ટ્રાઈક વોચલિસ્ટમાં એડ કરીને તૈયાર રાખો.\n"
+        f"• અથવા ₹{opt_p:.2f} પર સસ્તા ભાવે ૫૦% એન્ટ્રી લઈ શકાય (SL: {tf_lbl} કેન્ડલ લો).\n"
+        f"• જેવો ₹{opt_r3:.2f} ક્રોસ થશે એટલે રોકેટ બ્લાસ્ટ કન્ફર્મ થશે!\n"
+        f"━━━━━━━━━━━━━━━━━━━━━\n"
+        f"⏰ <i>{now_str}</i> | 🤖 Patel Trading Bot"
+    )
+
+def format_pre_put_r3_radar_alert(res):
+    """Stage 1: Pre-Put R3 Advance Radar Alert (2-3 Minutes advance notice before breakdown)."""
+    s_name = res.get('symbol', '')
+    is_idx = res.get('is_index', False)
+    inst_lbl = "ઈન્ડેક્સ" if is_idx else "સ્ટોક"
+    now_str = get_ist_now().strftime('%d %b %Y | %H:%M:%S IST')
+    opt_strike_val = res.get('otm_put_strike', res.get('pe_strike', res.get('strike', '')))
+    strike_str = f"₹{int(opt_strike_val)} PE" if (isinstance(opt_strike_val, (int, float)) and float(opt_strike_val) > 0) else f"₹{opt_strike_val} PE"
+    contract_lbl = res.get('opt_put_contract_name', res.get('contract_name', f"{strike_str}"))
+    fyers_code = res.get('opt_put_fyers_symbol', res.get('fyers_symbol', ''))
+    fyers_lbl = f"• <b>Fyers Symbol:</b> <code>{fyers_code}</code>\n" if fyers_code else ""
+    opt_p = float(res.get('opt_put_ltp', res.get('opt_ltp', 0.0)))
+    opt_r3 = float(res.get('opt_put_r3', res.get('opt_r3', 0.0)))
+    tf_lbl = res.get('timeframe_used', '3m')
+    vol_val = res.get('vol_5m', res.get('vol_ratio', 1.0))
+    diff_val = max(0.05, opt_r3 - opt_p)
+    spot_p = float(res.get('price', res.get('spot_price', 0.0)))
+    spot_chg = float(res.get('change', res.get('spot_change', 0.0)))
+    return (
+        f"⚠️ <b>PRE-PUT R3 ADVANCE RADAR! (મંદી સજ્જ રહો - ૨ મિનિટ વહેલું એલર્ટ)</b> ⚠️\n"
+        f"━━━━━━━━━━━━━━━━━━━━━\n"
+        f"📌 <b>{inst_lbl}:</b> {s_name} (LTP: ₹{spot_p:.2f}, {spot_chg:+.2f}%)\n"
+        f"🎯 <b>પુટ કોન્ટ્રાક્ટ:</b> <b>{contract_lbl}</b>\n"
+        f"{fyers_lbl}"
+        f"• <b>વર્તમાન પુટ ભાવ:</b> <b>₹{opt_p:.2f}</b>\n"
+        f"• <b>લક્ષ્ય Put R3 બ્રેકડાઉન:</b> <b>₹{opt_r3:.2f}</b> (માત્ર ₹{diff_val:.2f} દૂર!)\n"
+        f"• <b>📊 {tf_lbl} વોલ્યુમ:</b> <b>{vol_val:.1f}x 🔥</b> (સંસ્થાકીય સેલિંગ શરૂ)\n"
+        f"━━━━━━━━━━━━━━━━━━━━━\n"
+        f"💡 <b>એક્શન પ્લાન (Action Plan):</b>\n"
+        f"• ડિમેટ એકાઉન્ટમાં આ પુટ સ્ટ્રાઈક વોચલિસ્ટમાં એડ કરીને તૈયાર રાખો.\n"
+        f"• અથવા ₹{opt_p:.2f} પર ૫૦% પુટ એન્ટ્રી લઈ શકાય.\n"
+        f"• જેવો ₹{opt_r3:.2f} ક્રોસ થશે એટલે પેનિક ફોલ આવશે!\n"
+        f"━━━━━━━━━━━━━━━━━━━━━\n"
+        f"⏰ <i>{now_str}</i> | 🤖 Patel Trading Bot"
+    )
+
 def format_r3_radar_alert(res):
     s_name = res['symbol']
     is_idx = res.get('is_index', False)
@@ -88,6 +160,11 @@ def format_100_confirmed_buy_alert(res):
     strike_desc = "Weekly OTM Strike" if is_idx else "OTM Option Strike"
     asset_action = "Index / Future Buy" if is_idx else "Equity / Future Buy"
     target_gain_txt = "૧૫૦% થી ૪૦૦%+ (ઝીરો-ટુ-હીરો સુપર જેકપોટ)" if is_gb else "૧૦૦% થી ૨૦૦%+ (ડબલ / મલ્ટિબેગર નફો)"
+    opt_p = float(res.get('opt_ltp', 0.0))
+    opt_sl_calc = round(opt_p * 0.75, 2)
+    opt_t1_calc = round(opt_p * 1.35, 2)
+    opt_t2_calc = round(opt_p * 1.70, 2)
+    opt_multi_calc = round(opt_p * 2.0, 2)
     rsi_badge = (
         f"• <b>⚡ {tf_lbl} RSI Confluence:</b> <b>{rsi_val:.1f}</b> (Golden Sweet Spot 58-74 ✅ - પ્રારંભિક સ્નાઈપર એન્ટ્રી)\n"
         f"• <b>📊 {tf_lbl} Volume Ratio:</b> <b>{vol_val:.1f}x</b> (સંસ્થાકીય વોલ્યુમ કન્ફર્મ 🔥)\n"
@@ -101,19 +178,21 @@ def format_100_confirmed_buy_alert(res):
         f"⚡ <b>Hilega-Milega 1H:</b> Green &gt; Red (પાણી 50 ની ઉપર - ૧૦૦% ખરીદી પાકી)\n"
         f"{rsi_badge}"
         f"━━━━━━━━━━━━━━━━━━━━━\n"
-        f"🔥 <b>ACTIONABLE TRADE ENTRY (તાત્કાલિક એન્ટ્રી):</b>\n"
-        f"• <b>Call Option Buy (CE):</b> <b>{contract_lbl} ખરીદો{opt_ltp_txt}</b>\n"
-        f"• <b>{strike_desc}:</b> <b>{strike_str}</b>\n"
+        f"🔥 <b>ACTIONABLE OPTION ENTRY (ઓપ્શન ખરીદો):</b>\n"
+        f"• <b>Call Option Buy (CE):</b> <b>{contract_lbl} ખરીદો</b>\n"
+        f"• <b>ખરીદ ભાવ (Option LTP):</b> <b>₹{opt_p:.2f}</b>\n"
         f"{fyers_lbl}"
         f"{opt_r3_txt}"
-        f"• <b>{asset_action}:</b> ₹{res['price']:.2f}\n"
-        f"• <b>ચુસ્ત સ્ટોપલોસ:</b> ₹{res['stop_loss']:.2f} (-{res['risk_pct']:.1f}%)\n"
-        f"• <b>Target 1 (1:1.5):</b> ₹{res['t1']:.2f} (+{res['t1_pct']:.1f}%)\n"
-        f"• <b>Target 2 (1:2.5):</b> ₹{res['t2']:.2f} (+{res['t2_pct']:.1f}%)\n"
-        f"• <b>ઓપ્શન ટાર્ગેટ:</b> {target_gain_txt}\n"
+        f"• <b>🛡️ ચુસ્ત ઓપ્શન SL:</b> <b>₹{opt_sl_calc:.2f}</b> (-25%)\n"
+        f"• <b>🎯 Option Target 1 (+35%):</b> <b>₹{opt_t1_calc:.2f}</b> (૫૦% નફો બુક & SL to Cost)\n"
+        f"• <b>🚀 Option Target 2 (+70%):</b> <b>₹{opt_t2_calc:.2f}</b> (વધુ ૩૦% નફો બુક)\n"
+        f"• <b>👑 મલ્ટિબેગર ટાર્ગેટ:</b> <b>₹{opt_multi_calc:.2f}</b> ({target_gain_txt})\n"
         f"━━━━━━━━━━━━━━━━━━━━━\n"
-        f"📊 <b>Spot Pivots:</b> P: ₹{res['pivot_p']:.1f} | R1: ₹{res['r1']:.1f} | R2: ₹{res['r2']:.1f} | R3: ₹{res['r3']:.1f}\n"
-        f"📊 <b>1-Hour Volume:</b> {res['vol_ratio']:.1f}x {vol_emoji}\n"
+        f"📊 <b>Spot {s_name} Levels (કેશ/ઈન્ડેક્સ સંદર્ભ માટે):</b>\n"
+        f"• Spot ભાવ: ₹{res['price']:.2f}\n"
+        f"• Spot Stoploss: ₹{res['stop_loss']:.2f} | Spot Target 1: ₹{res['t1']:.2f}\n"
+        f"• Spot Pivots: P: ₹{res['pivot_p']:.1f} | R1: ₹{res['r1']:.1f} | R2: ₹{res['r2']:.1f} | R3: ₹{res['r3']:.1f}\n"
+        f"• 1-Hour Volume: {res['vol_ratio']:.1f}x {vol_emoji}\n"
         f"━━━━━━━━━━━━━━━━━━━━━\n"
         f"⏰ <i>{now_str}</i> | 🤖 Patel Trading Bot"
     )
@@ -299,3 +378,43 @@ def format_exit_alert(res_or_trade, reason: str = "Exit Condition Met"):
         f"━━━━━━━━━━━━━━━━━━━━━\n"
         f"⏰ <i>{now_str}</i> | 🤖 Patel Trading Bot"
     )
+
+def format_gfs_swing_alert(res):
+    """Formats GFS Swing & Positional Multibagger Dip Alert (Grandfather, Father, Son Confluence)."""
+    s_name = res['symbol']
+    now_str = get_ist_now().strftime('%d %b %Y | %H:%M:%S IST')
+    p = float(res['price'])
+    rsi_m = float(res.get('rsi_m', 60.0))
+    rsi_w = float(res.get('rsi_w', 60.0))
+    rsi_d = float(res.get('rsi_d', 42.0))
+    c_pat = res.get('candle_pattern', 'HAMMER 🔨')
+    bb_m = float(res.get('bb_middle', p))
+    div_txt = "\n• 💥 <b>RSI Bullish Divergence:</b> સંસ્થાકીય એક્યુમ્યુલેશન કન્ફર્મ!" if res.get('has_bull_div') else ""
+    sl = round(min(res.get('bb_lower', p * 0.95), p * 0.96), 2)
+    risk_pct = round(((p - sl) / p) * 100, 1)
+    t1 = round(p * 1.08, 2)
+    t2 = round(p * 1.15, 2)
+    t3 = round(p * 1.25, 2)
+    return (
+        f"🏔️ <b>GFS SWING MULTIBAGGER DIP BUY! (Grandfather-Father-Son)</b> 🏔️\n"
+        f"━━━━━━━━━━━━━━━━━━━━━\n"
+        f"📌 <b>સ્ટોક:</b> {s_name} (Cash / Delivery / Swing)\n"
+        f"💰 <b>ખરીદ ભાવ (LTP):</b> ₹{p:.2f} ({res['change']:+.2f}%)\n"
+        f"🎯 <b>સેટઅપ:</b> {res.get('gfs_action', 'HIGH-CONFIDENCE GFS ENTRY')}\n"
+        f"━━━━━━━━━━━━━━━━━━━━━\n"
+        f"🛡️ <b>Stop Loss (Swing):</b> ₹{sl:.2f} (-{risk_pct}%)\n"
+        f"🎯 <b>Target 1 (શોર્ટ ટર્મ):</b> ₹{t1:.2f} (+8.0%)\n"
+        f"🎯 <b>Target 2 (સ્વિંગ ટાર્ગેટ):</b> ₹{t2:.2f} (+15.0%)\n"
+        f"🚀 <b>Target 3 (પોઝિશનલ જેકપોટ):</b> ₹{t3:.2f} (+25.0%)\n"
+        f"━━━━━━━━━━━━━━━━━━━━━\n"
+        f"📊 <b>GFS Multi-Timeframe Matrix:</b>\n"
+        f"   • 👴 <b>Grandfather (Monthly RSI):</b> {rsi_m:.1f} (તેજી ✅)\n"
+        f"   • 👨 <b>Father (Weekly RSI):</b> {rsi_w:.1f} (તેજી ✅)\n"
+        f"   • 👦 <b>Son (Daily RSI Dip):</b> {rsi_d:.1f} (સસ્તો સપોર્ટ ઝોન ✅)\n"
+        f"   • 🛡️ <b>Bollinger Support:</b> 20 SMA ₹{bb_m:.1f} નજીક | <b>કેન્ડલ:</b> {c_pat}"
+        f"{div_txt}\n"
+        f"━━━━━━━━━━━━━━━━━━━━━\n"
+        f"💡 <b>ટ્રેડિંગ સલાહ:</b> આ કેશ ડિલિવરી / પોઝિશનલ સ્વિંગ ટ્રેડ છે. ૫૦% કેશમાં અથવા ડીપ In-The-Money (ITM) કોલમાં ૧ થી ૩ અઠવાડિયા માટે હોલ્ડ કરી શકાય.\n"
+        f"⏰ <i>{now_str}</i> | 🤖 Patel Trading Bot"
+    )
+
