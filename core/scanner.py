@@ -41,6 +41,7 @@ from .option_seller_engine import (
 from .gfs_engine import evaluate_gfs_confluence
 from .alerts import (
     send_telegram_alert,
+    format_stage1_pre_breakout_alert,
     format_gfs_swing_alert,
     format_pre_r3_radar_alert,
     format_pre_put_r3_radar_alert,
@@ -254,7 +255,7 @@ def analyze_stock(sym):
         is_candle_red = bool(h1_curr['Close'] <= h1_curr['Open'])
         
         is_candidate_bear = bool(is_sniper_short or (s1_val > 0 and curr_p <= s1_val) or (pct_chg <= -0.8))
-        is_candidate = bool(is_sniper_buy or is_r3_radar or (curr_p >= r1_val) or (pct_chg >= 0.8) or is_candidate_bear)
+        is_candidate = bool(is_sniper_buy or is_r3_radar or (curr_p >= r1_val) or (pct_chg >= 0.35 and d_is_positive) or (pct_chg >= 0.7) or is_candidate_bear)
         is_lower_wick_rejected = False
         if is_candidate:
             try:
@@ -306,6 +307,23 @@ def analyze_stock(sym):
                     c_c = float(c_intra['Close'])
                     is_candle_green = bool(c_c >= c_o)
                     is_candle_red = bool(c_c <= c_o)
+
+                    # Stage-1 Early Pre-Breakout Squeeze Radar Detection
+                    # Catches momentum 5 to 8 minutes EARLY (e.g. 13:45 at ₹4.50 instead of 13:53 at ₹5.44)
+                    try:
+                        from .gfs_engine import calculate_bollinger_bands
+                        df_bb = calculate_bollinger_bands(df_intra, period=20, std=2.0)
+                        c_bb = df_bb.iloc[-1]
+                        p_bb = df_bb.iloc[-2]
+                        # Bollinger squeeze bandwidth <= 2.5%
+                        bw_history = (df_bb['BBU'].iloc[-12:-1] - df_bb['BBL'].iloc[-12:-1]) / df_bb['BBM'].iloc[-12:-1]
+                        is_tight_squeeze = bool(bw_history.mean() <= 0.025)
+                        is_bb_upper_blast = bool(c_c >= c_bb['BBU'] or (p_bb['Close'] <= c_bb['BBM'] and c_c > c_bb['BBM'] * 1.003))
+                        is_early_rsi_sweet = bool(55.0 <= m_rsi <= 68.0 and m_rsi_slope >= 0.2)
+                        macro_is_bull = bool(d_is_positive or (m_bull and w_bull))
+                        is_stage1_pre_breakout = bool(macro_is_bull and (is_bb_upper_blast or is_tight_squeeze) and is_early_rsi_sweet and is_candle_green)
+                    except Exception:
+                        is_stage1_pre_breakout = False
 
                     # Upper wick rejection check (Rejection at R2/R3 barrier)
                     total_bar_span = c_h - c_l
@@ -890,6 +908,15 @@ def run_scan_cycle(force=False, watchlist=None):
         is_buy = "BUY" in curr_sig or "BULLISH" in curr_sig
         is_sell = "SELL" in curr_sig or "AVOID" in curr_sig
         
+        # -1.0 Stage-1 Early Pre-Breakout Squeeze Radar (5 to 8 minutes early warning at cheaper price)
+        stage1_key = f"{s_name}_STAGE1_{today_str}"
+        if res.get('is_stage1_pre_breakout') and not res.get('is_option_r3_crossed') and not state.get(stage1_key):
+            stage1_alert_text = format_stage1_pre_breakout_alert(res)
+            print(f"Sending STAGE-1 PRE-BREAKOUT RADAR alert for {s_name}")
+            send_telegram_alert(stage1_alert_text)
+            state[stage1_key] = True
+            new_alerts.append(f"{s_name}: STAGE-1 PRE-BREAKOUT")
+
         # -1. Pre-R3 Advance Radar (Call Side - 2 to 3 minutes advance notice before blast)
         pre_r3_key = f"{s_name}_PRE_R3_{today_str}"
         if res.get('is_pre_r3_radar') and not res.get('is_option_r3_crossed') and not state.get(pre_r3_key):

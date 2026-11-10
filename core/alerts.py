@@ -25,6 +25,101 @@ def send_telegram_alert(msg):
 # -------------------------------------------------------------
 # Alert Message Formatters (Gujarati HTML Format)
 # -------------------------------------------------------------
+
+def format_rsi_confluence_badge(tf_lbl: str, rsi_val: float, is_bearish: bool = False) -> str:
+    """Formats dynamic RSI badge showing Golden Sweet Spot or Overbought Warning based on actual RSI value."""
+    if not rsi_val:
+        return ""
+    rsi_num = float(rsi_val)
+    if not is_bearish:
+        if 55.0 <= rsi_num <= 68.0:
+            badge = f"<b>{rsi_num:.1f}</b> (Golden Sweet Spot 55-68 ✅ - પ્રારંભિક સ્નાઈપર એન્ટ્રી)"
+        elif 68.0 < rsi_num <= 74.0:
+            badge = f"<b>{rsi_num:.1f}</b> (બુલિશ મોમેન્ટમ 58-74 ✅ - સ્નાઈપર વેગ)"
+        elif rsi_num > 74.0:
+            badge = f"<b>{rsi_num:.1f}</b> (⚠️ Overbought RSI > 74 - પુલબેક સાવચેતી / 20 SMA ની રાહ જુઓ!)"
+        elif 50.0 <= rsi_num < 55.0:
+            badge = f"<b>{rsi_num:.1f}</b> (બુલિશ મોમેન્ટમ બિલ્ડઅપ ↗️)"
+        else:
+            badge = f"<b>{rsi_num:.1f}</b> (નબળો મોમેન્ટમ)"
+    else:
+        if 26.0 <= rsi_num <= 42.0:
+            badge = f"<b>{rsi_num:.1f}</b> (Bearish Sweet Spot 26-42 ✅ - પેનિક બ્રેકડાઉન)"
+        elif rsi_num < 26.0:
+            badge = f"<b>{rsi_num:.1f}</b> (⚠️ Oversold RSI < 26 - બાઉન્સ સાવચેતી!)"
+        elif 42.0 < rsi_num <= 50.0:
+            badge = f"<b>{rsi_num:.1f}</b> (મંદી મોમેન્ટમ બિલ્ડઅપ ↘️)"
+        else:
+            badge = f"<b>{rsi_num:.1f}</b> (બુલિશ પ્રેશર)"
+    return f"• <b>⚡ {tf_lbl} RSI Confluence:</b> {badge}\n"
+
+
+def format_volume_ratio_badge(tf_lbl: str, vol_val: float) -> str:
+    """Formats dynamic volume ratio with clear institutional label."""
+    if not vol_val:
+        return ""
+    vol_num = float(vol_val)
+    comment = "સંસ્થાકીય વોલ્યુમ કન્ફર્મ 🔥" if vol_num >= 1.2 else f"વોલ્યુમ: {vol_num:.1f}x"
+    return f"• <b>📊 {tf_lbl} Volume Ratio:</b> <b>{vol_num:.1f}x</b> ({comment})\n"
+
+
+def format_stage1_pre_breakout_alert(res):
+    """
+    Stage-1 Early Pre-Breakout Squeeze Alert (5 to 8 Minutes Early Notice).
+    Triggers when stock breaks out of 3m Bollinger Squeeze with 3m RSI in 55-68 sweet spot,
+    allowing traders to buy the Call Option at the cheaper base price (e.g. ₹4.50 instead of ₹5.44).
+    """
+    s_name = res.get('symbol', '')
+    is_idx = res.get('is_index', False)
+    inst_lbl = "ઈન્ડેક્સ" if is_idx else "સ્ટોક"
+    now_str = get_ist_now().strftime('%d %b %Y | %H:%M:%S IST')
+    
+    spot_p = float(res.get('price', 0.0))
+    spot_chg = float(res.get('change', 0.0))
+    
+    opt_strike_val = res.get('otm_call_strike', res.get('ce_strike', ''))
+    strike_str = f"₹{int(opt_strike_val)} CE" if (isinstance(opt_strike_val, (int, float)) and float(opt_strike_val) > 0) else f"₹{opt_strike_val} CE"
+    contract_lbl = res.get('opt_contract_name', f"{strike_str}")
+    fyers_code = res.get('opt_fyers_symbol', '')
+    fyers_lbl = f"• <b>Fyers Symbol:</b> <code>{fyers_code}</code>\n" if fyers_code else ""
+    opt_p = float(res.get('opt_ltp', 0.0))
+    opt_r3 = float(res.get('opt_r3', 0.0))
+    
+    tf_lbl = res.get('timeframe_used', '3m')
+    rsi_val = float(res.get('rsi_3m', res.get('rsi_5m', 62.0)))
+    vol_val = float(res.get('vol_5m', res.get('vol_ratio', 1.2)))
+    
+    # 50% Starter Entry targets
+    sl_calc = round(opt_p * 0.80, 2) if opt_p > 0 else 0.0
+    t1_calc = round(opt_p * 1.30, 2) if opt_p > 0 else 0.0
+    t2_calc = round(opt_p * 1.60, 2) if opt_p > 0 else 0.0
+    
+    rsi_line = format_rsi_confluence_badge(tf_lbl, rsi_val, is_bearish=False)
+    vol_line = format_volume_ratio_badge(tf_lbl, vol_val)
+    
+    return (
+        f"⚡🎯 <b>STAGE-1 PRE-BREAKOUT SQUEEZE RADAR! (૫ થી ૮ મિનિટ વહેલું એલર્ટ)</b> 🎯⚡\n"
+        f"━━━━━━━━━━━━━━━━━━━━━\n"
+        f"📌 <b>{inst_lbl}:</b> {s_name} (LTP: ₹{spot_p:.2f}, {spot_chg:+.2f}%)\n"
+        f"📈 <b>સેટઅપ:</b> 3m Bollinger Squeeze Breakout + Fresh Trend Blast\n"
+        f"{rsi_line}"
+        f"{vol_line}"
+        f"━━━━━━━━━━━━━━━━━━━━━\n"
+        f"🔥 <b>ACTIONABLE EARLY ENTRY (સસ્તા ભાવે એન્ટ્રી):</b>\n"
+        f"• <b>Call Option Strike:</b> <b>{contract_lbl}</b>\n"
+        f"• <b>વર્તમાન સસ્તો ઓપ્શન ભાવ:</b> <b>₹{opt_p:.2f}</b>\n"
+        f"{fyers_lbl}"
+        f"• <b>Option R3 લેવલ:</b> ₹{opt_r3:.2f} (આગળનું મોટું બ્રેકઆઉટ લેવલ)\n"
+        f"━━━━━━━━━━━━━━━━━━━━━\n"
+        f"💡 <b>વિશ્વ-કક્ષાની સ્માર્ટ રણનીતિ (World-Class Strategy):</b>\n"
+        f"• <b>૫૦% ક્વોન્ટિટીથી Starter Entry:</b> ₹{opt_p:.2f} પર અડધી કોન્ટીટી લો (ચુસ્ત SL: ₹{sl_calc:.2f}).\n"
+        f"• <b>બાકીની ૫૦% એડ કરો:</b> જ્યારે સ્ટોક R3 ક્રોસ કરીને રોકેટ કન્ફર્મ કરે ત્યારે બાકીની કોન્ટીટી ઉમેરો!\n"
+        f"• <b>ફાયદો:</b> મોંઘી એન્ટ્રીથી બચી જશો અને એવરેજ પ્રાઈસ એકદમ સસ્તી રહેશે!\n"
+        f"• <b>Target 1:</b> ₹{t1_calc:.2f} (+30%) | <b>Target 2:</b> ₹{t2_calc:.2f} (+60%+)\n"
+        f"━━━━━━━━━━━━━━━━━━━━━\n"
+        f"⏰ <i>{now_str}</i> | 🤖 Patel Trading Bot"
+    )
+
 def format_pre_r3_radar_alert(res):
     """Stage 1: Pre-R3 Advance Radar Alert (2-3 Minutes advance notice before blast)."""
     s_name = res.get('symbol', '')
@@ -112,8 +207,8 @@ def format_r3_radar_alert(res):
     vol_val = res.get('vol_5m', res.get('vol_15m', res.get('vol_ratio', 1.0)))
     strike_desc = "Weekly OTM Strike" if is_idx else "OTM Option Strike"
     rsi_txt = (
-        f"• <b>⚡ {tf_lbl} RSI Confluence:</b> <b>{rsi_val:.1f}</b> (Golden Sweet Spot 58-74 ✅ - સ્નાઈપર વેગ)\n"
-        f"• <b>📊 {tf_lbl} Volume Ratio:</b> <b>{vol_val:.1f}x</b> (સંસ્થાકીય વોલ્યુમ કન્ફર્મ 🔥)\n"
+        format_rsi_confluence_badge(tf_lbl, rsi_val, is_bearish=False) +
+        format_volume_ratio_badge(tf_lbl, vol_val) +
         f"• <b>🎯 {strike_desc}:</b> <b>{strike_str}</b> ({contract_lbl})\n"
     ) if rsi_val else f"• <b>🎯 {strike_desc}:</b> <b>{strike_str}</b> ({contract_lbl})\n"
     return (
@@ -166,8 +261,8 @@ def format_100_confirmed_buy_alert(res):
     opt_t2_calc = round(opt_p * 1.70, 2)
     opt_multi_calc = round(opt_p * 2.0, 2)
     rsi_badge = (
-        f"• <b>⚡ {tf_lbl} RSI Confluence:</b> <b>{rsi_val:.1f}</b> (Golden Sweet Spot 58-74 ✅ - પ્રારંભિક સ્નાઈપર એન્ટ્રી)\n"
-        f"• <b>📊 {tf_lbl} Volume Ratio:</b> <b>{vol_val:.1f}x</b> (સંસ્થાકીય વોલ્યુમ કન્ફર્મ 🔥)\n"
+        format_rsi_confluence_badge(tf_lbl, rsi_val, is_bearish=False) +
+        format_volume_ratio_badge(tf_lbl, vol_val) +
         f"• <b>🎯 {strike_desc}:</b> <b>{strike_str}</b> ({contract_lbl})\n"
     )
     return (
@@ -222,8 +317,8 @@ def format_100_confirmed_put_alert(res):
     strike_desc = "Weekly OTM Put" if is_idx else "OTM Put Option Strike"
     target_gain_txt = "૧૫૦% થી ૪૦૦%+ (ઝીરો-ટુ-હીરો સુપર જેકપોટ પુટ)" if is_gb else "૧૦૦% થી ૨૦૦%+ (ડબલ / મલ્ટિબેગર નફો)"
     rsi_badge = (
-        f"• <b>⚡ {tf_lbl} RSI Confluence:</b> <b>{rsi_val:.1f}</b> (Bearish Sweet Spot 26-42 ✅ - પેનિક બ્રેકડાઉન)\n"
-        f"• <b>📊 {tf_lbl} Volume Ratio:</b> <b>{vol_val:.1f}x</b> (સંસ્થાકીય વેચાણ વોલ્યુમ 🔥)\n"
+        format_rsi_confluence_badge(tf_lbl, rsi_val, is_bearish=True) +
+        format_volume_ratio_badge(tf_lbl, vol_val) +
         f"• <b>🎯 {strike_desc}:</b> <b>{strike_str}</b> ({contract_lbl})\n"
     )
     return (
@@ -311,8 +406,8 @@ def format_sniper_buy_alert(res):
     strike_desc = "Weekly OTM Strike" if is_idx else "OTM Option Strike"
     asset_action = "Index / Future Buy" if is_idx else "Equity / Future Buy"
     rsi_txt = (
-        f"• <b>⚡ {tf_lbl} RSI Confluence:</b> <b>{rsi_val:.1f}</b> (Golden Sweet Spot 58-74 ✅)\n"
-        f"• <b>📊 {tf_lbl} Volume Ratio:</b> <b>{vol_val:.1f}x</b> (સંસ્થાકીય વોલ્યુમ કન્ફર્મ 🔥)\n"
+        format_rsi_confluence_badge(tf_lbl, rsi_val, is_bearish=False) +
+        format_volume_ratio_badge(tf_lbl, vol_val) +
         f"• <b>🎯 {strike_desc}:</b> <b>{strike_str}</b> ({contract_lbl})\n"
     ) if rsi_val else f"• <b>🎯 {strike_desc}:</b> <b>{strike_str}</b> ({contract_lbl})\n"
     return (
