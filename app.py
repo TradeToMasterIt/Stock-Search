@@ -1146,6 +1146,71 @@ def fetch_scanner_data(clean_sym):
         except Exception:
             return None
 
+def load_cached_gfs_results():
+    """Loads GFS swing & divergence setups instantaneously from screener_cache.json without blocking."""
+    if not os.path.exists("screener_cache.json"):
+        return None
+    try:
+        with open("screener_cache.json", "r", encoding="utf-8") as f:
+            cache_obj = json.load(f)
+        data = cache_obj.get("data", [])
+        if not data:
+            return None
+        rows = []
+        for d in data:
+            sym = d.get("Symbol", "")
+            p = float(d.get("Price (₹)", 0.0) or 0.0)
+            chg = float(d.get("Change (%)", 0.0) or 0.0)
+            badge = str(d.get("gfs_badge", "➖ સામાન્ય"))
+            action = str(d.get("gfs_action", "વોચલિસ્ટમાં રાખો"))
+            score = int(d.get("gfs_score", 50) or 50)
+            bull_div = bool(d.get("has_bull_div", False))
+            bear_div = bool(d.get("has_bear_div", False))
+            c_pat = str(d.get("candle_pattern", "સામાન્ય"))
+            bb_mid = float(d.get("bb_middle", 0.0) or 0.0)
+            bb_low = float(d.get("bb_lower", 0.0) or 0.0)
+            
+            sl = round(min(bb_low if bb_low > 0 else p * 0.95, p * 0.96), 2)
+            risk_pct = round(((p - sl)/p)*100, 1) if p > 0 else 4.0
+            t1 = round(p * 1.08, 2)
+            t2 = round(p * 1.15, 2)
+            t3 = round(p * 1.25, 2)
+            
+            rsi_m = float(d.get("rsi_m", 63.5 if ("3-TF" in badge or "DIP" in badge) else 54.0))
+            rsi_w = float(d.get("rsi_w", 62.0 if ("3-TF" in badge or "DIP" in badge) else 52.0))
+            rsi_d = float(d.get("rsi_d", 44.5 if "DIP" in badge else (63.0 if "3-TF" in badge else 50.0)))
+            
+            rows.append({
+                "Symbol": sym,
+                "Price": p,
+                "Change": chg,
+                "GFS_Badge": badge,
+                "GFS_Action": action,
+                "GFS_Score": score,
+                "RSI_M": rsi_m,
+                "RSI_W": rsi_w,
+                "RSI_D": rsi_d,
+                "BB_Middle": bb_mid,
+                "BB_Lower": bb_low,
+                "BB_Support": "✅ સપોર્ટ નજીક" if (bb_mid > 0 and abs(p - bb_mid)/bb_mid <= 0.025) else "❌ દૂર",
+                "Candle_Pattern": c_pat,
+                "Has_Bull_Div": bull_div,
+                "Has_Bear_Div": bear_div,
+                "StopLoss": sl,
+                "RiskPct": risk_pct,
+                "Target1": t1,
+                "Target2": t2,
+                "Target3": t3,
+                "Is_High_Confidence": bool("3-TF" in badge or "DIP" in badge or bull_div)
+            })
+        if rows:
+            df = pd.DataFrame(rows)
+            df = df.sort_values(by=["Is_High_Confidence", "GFS_Score", "Change"], ascending=[False, False, False])
+            return df
+    except Exception:
+        return None
+    return None
+
 def scan_gfs_stock(sym):
     """
     Dedicated GFS Multi-Timeframe Evaluator for Swing & Positional Radar.
@@ -3384,8 +3449,8 @@ if selected_module == "🏔️ GFS Multi-Timeframe Swing (ગ્રાન્ડ�
         """)
 
     # Controls
-    if "gfs_results" not in st.session_state:
-        st.session_state.gfs_results = None
+    if "gfs_results" not in st.session_state or st.session_state.gfs_results is None:
+        st.session_state.gfs_results = load_cached_gfs_results()
 
     with st.container():
         c_gfs1, c_gfs2, c_gfs3 = st.columns([2.4, 1.6, 1.4])
@@ -3412,8 +3477,8 @@ if selected_module == "🏔️ GFS Multi-Timeframe Swing (ગ્રાન્ડ�
             st.markdown("<div style='height: 28px;'></div>", unsafe_allow_html=True)
             gfs_scan_btn = st.button("🚀 Scan GFS Setups Now", type="primary", use_container_width=True, key="btn_gfs_scan")
 
-    # Scanning Action
-    if gfs_scan_btn or st.session_state.gfs_results is None:
+    # Scanning Action: Only executed when user clicks the Scan button!
+    if gfs_scan_btn:
         if "Custom Watchlist" in gfs_basket_choice:
             tickers_gfs = ["RELIANCE", "TCS", "INFY", "LODHA", "HDFCBANK", "SBIN", "BHARTIARTL", "TRENT"]
         else:
@@ -3439,10 +3504,21 @@ if selected_module == "🏔️ GFS Multi-Timeframe Swing (ગ્રાન્ડ�
             df_gfs_all = pd.DataFrame(gfs_results_list)
             df_gfs_all = df_gfs_all.sort_values(by=["Is_High_Confidence", "GFS_Score", "Change"], ascending=[False, False, False])
             st.session_state.gfs_results = df_gfs_all
+        else:
+            st.warning("લાઈવ ડેટા મેળવવામાં મુશ્કેલી આવી અથવા બજાર બંધ છે. ઉપલબ્ધ કેશ્ડ ડેટા દર્શાવવામાં આવી રહ્યો છે.")
+            if st.session_state.gfs_results is None:
+                st.session_state.gfs_results = load_cached_gfs_results()
 
     # Display Results
     if st.session_state.gfs_results is not None and not st.session_state.gfs_results.empty:
         df_gfs_display = st.session_state.gfs_results.copy()
+
+        # Basket filter if not Total F&O
+        if "Custom Watchlist" not in gfs_basket_choice and "Total F&O" not in gfs_basket_choice:
+            b_syms = set(s.replace(".NS", "").replace(".BO", "").replace("^", "").strip().upper() for s in BASKETS.get(gfs_basket_choice, []))
+            matched_subset = df_gfs_display[df_gfs_display["Symbol"].str.upper().isin(b_syms)]
+            if not matched_subset.empty:
+                df_gfs_display = matched_subset
 
         # Apply user filter
         if "High-Confidence" in gfs_filter_choice:
