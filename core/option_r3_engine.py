@@ -131,6 +131,9 @@ def get_current_weekly_expiry(symbol: str, ref_date = None):
     ref_dt = ref_date if ref_date else now.date()
 
     clean, _, _ = normalize_symbol_and_exchange(symbol)
+    # SEBI/NSE discontinued weekly expiries for BANKNIFTY & FINNIFTY -> route to Monthly Expiry
+    if clean in ["BANKNIFTY", "NIFTYBANK", "FINNIFTY", "NIFTY_FIN_SERVICE", "SENSEX", "BSESN", "BANKEX"]:
+        return get_current_monthly_expiry(ref_date=ref_dt)
     if clean == "BANKNIFTY":
         target_weekday = calendar.WEDNESDAY  # 2
     elif clean == "FINNIFTY":
@@ -269,6 +272,10 @@ def get_current_monthly_expiry(ref_date: Optional[datetime.date] = None) -> Dict
         "date": expiry_date,
         "day": expiry_date.day,
         "month_str": expiry_date.strftime("%b").upper(),
+        "is_weekly": False,
+        "is_monthly": True,
+        "is_gamma_blast": (expiry_date == ref_dt),
+        "regime": "MONTHLY_EXPIRY",
         "year": expiry_date.year,
         "label": expiry_label,
         "fyers_code": fyers_expiry_code,
@@ -298,7 +305,8 @@ def build_option_contract(symbol: str, spot_price: float, opt_type: str = "CE") 
     is_idx = is_index_symbol(symbol)
     if is_idx:
         # BSE SENSEX & BANKEX use Monthly expiry symbols in Fyers API (e.g. BSE:SENSEX26NOV80200CE)
-        if clean_sym in ["SENSEX", "BSESN", "BANKEX"] or exchange == "BSE":
+        # SEBI discontinued weekly expiries for BANKNIFTY & FINNIFTY -> Monthly Expiry; BSE SENSEX & BANKEX also use Monthly expiry symbols
+        if clean_sym in ["SENSEX", "BSESN", "BANKEX", "BANKNIFTY", "NIFTYBANK", "FINNIFTY", "NIFTY_FIN_SERVICE"] or exchange == "BSE":
             expiry_info = get_current_monthly_expiry()
         else:
             expiry_info = get_current_weekly_expiry(clean_sym)

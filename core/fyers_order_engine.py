@@ -163,7 +163,8 @@ def load_algo_trades() -> Dict[str, Any]:
             "unrealized_pnl": 0.0,
             "total_trades": 0,
             "winning_trades": 0,
-            "losing_trades": 0
+            "losing_trades": 0,
+            "breakeven_trades": 0
         }
     }
     if not os.path.exists(ALGO_TRADES_FILE):
@@ -263,6 +264,154 @@ def place_fyers_broker_order(
             return False, err_msg, res if isinstance(res, dict) else {}
     except Exception as ex:
         return False, f"Exception placing Fyers order: {str(ex)}", {}
+
+# -------------------------------------------------------------
+# Quote Calibration & Trade Closure Helpers
+# -------------------------------------------------------------
+def _resolve_spot_yf_symbol(sym: str) -> str:
+    """Maps NSE/BSE symbol names to Yahoo Finance spot tickers."""
+    clean = str(sym or "").strip().upper()
+    idx_yf_map = {
+        "NIFTY": "^NSEI",
+        "NIFTY 50": "^NSEI",
+        "^NSEI": "^NSEI",
+        "BANKNIFTY": "^NSEBANK",
+        "NIFTYBANK": "^NSEBANK",
+        "^NSEBANK": "^NSEBANK",
+        "FINNIFTY": "NIFTY_FIN_SERVICE.NS",
+        "NIFTY_FIN_SERVICE": "NIFTY_FIN_SERVICE.NS",
+        "MIDCPNIFTY": "NIFTY_MIDCAP_100.NS",
+        "SENSEX": "^BSESN",
+        "BSESN": "^BSESN",
+        "^BSESN": "^BSESN",
+        "BANKEX": "BSE-BANK.BO",
+    }
+    base = clean.replace(".NS", "").replace(".BO", "")
+    if clean in idx_yf_map:
+        return idx_yf_map[clean]
+    if base in idx_yf_map:
+        return idx_yf_map[base]
+    if clean.startswith("^") or clean.endswith(".NS") or clean.endswith(".BO"):
+        return clean
+    return f"{base}.NS"
+
+
+def _extract_valid_fyers_ltp(q_res: Any) -> Optional[float]:
+    """Extracts a verified positive LTP from Fyers quotes response, else None."""
+    if not isinstance(q_res, dict) or q_res.get("s") != "ok":
+        return None
+    items = q_res.get("d")
+    if not isinstance(items, list) or not items:
+        return None
+    item = items[0] if isinstance(items[0], dict) else {}
+    if item.get("s") == "error":
+        return None
+    val = item.get("v") or {}
+    raw_lp = val.get("lp")
+    if raw_lp is None:
+        return None
+    try:
+        lp = float(raw_lp)
+    except (TypeError, ValueError):
+        return None
+    return lp if lp > 0 else None
+
+
+def _estimate_paper_option_ltp_from_spot(tr: Dict[str, Any]) -> Optional[float]:
+    """
+    Paper-mode fallback when broker option quotes are unavailable:
+    approximates option premium change from underlying spot move via ~0.42 ATM/OTM delta.
+    """
+    spot_entry = float(tr.get("spot_entry_price") or 0.0)
+    entry_price = float(tr.get("entry_price") or 0.0)
+    if spot_entry <= 0 or entry_price <= 0:
+        return None
+
+    yf_sym = tr.get("spot_yf_symbol") or _resolve_spot_yf_symbol(tr.get("symbol", ""))
+    try:
+        import yfinance as yf
+        hist = yf.Ticker(yf_sym).history(period="1d", interval="1m")
+        if hist is None or hist.empty:
+            return None
+        spot_now = float(hist["Close"].iloc[-1])
+        if spot_now <= 0:
+            return None
+    except Exception:
+        return None
+
+    opt_type = str(tr.get("opt_type", "CE")).upper()
+    direction = 1.0 if opt_type == "CE" else -1.0
+    delta_approx = 0.42
+    est_ltp = entry_price + ((spot_now - spot_entry) * direction * delta_approx)
+    min_floor = max(0.05, round(entry_price * 0.05, 2))
+    return round(max(min_floor, est_ltp), 2)
+
+
+def _fetch_live_or_paper_option_ltp(
+    fyers_client: Any,
+    safe_fyers_quotes_fn: Any,
+    tr: Dict[str, Any],
+) -> Tuple[float, bool, str]:
+    """Returns (ltp, quote_ok, quote_source). Never fabricates a triggerable quote from entry_price."""
+    fyers_sym = tr.get("fyers_symbol", "")
+    if fyers_client and safe_fyers_quotes_fn and fyers_sym:
+        try:
+            q_res = safe_fyers_quotes_fn(fyers_client, {"symbols": fyers_sym})
+            live_lp = _extract_valid_fyers_ltp(q_res)
+            if live_lp is not None:
+                return round(live_lp, 2), True, "FYERS"
+        except Exception:
+            pass
+
+    if tr.get("mode", "PAPER") == "PAPER":
+        paper_lp = _estimate_paper_option_ltp_from_spot(tr)
+        if paper_lp is not None and paper_lp > 0:
+            return round(paper_lp, 2), True, "PAPER_YF_SPOT"
+
+    fallback_ltp = float(tr.get("last_valid_price") or tr.get("current_price") or tr.get("entry_price") or 0.0)
+    return round(fallback_ltp, 2), False, "UNAVAILABLE"
+
+
+def finalize_algo_trade_closure(
+    tr: Dict[str, Any],
+    status: str,
+    exit_price: float,
+    final_slice_pnl: float,
+    closed_trades: List[Dict[str, Any]],
+    daily_summary: Dict[str, Any],
+    now_ist: Optional[datetime] = None,
+) -> float:
+    """
+    Reconciles partial T1/T2 bookings with the final exit slice, writes tr['realized_pnl'],
+    updates daily_summary totals, and counts wins strictly on positive net P&L (> 0).
+    """
+    if now_ist is None:
+        now_ist = get_ist_now()
+
+    booked_pnl = float(tr.get("booked_pnl", 0.0) or 0.0)
+    final_slice = float(final_slice_pnl or 0.0)
+    total_trade_pnl = round(booked_pnl + final_slice, 2)
+
+    tr["status"] = status
+    tr["exit_price"] = round(float(exit_price), 2)
+    tr["exit_time"] = now_ist.strftime("%d %b %Y | %H:%M:%S IST")
+    tr["realized_pnl"] = total_trade_pnl
+    closed_trades.append(tr)
+
+    # T1/T2 partial profits were already added to daily_summary['realized_pnl'] when hit,
+    # so add only the closing slice here to keep daily_summary synced with trade history.
+    daily_summary["realized_pnl"] = round(float(daily_summary.get("realized_pnl", 0.0) or 0.0) + final_slice, 2)
+    daily_summary["total_trades"] = int(daily_summary.get("total_trades", 0) or 0) + 1
+
+    if total_trade_pnl > 0:
+        daily_summary["winning_trades"] = int(daily_summary.get("winning_trades", 0) or 0) + 1
+    elif total_trade_pnl < 0:
+        daily_summary["losing_trades"] = int(daily_summary.get("losing_trades", 0) or 0) + 1
+    else:
+        daily_summary["breakeven_trades"] = int(daily_summary.get("breakeven_trades", 0) or 0) + 1
+
+    return total_trade_pnl
+
 
 # -------------------------------------------------------------
 # Core Algo Entry Trigger
@@ -395,6 +544,19 @@ def execute_algo_entry(scan_res: Dict[str, Any]) -> Tuple[bool, str]:
             return False, f"Fyers Order Failed: {order_id_or_err}"
         order_id = order_id_or_err
         
+    is_synthetic_test = bool(scan_res.get("is_synthetic_test", False))
+    spot_entry_price = 0.0
+    if not is_synthetic_test:
+        raw_spot = scan_res.get("spot_price")
+        if raw_spot is not None:
+            spot_entry_price = float(raw_spot or 0.0)
+        elif scan_res.get("price") is not None and (
+            float(scan_res.get("opt_ltp", 0.0) or 0.0) > 0
+            or float(scan_res.get("opt_put_ltp", 0.0) or 0.0) > 0
+        ):
+            spot_entry_price = float(scan_res.get("price") or 0.0)
+    spot_yf_symbol = _resolve_spot_yf_symbol(sym)
+
     # Record Active Trade
     new_trade = {
         "id": trade_id,
@@ -405,6 +567,9 @@ def execute_algo_entry(scan_res: Dict[str, Any]) -> Tuple[bool, str]:
         "mode": trade_mode,
         "entry_price": round(entry_price, 2),
         "current_price": round(entry_price, 2),
+        "last_valid_price": round(entry_price, 2),
+        "spot_entry_price": round(spot_entry_price, 2),
+        "spot_yf_symbol": spot_yf_symbol,
         "initial_qty": total_qty,
         "remaining_qty": total_qty,
         "lots": lots,
@@ -417,6 +582,7 @@ def execute_algo_entry(scan_res: Dict[str, Any]) -> Tuple[bool, str]:
         "entry_time": now_ist.strftime("%d %b %Y | %H:%M:%S IST"),
         "t1_hit": False,
         "t2_hit": False,
+        "booked_pnl": 0.0,
         "order_id": order_id,
         "status": "ACTIVE",
         "unrealized_pnl": 0.0,
@@ -493,8 +659,10 @@ def monitor_and_manage_algo_positions() -> List[str]:
     
     # Acquire Fyers client for live quote fetching
     fyers_client = None
+    safe_fyers_quotes_fn = None
     try:
         from core.fyers_auth import get_fyers_client, safe_fyers_quotes
+        safe_fyers_quotes_fn = safe_fyers_quotes
         ok_f, cl_f = get_fyers_client()
         if ok_f and cl_f:
             fyers_client = cl_f
@@ -515,77 +683,76 @@ def monitor_and_manage_algo_positions() -> List[str]:
         target_1 = float(tr["target_1"])
         target_2 = float(tr["target_2"])
         
-        # 1. Fetch live LTP
-        current_ltp = entry_price
-        if fyers_client and fyers_sym:
-            try:
-                q_res = safe_fyers_quotes(fyers_client, {"symbols": fyers_sym})
-                if isinstance(q_res, dict) and "d" in q_res and len(q_res["d"]) > 0:
-                    val = q_res["d"][0].get("v", {})
-                    current_ltp = float(val.get("lp", entry_price))
-            except Exception:
-                pass
-                
+        # 1. Fetch verified live LTP (or Paper spot-calibrated fallback; never fabricate SL hits on missing quotes)
+        current_ltp, quote_ok, quote_src = _fetch_live_or_paper_option_ltp(
+            fyers_client, safe_fyers_quotes_fn, tr
+        )
+        tr["quote_source"] = quote_src
+        if quote_ok:
+            tr["last_valid_price"] = round(current_ltp, 2)
+
         tr["current_price"] = round(current_ltp, 2)
         unrealized = round((current_ltp - entry_price) * rem_qty, 2)
-        pnl_pct = round(((current_ltp - entry_price) / entry_price) * 100, 2)
+        pnl_pct = round(((current_ltp - entry_price) / entry_price) * 100, 2) if entry_price > 0 else 0.0
         tr["unrealized_pnl"] = unrealized
         tr["pnl_pct"] = pnl_pct
         
         # Case A: EOD Auto Square-off (15:15 IST)
         if is_eod_square_off:
-            if trade_mode == "LIVE":
+            if trade_mode == "LIVE" and rem_qty > 0:
                 place_fyers_broker_order(symbol=fyers_sym, qty=rem_qty, side=-1, order_type=2)
-            tr["status"] = "CLOSED (EOD 15:15 SQUARE-OFF)"
-            tr["exit_price"] = current_ltp
-            tr["exit_time"] = now_ist.strftime("%d %b %Y | %H:%M:%S IST")
-            realized = unrealized
-            tr["realized_pnl"] = realized
-            closed_trades.append(tr)
-            
-            daily_summary["realized_pnl"] = round(daily_summary.get("realized_pnl", 0.0) + realized, 2)
-            daily_summary["total_trades"] = daily_summary.get("total_trades", 0) + 1
-            if realized >= 0:
-                daily_summary["winning_trades"] = daily_summary.get("winning_trades", 0) + 1
-            else:
-                daily_summary["losing_trades"] = daily_summary.get("losing_trades", 0) + 1
+            eod_status = (
+                "CLOSED (EOD 15:15 - NO VALID QUOTE)"
+                if (not quote_ok and float(tr.get("booked_pnl", 0.0) or 0.0) == 0.0 and current_ltp == entry_price)
+                else "CLOSED (EOD 15:15 SQUARE-OFF)"
+            )
+            realized_total = finalize_algo_trade_closure(
+                tr=tr,
+                status=eod_status,
+                exit_price=current_ltp,
+                final_slice_pnl=unrealized,
+                closed_trades=closed_trades,
+                daily_summary=daily_summary,
+                now_ist=now_ist,
+            )
                 
             msg = (
                 f"⏰ <b>AUTO-ALGO EOD SQUARE-OFF (15:15 IST)</b>\n"
                 f"━━━━━━━━━━━━━━━━━━━━━\n"
                 f"• <b>Instrument:</b> {contract_name}\n"
                 f"• <b>Exit Price:</b> ₹{current_ltp:.2f} (Entry: ₹{entry_price:.2f})\n"
-                f"• <b>P&L:</b> <b>₹{realized:+.2f} ({pnl_pct:+.1f}%)</b>\n"
+                f"• <b>P&L:</b> <b>₹{realized_total:+.2f} ({pnl_pct:+.1f}%)</b>\n"
                 f"• <b>Mode:</b> {trade_mode}"
             )
             send_telegram_alert(msg)
             actions_taken.append(f"{sym} EOD Squared Off")
             continue
+
+        # Safety Guard: Never trigger SL or Targets without a verified quote or Paper spot estimate
+        if not quote_ok:
+            remaining_active.append(tr)
+            continue
             
         # Case B: Stop Loss Hit
         if current_ltp <= stop_loss:
-            if trade_mode == "LIVE":
+            if trade_mode == "LIVE" and rem_qty > 0:
                 place_fyers_broker_order(symbol=fyers_sym, qty=rem_qty, side=-1, order_type=2)
-            tr["status"] = "CLOSED (STOP LOSS HIT)"
-            tr["exit_price"] = current_ltp
-            tr["exit_time"] = now_ist.strftime("%d %b %Y | %H:%M:%S IST")
-            realized = unrealized
-            tr["realized_pnl"] = realized
-            closed_trades.append(tr)
-            
-            daily_summary["realized_pnl"] = round(daily_summary.get("realized_pnl", 0.0) + realized, 2)
-            daily_summary["total_trades"] = daily_summary.get("total_trades", 0) + 1
-            if realized >= 0:
-                daily_summary["winning_trades"] = daily_summary.get("winning_trades", 0) + 1
-            else:
-                daily_summary["losing_trades"] = daily_summary.get("losing_trades", 0) + 1
+            realized_total = finalize_algo_trade_closure(
+                tr=tr,
+                status="CLOSED (STOP LOSS HIT)",
+                exit_price=current_ltp,
+                final_slice_pnl=unrealized,
+                closed_trades=closed_trades,
+                daily_summary=daily_summary,
+                now_ist=now_ist,
+            )
                 
             msg = (
                 f"🛑 <b>ALGO STOP LOSS EXECUTED!</b>\n"
                 f"━━━━━━━━━━━━━━━━━━━━━\n"
                 f"• <b>Instrument:</b> {contract_name}\n"
                 f"• <b>Exit Price:</b> ₹{current_ltp:.2f} (SL: ₹{stop_loss:.2f})\n"
-                f"• <b>Realized P&L:</b> <b>₹{realized:+.2f} ({pnl_pct:+.1f}%)</b>\n"
+                f"• <b>Realized P&L:</b> <b>₹{realized_total:+.2f} ({pnl_pct:+.1f}%)</b>\n"
                 f"• <b>Capital Protected:</b> શિસ્તબદ્ધ એક્ઝિટ પૂર્ણ!"
             )
             send_telegram_alert(msg)
@@ -595,7 +762,8 @@ def monitor_and_manage_algo_positions() -> List[str]:
         # Case C: Target 1 Hit (Book 50% & Trail SL to Cost)
         if current_ltp >= target_1 and not tr.get("t1_hit", False):
             exit_qty = max(1, int(tr["initial_qty"] * (cfg.get("t1_qty_exit_pct", 50) / 100.0)))
-            if trade_mode == "LIVE":
+            exit_qty = min(exit_qty, rem_qty)
+            if trade_mode == "LIVE" and exit_qty > 0:
                 place_fyers_broker_order(symbol=fyers_sym, qty=exit_qty, side=-1, order_type=2)
             tr["t1_hit"] = True
             tr["remaining_qty"] = max(0, rem_qty - exit_qty)
@@ -606,7 +774,10 @@ def monitor_and_manage_algo_positions() -> List[str]:
                 tr["stop_loss"] = entry_price
                 
             t1_realized = round((current_ltp - entry_price) * exit_qty, 2)
-            daily_summary["realized_pnl"] = round(daily_summary.get("realized_pnl", 0.0) + t1_realized, 2)
+            tr["booked_pnl"] = round(float(tr.get("booked_pnl", 0.0) or 0.0) + t1_realized, 2)
+            daily_summary["realized_pnl"] = round(float(daily_summary.get("realized_pnl", 0.0) or 0.0) + t1_realized, 2)
+            unrealized = round((current_ltp - entry_price) * rem_qty, 2)
+            tr["unrealized_pnl"] = unrealized
             
             msg = (
                 f"🎯 <b>ALGO TARGET 1 ACHIEVED (+35%)!</b> 🚀\n"
@@ -625,7 +796,7 @@ def monitor_and_manage_algo_positions() -> List[str]:
         if current_ltp >= target_2 and tr.get("t1_hit", False) and not tr.get("t2_hit", False) and rem_qty > 0:
             exit_qty = max(1, int(tr["initial_qty"] * (cfg.get("t2_qty_exit_pct", 30) / 100.0)))
             exit_qty = min(exit_qty, rem_qty)
-            if trade_mode == "LIVE":
+            if trade_mode == "LIVE" and exit_qty > 0:
                 place_fyers_broker_order(symbol=fyers_sym, qty=exit_qty, side=-1, order_type=2)
             tr["t2_hit"] = True
             tr["remaining_qty"] = max(0, rem_qty - exit_qty)
@@ -635,7 +806,10 @@ def monitor_and_manage_algo_positions() -> List[str]:
             tr["stop_loss"] = target_1
             
             t2_realized = round((current_ltp - entry_price) * exit_qty, 2)
-            daily_summary["realized_pnl"] = round(daily_summary.get("realized_pnl", 0.0) + t2_realized, 2)
+            tr["booked_pnl"] = round(float(tr.get("booked_pnl", 0.0) or 0.0) + t2_realized, 2)
+            daily_summary["realized_pnl"] = round(float(daily_summary.get("realized_pnl", 0.0) or 0.0) + t2_realized, 2)
+            unrealized = round((current_ltp - entry_price) * rem_qty, 2)
+            tr["unrealized_pnl"] = unrealized
             
             msg = (
                 f"🚀🔥 <b>ALGO TARGET 2 ACHIEVED (+70% થી +100%)!</b> 🔥🚀\n"
@@ -649,13 +823,17 @@ def monitor_and_manage_algo_positions() -> List[str]:
             send_telegram_alert(msg)
             actions_taken.append(f"{sym} Target 2 Hit")
             
-        # If all quantities exited, close trade
+        # If all quantities exited, close trade with full reconciled P&L & Win Rate update
         if rem_qty <= 0:
-            tr["status"] = "CLOSED (TARGETS FULLY HIT)"
-            tr["exit_price"] = current_ltp
-            tr["exit_time"] = now_ist.strftime("%d %b %Y | %H:%M:%S IST")
-            closed_trades.append(tr)
-            daily_summary["winning_trades"] = daily_summary.get("winning_trades", 0) + 1
+            finalize_algo_trade_closure(
+                tr=tr,
+                status="CLOSED (TARGETS FULLY HIT)",
+                exit_price=current_ltp,
+                final_slice_pnl=0.0,
+                closed_trades=closed_trades,
+                daily_summary=daily_summary,
+                now_ist=now_ist,
+            )
         else:
             remaining_active.append(tr)
             
@@ -712,16 +890,20 @@ def emergency_square_off_all_algo_trades() -> Tuple[int, float]:
         fyers_sym = tr.get("fyers_symbol", "")
         if tr.get("mode") == "LIVE" and fyers_sym and rem_qty > 0:
             place_fyers_broker_order(symbol=fyers_sym, qty=rem_qty, side=-1, order_type=2)
-            
-        tr["status"] = "CLOSED (EMERGENCY MANUAL SQUARE-OFF)"
-        tr["exit_price"] = tr.get("current_price", tr.get("entry_price"))
-        tr["exit_time"] = now_ist.strftime("%d %b %Y | %H:%M:%S IST")
-        tr["realized_pnl"] = tr.get("unrealized_pnl", 0.0)
-        total_exit_pnl += tr["realized_pnl"]
-        closed_trades.append(tr)
+
+        exit_p = float(tr.get("current_price", tr.get("entry_price", 0.0)) or 0.0)
+        rem_slice_pnl = float(tr.get("unrealized_pnl", 0.0) or 0.0)
+        trade_total_pnl = finalize_algo_trade_closure(
+            tr=tr,
+            status="CLOSED (EMERGENCY MANUAL SQUARE-OFF)",
+            exit_price=exit_p,
+            final_slice_pnl=rem_slice_pnl,
+            closed_trades=closed_trades,
+            daily_summary=daily_summary,
+            now_ist=now_ist,
+        )
+        total_exit_pnl = round(total_exit_pnl + trade_total_pnl, 2)
         closed_count += 1
-        
-    daily_summary["realized_pnl"] = round(daily_summary.get("realized_pnl", 0.0) + total_exit_pnl, 2)
     trades_data["active_trades"] = []
     trades_data["closed_trades"] = closed_trades
     trades_data["daily_summary"] = daily_summary
