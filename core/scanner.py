@@ -42,6 +42,7 @@ from .gfs_engine import evaluate_gfs_confluence
 from .alerts import (
     send_telegram_alert,
     format_stage1_pre_breakout_alert,
+    format_stage1_put_pre_breakout_alert,
     format_gfs_swing_alert,
     format_pre_r3_radar_alert,
     format_pre_put_r3_radar_alert,
@@ -54,6 +55,95 @@ from .alerts import (
     format_general_buy_alert,
     format_exit_alert
 )
+
+def _evaluate_intraday_stage1_and_exhaustion(
+    df_intra,
+    d_is_positive: bool,
+    d_is_negative: bool,
+    d_hm_bull: bool,
+    d_hm_bear: bool,
+    m_bull: bool,
+    w_bull: bool,
+    pct_chg: float,
+    m_rsi: float,
+    m_rsi_slope: float,
+    is_candle_green: bool,
+    is_candle_red: bool,
+):
+    """
+    Computes 3m Stage-1 Squeeze signals (Call & Put) and ADX/DI climax exhaustion guards
+    so early breakouts/breakdowns are caught at squeeze base while late 15:02 climaxes are blocked.
+    """
+    res_flags = {
+        "is_stage1_pre_breakout": False,
+        "is_stage1_put_pre_breakout": False,
+        "is_bull_exhausted": False,
+        "is_bear_exhausted": False,
+        "adx_3m": 0.0,
+        "plus_di_3m": 0.0,
+        "minus_di_3m": 0.0,
+    }
+    if df_intra is None or df_intra.empty or len(df_intra) < 20:
+        return res_flags
+
+    try:
+        from .gfs_engine import calculate_bollinger_bands
+        df_bb = calculate_bollinger_bands(df_intra, period=20, std=2.0)
+        df_adx = calculate_adx_dmi(df_intra.copy(), period=14)
+
+        c_bb = df_bb.iloc[-1]
+        p_bb = df_bb.iloc[-2]
+        c_c = float(df_intra.iloc[-1]["Close"])
+
+        plus_di = float(df_adx.iloc[-1]["Plus_DI_14"])
+        prev_plus_di = float(df_adx.iloc[-2]["Plus_DI_14"])
+        minus_di = float(df_adx.iloc[-1]["Minus_DI_14"])
+        prev_minus_di = float(df_adx.iloc[-2]["Minus_DI_14"])
+        adx_val = float(df_adx.iloc[-1]["ADX_14"])
+
+        res_flags["adx_3m"] = round(adx_val, 1)
+        res_flags["plus_di_3m"] = round(plus_di, 1)
+        res_flags["minus_di_3m"] = round(minus_di, 1)
+
+        bw_series = (df_bb["BBU"].iloc[-12:-1] - df_bb["BBL"].iloc[-12:-1]) / df_bb["BBM"].iloc[-12:-1].replace(0, np.nan)
+        bw_mean = float(bw_series.dropna().mean()) if not bw_series.dropna().empty else 1.0
+        is_tight_squeeze = bool(bw_mean <= 0.025)
+
+        # Climax Exhaustion Guards (prevents top/bottom ready alerts after giant moves like ADX > 52 hooking down)
+        is_bull_exhausted = bool((pct_chg >= 4.0) or (m_rsi > 78.0) or (adx_val >= 52.0 and plus_di < prev_plus_di))
+        is_bear_exhausted = bool((pct_chg <= -2.5) or (m_rsi < 24.0) or (adx_val >= 52.0 and minus_di < prev_minus_di))
+        res_flags["is_bull_exhausted"] = is_bull_exhausted
+        res_flags["is_bear_exhausted"] = is_bear_exhausted
+
+        # Call Stage-1 Early Squeeze Breakout
+        is_bb_upper_blast = bool(c_c >= c_bb["BBU"] or (p_bb["Close"] <= p_bb["BBM"] and c_c > c_bb["BBM"] * 1.003))
+        is_early_bull_rsi = bool(55.0 <= m_rsi <= 68.0 and m_rsi_slope >= 0.2)
+        macro_is_bull = bool(d_is_positive or (m_bull and w_bull) or d_hm_bull)
+        res_flags["is_stage1_pre_breakout"] = bool(
+            macro_is_bull
+            and (is_bb_upper_blast or (is_tight_squeeze and c_c >= c_bb["BBM"]))
+            and is_early_bull_rsi
+            and is_candle_green
+            and not is_bull_exhausted
+        )
+
+        # Put Stage-1 Early Squeeze Breakdown (-DI > +DI & Red Break below BBM/BBL)
+        is_bb_lower_blast = bool(c_c <= c_bb["BBL"] or (p_bb["Close"] >= p_bb["BBM"] and c_c < c_bb["BBM"] * 0.997))
+        di_bear_aligned = bool(minus_di > plus_di and minus_di >= prev_minus_di)
+        is_early_bear_rsi = bool(30.0 <= m_rsi <= 46.0 and m_rsi_slope <= -0.2)
+        macro_is_bear = bool(d_is_negative or d_hm_bear or pct_chg <= -0.35 or (minus_di > plus_di and c_c < c_bb["BBM"]))
+        res_flags["is_stage1_put_pre_breakout"] = bool(
+            macro_is_bear
+            and (is_bb_lower_blast or (is_tight_squeeze and c_c <= c_bb["BBM"]))
+            and is_early_bear_rsi
+            and di_bear_aligned
+            and is_candle_red
+            and not is_bear_exhausted
+        )
+    except Exception:
+        pass
+    return res_flags
+
 
 def analyze_stock(sym):
     """
@@ -254,9 +344,28 @@ def analyze_stock(sym):
         is_candle_green = bool(h1_curr['Close'] >= h1_curr['Open'])
         is_candle_red = bool(h1_curr['Close'] <= h1_curr['Open'])
         
-        is_candidate_bear = bool(is_sniper_short or (s1_val > 0 and curr_p <= s1_val) or (pct_chg <= -0.8))
+        h1_bear_cross = bool(h1_curr['Green_EMA3'] < h1_curr['Red_WMA21'])
+        h1_red_below_pivot = bool(
+            p_val > 0 and curr_p <= p_val
+            and h1_curr['Close'] < h1_curr['Open']
+            and h1_curr['Close'] <= h1_prev['Close']
+        )
+        is_candidate_bear = bool(
+            is_sniper_short
+            or (s1_val > 0 and curr_p <= s1_val)
+            or (pct_chg <= -0.35 and (d_hm_bear or h1_bear_cross))
+            or h1_red_below_pivot
+            or (pct_chg <= -0.8)
+        )
         is_candidate = bool(is_sniper_buy or is_r3_radar or (curr_p >= r1_val) or (pct_chg >= 0.35 and d_is_positive) or (pct_chg >= 0.7) or is_candidate_bear)
         is_lower_wick_rejected = False
+        is_stage1_pre_breakout = False
+        is_stage1_put_pre_breakout = False
+        is_bull_exhausted = False
+        is_bear_exhausted = False
+        adx_3m = 0.0
+        plus_di_3m = 0.0
+        minus_di_3m = 0.0
         if is_candidate:
             try:
                 # 1. Try 2m/3m ultra-fast intraday candles first (2 days data)
@@ -308,22 +417,28 @@ def analyze_stock(sym):
                     is_candle_green = bool(c_c >= c_o)
                     is_candle_red = bool(c_c <= c_o)
 
-                    # Stage-1 Early Pre-Breakout Squeeze Radar Detection
-                    # Catches momentum 5 to 8 minutes EARLY (e.g. 13:45 at ₹4.50 instead of 13:53 at ₹5.44)
-                    try:
-                        from .gfs_engine import calculate_bollinger_bands
-                        df_bb = calculate_bollinger_bands(df_intra, period=20, std=2.0)
-                        c_bb = df_bb.iloc[-1]
-                        p_bb = df_bb.iloc[-2]
-                        # Bollinger squeeze bandwidth <= 2.5%
-                        bw_history = (df_bb['BBU'].iloc[-12:-1] - df_bb['BBL'].iloc[-12:-1]) / df_bb['BBM'].iloc[-12:-1]
-                        is_tight_squeeze = bool(bw_history.mean() <= 0.025)
-                        is_bb_upper_blast = bool(c_c >= c_bb['BBU'] or (p_bb['Close'] <= c_bb['BBM'] and c_c > c_bb['BBM'] * 1.003))
-                        is_early_rsi_sweet = bool(55.0 <= m_rsi <= 68.0 and m_rsi_slope >= 0.2)
-                        macro_is_bull = bool(d_is_positive or (m_bull and w_bull))
-                        is_stage1_pre_breakout = bool(macro_is_bull and (is_bb_upper_blast or is_tight_squeeze) and is_early_rsi_sweet and is_candle_green)
-                    except Exception:
-                        is_stage1_pre_breakout = False
+                    # Stage-1 Early Squeeze (Call & Put) + Climax Exhaustion Guards
+                    s1_eval = _evaluate_intraday_stage1_and_exhaustion(
+                        df_intra=df_intra,
+                        d_is_positive=d_is_positive,
+                        d_is_negative=d_is_negative,
+                        d_hm_bull=d_hm_bull,
+                        d_hm_bear=d_hm_bear,
+                        m_bull=m_bull,
+                        w_bull=w_bull,
+                        pct_chg=pct_chg,
+                        m_rsi=m_rsi,
+                        m_rsi_slope=m_rsi_slope,
+                        is_candle_green=is_candle_green,
+                        is_candle_red=is_candle_red,
+                    )
+                    is_stage1_pre_breakout = s1_eval["is_stage1_pre_breakout"]
+                    is_stage1_put_pre_breakout = s1_eval["is_stage1_put_pre_breakout"]
+                    is_bull_exhausted = s1_eval["is_bull_exhausted"]
+                    is_bear_exhausted = s1_eval["is_bear_exhausted"]
+                    adx_3m = s1_eval["adx_3m"]
+                    plus_di_3m = s1_eval["plus_di_3m"]
+                    minus_di_3m = s1_eval["minus_di_3m"]
 
                     # Upper wick rejection check (Rejection at R2/R3 barrier)
                     total_bar_span = c_h - c_l
@@ -406,7 +521,7 @@ def analyze_stock(sym):
 
         # Deep Put Option R3 Analysis (Bearish Mandi Setup)
         opt_put_analysis = None
-        if is_candidate_bear:
+        if is_candidate_bear or is_stage1_put_pre_breakout:
             try:
                 opt_put_analysis = analyze_put_r3_setup(
                     symbol=sym,
@@ -424,9 +539,9 @@ def analyze_stock(sym):
             except Exception:
                 pass
         
-        is_pre_r3_radar = bool(opt_analysis.get("is_pre_r3_radar", False)) if opt_analysis else False
+        is_pre_r3_radar = bool(opt_analysis.get("is_pre_r3_radar", False) and not is_bull_exhausted) if opt_analysis else False
         is_chasing = bool(opt_analysis.get("is_chasing", False)) if opt_analysis else False
-        is_pre_put_r3_radar = bool(opt_put_analysis.get("is_pre_r3_radar", False)) if opt_put_analysis else False
+        is_pre_put_r3_radar = bool(opt_put_analysis.get("is_pre_r3_radar", False) and not is_bear_exhausted) if opt_put_analysis else False
         is_put_chasing = bool(opt_put_analysis.get("is_chasing", False)) if opt_put_analysis else False
         is_gamma_blast = opt_analysis.get("is_gamma_blast", False) if opt_analysis else opt_info.get("is_gamma_blast", False)
 
@@ -496,6 +611,14 @@ def analyze_stock(sym):
             "is_r3_radar": is_r3_radar,
             "is_pre_r3_radar": is_pre_r3_radar,
             "is_chasing": is_chasing,
+            "is_stage1_pre_breakout": is_stage1_pre_breakout,
+            "is_stage1_put_pre_breakout": is_stage1_put_pre_breakout,
+            "is_bull_exhausted": is_bull_exhausted,
+            "is_bear_exhausted": is_bear_exhausted,
+            "adx_3m": adx_3m,
+            "plus_di_3m": plus_di_3m,
+            "minus_di_3m": minus_di_3m,
+            "rsi_3m": round(m_rsi, 1),
             "is_pre_put_r3_radar": is_pre_put_r3_radar,
             "is_put_chasing": is_put_chasing,
             "otm_call_strike": otm_call_strike,
@@ -894,7 +1017,10 @@ def run_scan_cycle(force=False, watchlist=None):
     except Exception as algo_m_err:
         print(f"Error in algo order manager: {algo_m_err}")
 
-    today_str = get_ist_now().date().isoformat()
+    now_ist_scan = get_ist_now()
+    today_str = now_ist_scan.date().isoformat()
+    # Cut off "Ready / Pre-Breakout" alerts at 14:50 IST to avoid late pre-close climax traps
+    allow_ready_alerts = bool((now_ist_scan.hour * 60 + now_ist_scan.minute) < (14 * 60 + 50))
     for res in results:
         if not res:
             continue
@@ -908,18 +1034,45 @@ def run_scan_cycle(force=False, watchlist=None):
         is_buy = "BUY" in curr_sig or "BULLISH" in curr_sig
         is_sell = "SELL" in curr_sig or "AVOID" in curr_sig
         
-        # -1.0 Stage-1 Early Pre-Breakout Squeeze Radar (5 to 8 minutes early warning at cheaper price)
+        # -1.0 Stage-1 Early Pre-Breakout Squeeze Radar (Call - 5 to 8 minutes early warning at squeeze base)
         stage1_key = f"{s_name}_STAGE1_{today_str}"
-        if res.get('is_stage1_pre_breakout') and not res.get('is_option_r3_crossed') and not state.get(stage1_key):
+        if (
+            allow_ready_alerts
+            and res.get('is_stage1_pre_breakout')
+            and not res.get('is_option_r3_crossed')
+            and not res.get('is_bull_exhausted')
+            and not state.get(stage1_key)
+        ):
             stage1_alert_text = format_stage1_pre_breakout_alert(res)
             print(f"Sending STAGE-1 PRE-BREAKOUT RADAR alert for {s_name}")
             send_telegram_alert(stage1_alert_text)
             state[stage1_key] = True
             new_alerts.append(f"{s_name}: STAGE-1 PRE-BREAKOUT")
 
+        # -1.02 Stage-1 Bearish Put Squeeze Radar (Put - catches early -DI breakdown like EICHERMOT 13:36)
+        stage1_put_key = f"{s_name}_STAGE1_PUT_{today_str}"
+        if (
+            allow_ready_alerts
+            and res.get('is_stage1_put_pre_breakout')
+            and not res.get('is_put_r3_crossed')
+            and not res.get('is_bear_exhausted')
+            and not state.get(stage1_put_key)
+        ):
+            stage1_put_text = format_stage1_put_pre_breakout_alert(res)
+            print(f"Sending STAGE-1 BEARISH PUT SQUEEZE RADAR alert for {s_name}")
+            send_telegram_alert(stage1_put_text)
+            state[stage1_put_key] = True
+            new_alerts.append(f"{s_name}: STAGE-1 PUT SQUEEZE RADAR")
+
         # -1. Pre-R3 Advance Radar (Call Side - 2 to 3 minutes advance notice before blast)
         pre_r3_key = f"{s_name}_PRE_R3_{today_str}"
-        if res.get('is_pre_r3_radar') and not res.get('is_option_r3_crossed') and not state.get(pre_r3_key):
+        if (
+            allow_ready_alerts
+            and res.get('is_pre_r3_radar')
+            and not res.get('is_option_r3_crossed')
+            and not res.get('is_bull_exhausted')
+            and not state.get(pre_r3_key)
+        ):
             pre_alert_text = format_pre_r3_radar_alert(res)
             print(f"Sending PRE-R3 ADVANCE RADAR alert for {s_name}")
             send_telegram_alert(pre_alert_text)
@@ -928,7 +1081,13 @@ def run_scan_cycle(force=False, watchlist=None):
 
         # -1.05 Pre-Put R3 Advance Radar (Put Side - 2 to 3 minutes advance notice before breakdown)
         pre_put_r3_key = f"{s_name}_PRE_PUT_R3_{today_str}"
-        if res.get('is_pre_put_r3_radar') and not res.get('is_put_r3_crossed') and not state.get(pre_put_r3_key):
+        if (
+            allow_ready_alerts
+            and res.get('is_pre_put_r3_radar')
+            and not res.get('is_put_r3_crossed')
+            and not res.get('is_bear_exhausted')
+            and not state.get(pre_put_r3_key)
+        ):
             pre_put_alert_text = format_pre_put_r3_radar_alert(res)
             print(f"Sending PRE-PUT R3 ADVANCE RADAR alert for {s_name}")
             send_telegram_alert(pre_put_alert_text)
