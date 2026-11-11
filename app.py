@@ -52,6 +52,7 @@ from core.fyers_order_engine import (
     execute_algo_entry,
     monitor_and_manage_algo_positions,
     emergency_square_off_all_algo_trades,
+    finalize_algo_trade_closure,
     get_lot_size
 )
 from core.indicators import (
@@ -2388,6 +2389,7 @@ if selected_module == "🤖 Fyers Auto-Algo Cockpit (ઓટો-આલ્ગો �
     total_trades_count = int(daily_summary.get("total_trades", len(closed_algo_trades)))
     winning_count = int(daily_summary.get("winning_trades", 0))
     losing_count = int(daily_summary.get("losing_trades", 0))
+    breakeven_count = int(daily_summary.get("breakeven_trades", 0))
     win_rate = (winning_count / max(1, total_trades_count)) * 100.0 if total_trades_count > 0 else 0.0
 
     kpi1, kpi2, kpi3, kpi4, kpi5 = st.columns(5)
@@ -2411,10 +2413,11 @@ if selected_module == "🤖 Fyers Auto-Algo Cockpit (ઓટો-આલ્ગો �
             value=f"{len(active_algo_trades)} / {algo_cfg.get('max_open_positions', 2)}"
         )
     with kpi4:
+        be_tag = f" - {breakeven_count}BE" if breakeven_count > 0 else ""
         st.metric(
             label="📈 વિન-રેટ (Win Rate)",
             value=f"{win_rate:.1f}%",
-            delta=f"{winning_count}W - {losing_count}L"
+            delta=f"{winning_count}W - {losing_count}L{be_tag}"
         )
     with kpi5:
         max_daily_l = float(algo_cfg.get("daily_max_loss", 3000.0))
@@ -2665,13 +2668,16 @@ if selected_module == "🤖 Fyers Auto-Algo Cockpit (ઓટો-આલ્ગો �
                     if st.button(f"🚪 Exit Trade", key=f"btn_exit_algo_trd_{idx}", help="આ પોઝિશન તાત્કાલિક સ્ક્વેર-ઓફ કરો"):
                         if t_mode == "LIVE" and f_sym and rem_q > 0:
                             place_fyers_broker_order(symbol=f_sym, qty=rem_q, side=-1, order_type=2)
-                        tr["status"] = "CLOSED (MANUAL EXIT)"
-                        tr["exit_price"] = c_price
-                        tr["exit_time"] = get_ist_now().strftime("%d %b %Y | %H:%M:%S IST")
-                        tr["realized_pnl"] = unrealized
-                        closed_algo_trades.append(tr)
+                        total_exit_trade_pnl = finalize_algo_trade_closure(
+                            tr=tr,
+                            status="CLOSED (MANUAL EXIT)",
+                            exit_price=c_price,
+                            final_slice_pnl=unrealized,
+                            closed_trades=closed_algo_trades,
+                            daily_summary=daily_summary,
+                            now_ist=get_ist_now(),
+                        )
                         active_algo_trades.pop(idx)
-                        daily_summary["realized_pnl"] = round(daily_summary.get("realized_pnl", 0.0) + unrealized, 2)
                         algo_trades_state["active_trades"] = active_algo_trades
                         algo_trades_state["closed_trades"] = closed_algo_trades
                         algo_trades_state["daily_summary"] = daily_summary
@@ -2679,7 +2685,7 @@ if selected_module == "🤖 Fyers Auto-Algo Cockpit (ઓટો-આલ્ગો �
                         exit_alert_text = (
                             f"🚪 <b>ALGO MANUAL EXIT!</b>\n"
                             f"• {c_name} બજારભાવે (₹{c_price:.2f}) સ્ક્વેર-ઓફ કરાયો!\n"
-                            f"• <b>P&L:</b> ₹{unrealized:+.2f}"
+                            f"• <b>P&L:</b> ₹{total_exit_trade_pnl:+.2f}"
                         )
                         send_telegram_alert(exit_alert_text)
                         st.success(f"✅ {c_name} સફળતાપૂર્વક બંધ કરાયો!")
@@ -2723,6 +2729,7 @@ if selected_module == "🤖 Fyers Auto-Algo Cockpit (ઓટો-આલ્ગો �
                     sim_fyers_sym = f"NSE:{test_sym}26NOV{suffix}"
 
                 sim_res = {
+                    "is_synthetic_test": True,
                     "symbol": test_sym,
                     "opt_type": suffix,
                     "opt_fyers_symbol": sim_fyers_sym,
@@ -2755,6 +2762,10 @@ if selected_module == "🤖 Fyers Auto-Algo Cockpit (ઓટો-આલ્ગો �
     else:
         closed_data = []
         for ct in reversed(closed_algo_trades):
+            booked_part = float(ct.get("booked_pnl", 0.0) or 0.0)
+            status_label = ct.get("status", "CLOSED")
+            if booked_part != 0:
+                status_label = f"{status_label} (T1/T2 Booked: ₹{booked_part:+,.0f})"
             closed_data.append({
                 "સમય": ct.get("exit_time", "-"),
                 "સ્ટોક / કોન્ટ્રાક્ટ": ct.get("contract_name", ct.get("symbol")),
@@ -2762,7 +2773,7 @@ if selected_module == "🤖 Fyers Auto-Algo Cockpit (ઓટો-આલ્ગો �
                 "ખરીદ ભાવ": f"₹{float(ct.get('entry_price', 0)):.2f}",
                 "એક્ઝિટ ભાવ": f"₹{float(ct.get('exit_price', 0)):.2f}",
                 "P&L (₹)": f"₹{float(ct.get('realized_pnl', 0)):+,.2f}",
-                "સ્ટેટસ / કારણ": ct.get("status", "CLOSED")
+                "સ્ટેટસ / કારણ": status_label,
             })
         st.dataframe(pd.DataFrame(closed_data), use_container_width=True)
 
