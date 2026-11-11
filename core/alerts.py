@@ -63,62 +63,91 @@ def format_volume_ratio_badge(tf_lbl: str, vol_val: float) -> str:
     return f"• <b>📊 {tf_lbl} Volume Ratio:</b> <b>{vol_num:.1f}x</b> ({comment})\n"
 
 
-def format_stage1_pre_breakout_alert(res):
-    """
-    Stage-1 Early Pre-Breakout Squeeze Alert (5 to 8 Minutes Early Notice).
-    Triggers when stock breaks out of 3m Bollinger Squeeze with 3m RSI in 55-68 sweet spot,
-    allowing traders to buy the Call Option at the cheaper base price (e.g. ₹4.50 instead of ₹5.44).
-    """
+def _format_stage1_squeeze_alert(res, is_bearish: bool = False):
+    """Shared formatter for Stage-1 Early Squeeze Radar (Bullish Call CE or Bearish Put PE)."""
     s_name = res.get('symbol', '')
     is_idx = res.get('is_index', False)
     inst_lbl = "ઈન્ડેક્સ" if is_idx else "સ્ટોક"
     now_str = get_ist_now().strftime('%d %b %Y | %H:%M:%S IST')
-    
+
     spot_p = float(res.get('price', 0.0))
     spot_chg = float(res.get('change', 0.0))
-    
-    opt_strike_val = res.get('otm_call_strike', res.get('ce_strike', ''))
-    strike_str = f"₹{int(opt_strike_val)} CE" if (isinstance(opt_strike_val, (int, float)) and float(opt_strike_val) > 0) else f"₹{opt_strike_val} CE"
-    contract_lbl = res.get('opt_contract_name', f"{strike_str}")
-    fyers_code = res.get('opt_fyers_symbol', '')
+
+    if is_bearish:
+        opt_strike_val = res.get('otm_put_strike', res.get('pe_strike', ''))
+        suffix = "PE"
+        opt_p = float(res.get('opt_put_ltp', 0.0))
+        opt_r3 = float(res.get('opt_put_r3', 0.0))
+        contract_lbl = res.get('opt_put_contract_name', '') or f"₹{opt_strike_val} PE"
+        fyers_code = res.get('opt_put_fyers_symbol', '')
+        title_line = "📉⚡ <b>STAGE-1 BEARISH PUT SQUEEZE RADAR! (૫ થી ૮ મિનિટ વહેલું મંદી એલર્ટ)</b> ⚡📉"
+        setup_desc = "3m Bollinger Squeeze Breakdown + Bearish DI (-DI > +DI)"
+        strike_title = "Put Option Strike"
+        default_rsi = 38.0
+    else:
+        opt_strike_val = res.get('otm_call_strike', res.get('ce_strike', ''))
+        suffix = "CE"
+        opt_p = float(res.get('opt_ltp', 0.0))
+        opt_r3 = float(res.get('opt_r3', 0.0))
+        strike_str = (
+            f"₹{int(opt_strike_val)} {suffix}"
+            if (isinstance(opt_strike_val, (int, float)) and float(opt_strike_val) > 0)
+            else f"₹{opt_strike_val} {suffix}"
+        )
+        contract_lbl = res.get('opt_contract_name', strike_str)
+        fyers_code = res.get('opt_fyers_symbol', '')
+        title_line = "⚡🎯 <b>STAGE-1 PRE-BREAKOUT SQUEEZE RADAR! (૫ થી ૮ મિનિટ વહેલું એલર્ટ)</b> 🎯⚡"
+        setup_desc = "3m Bollinger Squeeze Breakout + Fresh Trend Blast"
+        strike_title = "Call Option Strike"
+        default_rsi = 62.0
+
     fyers_lbl = f"• <b>Fyers Symbol:</b> <code>{fyers_code}</code>\n" if fyers_code else ""
-    opt_p = float(res.get('opt_ltp', 0.0))
-    opt_r3 = float(res.get('opt_r3', 0.0))
-    
     tf_lbl = res.get('timeframe_used', '3m')
-    rsi_val = float(res.get('rsi_3m', res.get('rsi_5m', 62.0)))
+    rsi_val = float(res.get('rsi_3m', res.get('rsi_5m', default_rsi)))
     vol_val = float(res.get('vol_5m', res.get('vol_ratio', 1.2)))
-    
-    # 50% Starter Entry targets
+    adx_val = float(res.get('adx_3m', 0.0) or 0.0)
+    adx_line = f"• <b>🧭 {tf_lbl} ADX:</b> <b>{adx_val:.1f}</b>\n" if adx_val > 0 else ""
+
     sl_calc = round(opt_p * 0.80, 2) if opt_p > 0 else 0.0
     t1_calc = round(opt_p * 1.30, 2) if opt_p > 0 else 0.0
     t2_calc = round(opt_p * 1.60, 2) if opt_p > 0 else 0.0
-    
-    rsi_line = format_rsi_confluence_badge(tf_lbl, rsi_val, is_bearish=False)
+
+    rsi_line = format_rsi_confluence_badge(tf_lbl, rsi_val, is_bearish=is_bearish)
     vol_line = format_volume_ratio_badge(tf_lbl, vol_val)
-    
+
     return (
-        f"⚡🎯 <b>STAGE-1 PRE-BREAKOUT SQUEEZE RADAR! (૫ થી ૮ મિનિટ વહેલું એલર્ટ)</b> 🎯⚡\n"
+        f"{title_line}\n"
         f"━━━━━━━━━━━━━━━━━━━━━\n"
         f"📌 <b>{inst_lbl}:</b> {s_name} (LTP: ₹{spot_p:.2f}, {spot_chg:+.2f}%)\n"
-        f"📈 <b>સેટઅપ:</b> 3m Bollinger Squeeze Breakout + Fresh Trend Blast\n"
+        f"📊 <b>સેટઅપ:</b> {setup_desc}\n"
         f"{rsi_line}"
         f"{vol_line}"
+        f"{adx_line}"
         f"━━━━━━━━━━━━━━━━━━━━━\n"
         f"🔥 <b>ACTIONABLE EARLY ENTRY (સસ્તા ભાવે એન્ટ્રી):</b>\n"
-        f"• <b>Call Option Strike:</b> <b>{contract_lbl}</b>\n"
+        f"• <b>{strike_title}:</b> <b>{contract_lbl}</b>\n"
         f"• <b>વર્તમાન સસ્તો ઓપ્શન ભાવ:</b> <b>₹{opt_p:.2f}</b>\n"
         f"{fyers_lbl}"
         f"• <b>Option R3 લેવલ:</b> ₹{opt_r3:.2f} (આગળનું મોટું બ્રેકઆઉટ લેવલ)\n"
         f"━━━━━━━━━━━━━━━━━━━━━\n"
         f"💡 <b>વિશ્વ-કક્ષાની સ્માર્ટ રણનીતિ (World-Class Strategy):</b>\n"
         f"• <b>૫૦% ક્વોન્ટિટીથી Starter Entry:</b> ₹{opt_p:.2f} પર અડધી કોન્ટીટી લો (ચુસ્ત SL: ₹{sl_calc:.2f}).\n"
-        f"• <b>બાકીની ૫૦% એડ કરો:</b> જ્યારે સ્ટોક R3 ક્રોસ કરીને રોકેટ કન્ફર્મ કરે ત્યારે બાકીની કોન્ટીટી ઉમેરો!\n"
+        f"• <b>બાકીની ૫૦% એડ કરો:</b> જ્યારે સ્ટોક R3 ક્રોસ કરીને {'પેનિક ફોલ' if is_bearish else 'રોકેટ'} કન્ફર્મ કરે ત્યારે બાકીની કોન્ટીટી ઉમેરો!\n"
         f"• <b>ફાયદો:</b> મોંઘી એન્ટ્રીથી બચી જશો અને એવરેજ પ્રાઈસ એકદમ સસ્તી રહેશે!\n"
         f"• <b>Target 1:</b> ₹{t1_calc:.2f} (+30%) | <b>Target 2:</b> ₹{t2_calc:.2f} (+60%+)\n"
         f"━━━━━━━━━━━━━━━━━━━━━\n"
         f"⏰ <i>{now_str}</i> | 🤖 Patel Trading Bot"
     )
+
+
+def format_stage1_pre_breakout_alert(res):
+    """Stage-1 Early Bullish Pre-Breakout Squeeze Alert (5 to 8 Minutes Early Notice)."""
+    return _format_stage1_squeeze_alert(res, is_bearish=False)
+
+
+def format_stage1_put_pre_breakout_alert(res):
+    """Stage-1 Early Bearish Put Squeeze Alert (5 to 8 Minutes Early Notice before Panic Fall)."""
+    return _format_stage1_squeeze_alert(res, is_bearish=True)
 
 def format_pre_r3_radar_alert(res):
     """Stage 1: Pre-R3 Advance Radar Alert (2-3 Minutes advance notice before blast)."""
