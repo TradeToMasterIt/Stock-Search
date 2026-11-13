@@ -3465,6 +3465,190 @@ if selected_module == "🏔️ GFS Multi-Timeframe Swing (ગ્રાન્ડ�
            - **Targets:** શોર્ટ-ટર્મ **+૮%**, સ્વિંગ **+૧૫%**, અને પોઝિશનલ જેકપોટ **+૨૫% થી +૩૫%**.
         """)
 
+    # -------------------------------------------------------------
+    # GFS Multi-Day Swing Paper Trading Cockpit & Portfolio
+    # -------------------------------------------------------------
+    from core.gfs_order_engine import (
+        load_gfs_config,
+        save_gfs_config,
+        load_gfs_trades,
+        execute_gfs_paper_entry,
+        close_gfs_paper_trade,
+        monitor_gfs_paper_positions
+    )
+
+    try:
+        monitor_gfs_paper_positions()
+    except Exception:
+        pass
+
+    gfs_cfg = load_gfs_config()
+    gfs_trades_data = load_gfs_trades()
+    active_gfs = gfs_trades_data.get("active_trades", [])
+    closed_gfs = gfs_trades_data.get("closed_trades", [])
+    gfs_stats = gfs_trades_data.get("stats", {})
+
+    total_active_inv = sum(t.get("invested_amount", 0.0) for t in active_gfs)
+    total_unrealized_pnl = sum(t.get("unrealized_pnl", 0.0) for t in active_gfs)
+    unrealized_pnl_pct = (total_unrealized_pnl / total_active_inv * 100) if total_active_inv > 0 else 0.0
+    realized_pnl_total = gfs_stats.get("total_realized_pnl", 0.0)
+    win_rate_val = gfs_stats.get("win_rate", 0.0)
+
+    with st.expander("💼 GFS Multi-Day Swing Paper Trading Cockpit (સ્વિંગ પોર્ટફોલિયો & સેટિંગ્સ)", expanded=True):
+        # 4 Metric Cards for GFS Paper Trading
+        gp_c1, gp_c2, gp_c3, gp_c4 = st.columns(4)
+        with gp_c1:
+            st.markdown(f'<div class="metric-card"><div class="metric-value">₹{total_active_inv:,.0f}</div><div class="metric-label">💼 Active Swing Capital ({len(active_gfs)} Stocks)</div></div>', unsafe_allow_html=True)
+        with gp_c2:
+            pnl_c = "#34D399" if total_unrealized_pnl >= 0 else "#F87171"
+            st.markdown(f'<div class="metric-card"><div class="metric-value" style="color: {pnl_c};">₹{total_unrealized_pnl:+,.1f}</div><div class="metric-label">📈 Open Swing P&L ({unrealized_pnl_pct:+.2f}%)</div></div>', unsafe_allow_html=True)
+        with gp_c3:
+            rpnl_c = "#34D399" if realized_pnl_total >= 0 else "#F87171"
+            st.markdown(f'<div class="metric-card"><div class="metric-value" style="color: {rpnl_c};">₹{realized_pnl_total:+,.1f}</div><div class="metric-label">🏆 Realized Swing P&L ({len(closed_gfs)} Closed)</div></div>', unsafe_allow_html=True)
+        with gp_c4:
+            st.markdown(f'<div class="metric-card"><div class="metric-value" style="color: #60A5FA;">{win_rate_val:.1f}%</div><div class="metric-label">🎯 GFS Swing Win Rate</div></div>', unsafe_allow_html=True)
+
+        # Settings sub-expander
+        with st.expander("⚙️ GFS Paper Trading Settings (સેટિંગ્સ કોન્ફિગરેશન)", expanded=False):
+            st.caption("અહીં તમે GFS સ્વિંગ પેપર ટ્રેડિંગ માટે મૂડી, ટાર્ગેટ્સ, સ્ટોપલોસ અને ઓટો-એન્ટ્રી કસ્ટમાઇઝ કરી શકો છો.")
+            set_c1, set_c2, set_c3 = st.columns(3)
+            with set_c1:
+                new_gfs_capital = st.number_input(
+                    "💰 Capital Per Trade (₹):",
+                    min_value=5000.0,
+                    max_value=1000000.0,
+                    value=float(gfs_cfg.get("capital_per_trade", 50000.0)),
+                    step=5000.0,
+                    key="input_gfs_capital"
+                )
+                new_max_trades = st.number_input(
+                    "📊 Max Active Swing Trades:",
+                    min_value=1,
+                    max_value=30,
+                    value=int(gfs_cfg.get("max_active_trades", 10)),
+                    step=1,
+                    key="input_gfs_max_trades"
+                )
+            with set_c2:
+                new_t1_pct = st.number_input(
+                    "🎯 Target 1 (%):",
+                    min_value=2.0,
+                    max_value=30.0,
+                    value=float(gfs_cfg.get("target1_pct", 8.0)),
+                    step=0.5,
+                    key="input_gfs_t1"
+                )
+                new_t2_pct = st.number_input(
+                    "🎯 Target 2 (%):",
+                    min_value=5.0,
+                    max_value=50.0,
+                    value=float(gfs_cfg.get("target2_pct", 15.0)),
+                    step=1.0,
+                    key="input_gfs_t2"
+                )
+                new_t3_pct = st.number_input(
+                    "🚀 Target 3 Jackpot (%):",
+                    min_value=10.0,
+                    max_value=100.0,
+                    value=float(gfs_cfg.get("target3_pct", 25.0)),
+                    step=1.0,
+                    key="input_gfs_t3"
+                )
+            with set_c3:
+                new_sl_pct = st.number_input(
+                    "🛡️ Stop Loss (%):",
+                    min_value=1.0,
+                    max_value=15.0,
+                    value=float(gfs_cfg.get("stoploss_pct", 4.5)),
+                    step=0.5,
+                    key="input_gfs_sl"
+                )
+                new_trail_sl = st.checkbox(
+                    "🔄 Target 1 પહોંચતા SL કોસ્ટ (Breakeven) પર ખસેડો",
+                    value=bool(gfs_cfg.get("trailing_sl_enabled", True)),
+                    key="chk_gfs_trail_sl"
+                )
+                new_auto_trade = st.checkbox(
+                    "🤖 સ્કેનમાં High-Confidence 3-TF મળે ત્યારે આપમેળે પેપર ટ્રેડ લો",
+                    value=bool(gfs_cfg.get("auto_trade_enabled", False)),
+                    key="chk_gfs_auto_trade"
+                )
+                new_tg_alerts = st.checkbox(
+                    "📱 Telegram એલર્ટ્સ મોકલો",
+                    value=bool(gfs_cfg.get("telegram_alerts", True)),
+                    key="chk_gfs_tg_alerts"
+                )
+
+            if st.button("💾 Save GFS Settings", type="primary", key="btn_save_gfs_cfg"):
+                gfs_cfg["capital_per_trade"] = float(new_gfs_capital)
+                gfs_cfg["max_active_trades"] = int(new_max_trades)
+                gfs_cfg["target1_pct"] = float(new_t1_pct)
+                gfs_cfg["target2_pct"] = float(new_t2_pct)
+                gfs_cfg["target3_pct"] = float(new_t3_pct)
+                gfs_cfg["stoploss_pct"] = float(new_sl_pct)
+                gfs_cfg["trailing_sl_enabled"] = bool(new_trail_sl)
+                gfs_cfg["auto_trade_enabled"] = bool(new_auto_trade)
+                gfs_cfg["telegram_alerts"] = bool(new_tg_alerts)
+                save_gfs_config(gfs_cfg)
+                st.toast("✅ GFS Settings સફળતાપૂર્વક સેવ થઈ ગયા!", icon="💾")
+                st.rerun()
+
+        # Active Positions Section
+        st.markdown("#### 📋 ચાલુ GFS સ્વિંગ પોઝિશન્સ (Active Positions)")
+        if active_gfs:
+            for act_t in active_gfs:
+                t_col1, t_col2, t_col3, t_col4, t_col5, t_col6 = st.columns([1.6, 1.4, 1.4, 1.6, 2.2, 1.2])
+                with t_col1:
+                    st.markdown(f"**{act_t['symbol']}**<br><span style='font-size:11px; color:#94A3B8;'>📅 {act_t['entry_date']}</span>", unsafe_allow_html=True)
+                with t_col2:
+                    st.markdown(f"Entry: **₹{act_t['entry_price']:.2f}**<br>LTP: **₹{act_t['current_price']:.2f}**", unsafe_allow_html=True)
+                with t_col3:
+                    st.markdown(f"Qty: **{act_t['quantity']}**<br>Inv: **₹{act_t['invested_amount']:,.0f}**", unsafe_allow_html=True)
+                with t_col4:
+                    pnl_val = act_t.get('unrealized_pnl', 0.0)
+                    pnl_p = act_t.get('unrealized_pnl_pct', 0.0)
+                    col_p = "#34D399" if pnl_val >= 0 else "#F87171"
+                    st.markdown(f"<span style='color:{col_p}; font-weight:700; font-size:14px;'>₹{pnl_val:+,.1f}</span><br><span style='color:{col_p}; font-size:11px;'>({pnl_p:+.2f}%)</span>", unsafe_allow_html=True)
+                with t_col5:
+                    t1_icon = "✅" if act_t.get('target1_hit') else "⏳"
+                    t2_icon = "✅" if act_t.get('target2_hit') else "⏳"
+                    t3_icon = "✅" if act_t.get('target3_hit') else "⏳"
+                    curr_sl = act_t.get('trailing_sl_price', act_t.get('stop_loss', 0.0))
+                    st.markdown(f"<span style='font-size:11px;'>T1: {t1_icon} ₹{act_t.get('target1', 0):.1f} | T2: {t2_icon} ₹{act_t.get('target2', 0):.1f}<br>T3: {t3_icon} ₹{act_t.get('target3', 0):.1f} | 🛡️ SL: ₹{curr_sl:.1f}</span>", unsafe_allow_html=True)
+                with t_col6:
+                    if st.button("❌ Exit", key=f"btn_exit_gfs_{act_t['trade_id']}", help="હાલના બજાર ભાવે આ સ્વિંગ પોઝિશન સ્ક્વેર ઓફ કરો"):
+                        ok_ex, msg_ex = close_gfs_paper_trade(act_t['trade_id'], exit_reason="MANUAL_SQUARE_OFF")
+                        if ok_ex:
+                            st.toast(msg_ex, icon="✅")
+                            st.rerun()
+                        else:
+                            st.error(msg_ex)
+                st.divider()
+        else:
+            st.info("ℹ️ હાલ કોઈ GFS સ્વિંગ પોઝિશન ચાલુ નથી. નીચે સ્કેન થયેલા કોઈપણ સ્ટોક કાર્ડ પર '📝 Paper Buy' ક્લિક કરીને નવો સ્વિંગ પેપર ટ્રેડ શરૂ કરો.")
+
+        # Closed Trades History Sub-Expander
+        if closed_gfs:
+            with st.expander(f"📜 પૂર્ણ થયેલા GFS સ્વિંગ ટ્રેડ્સનો ઈતિહાસ ({len(closed_gfs)} ટ્રેડ્સ)", expanded=False):
+                df_closed = pd.DataFrame(closed_gfs)[["symbol", "entry_date", "exit_date", "holding_days", "entry_price", "exit_price", "quantity", "realized_pnl", "realized_pnl_pct", "exit_reason"]]
+                st.dataframe(
+                    df_closed,
+                    use_container_width=True,
+                    hide_index=True,
+                    column_config={
+                        "symbol": "Stock",
+                        "entry_date": "Entry Date",
+                        "exit_date": "Exit Date",
+                        "holding_days": "Holding Days",
+                        "entry_price": st.column_config.NumberColumn("Entry Price (₹)", format="₹%.2f"),
+                        "exit_price": st.column_config.NumberColumn("Exit Price (₹)", format="₹%.2f"),
+                        "quantity": "Qty",
+                        "realized_pnl": st.column_config.NumberColumn("Realized P&L (₹)", format="₹%.2f"),
+                        "realized_pnl_pct": st.column_config.NumberColumn("P&L (%)", format="%+.2f%%"),
+                        "exit_reason": "Exit Reason"
+                    }
+                )
+
     # Controls
     if "gfs_results" not in st.session_state or st.session_state.gfs_results is None:
         st.session_state.gfs_results = load_cached_gfs_results()
@@ -3521,6 +3705,10 @@ if selected_module == "🏔️ GFS Multi-Timeframe Swing (ગ્રાન્ડ�
             df_gfs_all = pd.DataFrame(gfs_results_list)
             df_gfs_all = df_gfs_all.sort_values(by=["Is_High_Confidence", "GFS_Score", "Change"], ascending=[False, False, False])
             st.session_state.gfs_results = df_gfs_all
+            if gfs_cfg.get("auto_trade_enabled", False):
+                auto_candidates = df_gfs_all[df_gfs_all["Is_High_Confidence"] == True]
+                for _, a_row in auto_candidates.iterrows():
+                    execute_gfs_paper_entry(a_row.to_dict())
         else:
             st.warning("લાઈવ ડેટા મેળવવામાં મુશ્કેલી આવી અથવા બજાર બંધ છે. ઉપલબ્ધ કેશ્ડ ડેટા દર્શાવવામાં આવી રહ્યો છે.")
             if st.session_state.gfs_results is None:
@@ -3607,6 +3795,18 @@ if selected_module == "🏔️ GFS Multi-Timeframe Swing (ગ્રાન્ડ�
                     )
                     with card_cols[c_idx]:
                         st.html(gfs_card_html)
+                        cap_disp = int(gfs_cfg.get('capital_per_trade', 50000))
+                        is_active_sym = any(t.get("symbol", "").upper() == str(row["Symbol"]).upper() for t in active_gfs)
+                        if is_active_sym:
+                            st.button(f"✅ Active ({row['Symbol']})", key=f"btn_gfs_act_{row['Symbol']}_{idx}", disabled=True, use_container_width=True)
+                        else:
+                            if st.button(f"📝 Paper Buy {row['Symbol']} (₹{cap_disp:,})", key=f"btn_gfs_buy_{row['Symbol']}_{idx}", use_container_width=True, type="secondary"):
+                                ok_b, msg_b = execute_gfs_paper_entry(row.to_dict())
+                                if ok_b:
+                                    st.toast(msg_b, icon="🚀")
+                                    st.rerun()
+                                else:
+                                    st.warning(msg_b)
         else:
             # Data Table
             table_gfs_cols = [
@@ -3629,6 +3829,27 @@ if selected_module == "🏔️ GFS Multi-Timeframe Swing (ગ્રાન્ડ�
                     "Target3": st.column_config.NumberColumn("Target 3 (+25%)", format="₹%.2f")
                 }
             )
+
+            # Quick 1-Click Paper Buy from Table
+            st.markdown("##### 📝 ટેબલમાંથી સ્ટોક પસંદ કરી GFS પેપર ટ્રેડ શરૂ કરો:")
+            q_col1, q_col2 = st.columns([3, 1.2])
+            with q_col1:
+                stock_to_buy = st.selectbox(
+                    "સ્ટોક પસંદ કરો:",
+                    options=df_gfs_display["Symbol"].tolist(),
+                    key="sel_gfs_table_buy"
+                )
+            with q_col2:
+                st.markdown("<div style='height: 28px;'></div>", unsafe_allow_html=True)
+                if st.button("🚀 Paper Buy Selected Stock", key="btn_gfs_tbl_buy", type="primary", use_container_width=True):
+                    matched_row = df_gfs_display[df_gfs_display["Symbol"] == stock_to_buy]
+                    if not matched_row.empty:
+                        ok_tb, msg_tb = execute_gfs_paper_entry(matched_row.iloc[0].to_dict())
+                        if ok_tb:
+                            st.toast(msg_tb, icon="🚀")
+                            st.rerun()
+                        else:
+                            st.warning(msg_tb)
 
 
 # =============================================================
