@@ -173,8 +173,18 @@ def load_algo_trades() -> Dict[str, Any]:
         with open(ALGO_TRADES_FILE, "r", encoding="utf-8") as f:
             data = json.load(f)
             if data.get("daily_summary", {}).get("date") != today_str:
-                # Archive past day's trades and start fresh daily summary
+                # Archive past days' closed trades and start fresh daily ledger
+                past_closed = data.get("closed_trades", [])
+                archived = data.get("archived_trades", [])
+                archived.extend(past_closed)
+                data["archived_trades"] = archived
+                data["closed_trades"] = []
                 data["daily_summary"] = default_data["daily_summary"]
+                try:
+                    with open(ALGO_TRADES_FILE, "w", encoding="utf-8") as fw:
+                        json.dump(data, fw, indent=2, ensure_ascii=False)
+                except Exception:
+                    pass
             return data
     except Exception:
         return default_data
