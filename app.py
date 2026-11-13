@@ -2414,10 +2414,12 @@ if selected_module == "🤖 Fyers Auto-Algo Cockpit (ઓટો-આલ્ગો �
         )
     with kpi4:
         be_tag = f" - {breakeven_count}BE" if breakeven_count > 0 else ""
+        win_rate_display = f"{win_rate:.1f}%" if total_trades_count > 0 else "— (ચાલુ)"
+        win_rate_delta = f"{winning_count}W - {losing_count}L{be_tag}" if total_trades_count > 0 else f"{len(active_algo_trades)} પોઝિશન ચાલુ"
         st.metric(
             label="📈 વિન-રેટ (Win Rate)",
-            value=f"{win_rate:.1f}%",
-            delta=f"{winning_count}W - {losing_count}L{be_tag}"
+            value=win_rate_display,
+            delta=win_rate_delta
         )
     with kpi5:
         max_daily_l = float(algo_cfg.get("daily_max_loss", 3000.0))
@@ -2630,6 +2632,8 @@ if selected_module == "🤖 Fyers Auto-Algo Cockpit (ઓટો-આલ્ગો �
             pnl_color = "#10B981" if unrealized >= 0 else "#EF4444"
             mode_badge = "📄 PAPER" if t_mode == "PAPER" else "⚡ LIVE"
             zero_risk_badge = '<span style="background: rgba(16, 185, 129, 0.2); color: #34D399; border: 1px solid #10B981; padding: 2px 8px; border-radius: 9999px; font-size: 11px; font-weight: 700;">🛡️ ZERO RISK (Cost Trailed)</span>' if (t1_hit and sl >= e_price) else ''
+            booked_val = float(tr.get("booked_pnl", 0.0) or 0.0)
+            booked_badge = f'<span style="background: rgba(16, 185, 129, 0.2); color: #34D399; border: 1px solid #10B981; padding: 2px 8px; border-radius: 9999px; font-size: 11px; font-weight: 700; margin-left: 6px;">💰 બુક થયેલ નફો: +₹{booked_val:,.2f}</span>' if booked_val > 0 else ''
 
             with st.container():
                 pos_card_html = (
@@ -2640,7 +2644,7 @@ if selected_module == "🤖 Fyers Auto-Algo Cockpit (ઓટો-આલ્ગો �
                     f'<span style="font-size: 18px; font-weight: 800; color: #FFFFFF;">{c_name}</span> '
                     f'<span style="font-size: 11px; background: rgba(56, 189, 248, 0.15); color: #38BDF8; padding: 3px 8px; border-radius: 6px; margin-left: 8px;">{mode_badge}</span> '
                     f'<span style="font-size: 11px; background: {"rgba(16, 185, 129, 0.2)" if tr.get("opt_type", "CE") == "CE" else "rgba(239, 68, 68, 0.2)"}; color: {"#34D399" if tr.get("opt_type", "CE") == "CE" else "#F87171"}; padding: 3px 8px; border-radius: 6px; margin-left: 4px; font-weight: 700;">{"📈 CALL (CE)" if tr.get("opt_type", "CE") == "CE" else "📉 PUT (PE)"}</span> '
-                    f'{zero_risk_badge}'
+                    f'{zero_risk_badge} {booked_badge}'
                     f'<div style="font-size: 12px; color: #94A3B8; margin-top: 6px;">સિમ્બોલ: <code>{f_sym}</code> | એન્ટ્રી સમય: {tr.get("entry_time", "-")}</div>'
                     f'</div>'
                     f'<div style="text-align: right;">'
@@ -2757,11 +2761,13 @@ if selected_module == "🤖 Fyers Auto-Algo Cockpit (ઓટો-આલ્ગો �
 
     # Section: Closed Trades History
     st.markdown("### 📜 આજના પૂર્ણ થયેલા ટ્રેડ્સ (Today's Closed Trades History)")
-    if not closed_algo_trades:
-        st.caption("આજે હજુ સુધી કોઈ ટ્રેડ પૂર્ણ થયો નથી.")
+    today_disp = get_ist_now().strftime("%d %b %Y")
+    today_closed = [ct for ct in closed_algo_trades if today_disp in str(ct.get("exit_time", ""))]
+    if not today_closed:
+        st.caption("આજે હજુ સુધી કોઈ ટ્રેડ પૂર્ણ થયો નથી. (ખુલ્લી પોઝિશન્સ સક્રિય છે)")
     else:
         closed_data = []
-        for ct in reversed(closed_algo_trades):
+        for ct in reversed(today_closed):
             booked_part = float(ct.get("booked_pnl", 0.0) or 0.0)
             status_label = ct.get("status", "CLOSED")
             if booked_part != 0:
