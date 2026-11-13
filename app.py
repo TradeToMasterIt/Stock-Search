@@ -2170,17 +2170,17 @@ if selected_module == "📊 Market Screener (ઓટોમેટિક સ્ક�
                             f'</div>'
                         )
                     
-                        gfs_badge_str = row.get("gfs_badge", "")
-                        gfs_pill = f'<span style="font-size: 10px; font-weight: 700; color: #34D399; background: rgba(16, 185, 129, 0.15); padding: 2px 7px; border-radius: 6px; border: 1px solid rgba(16, 185, 129, 0.3);">{gfs_badge_str}</span>' if gfs_badge_str and "NEUTRAL" not in gfs_badge_str else ""
-                        div_pill = '<span style="font-size: 10px; font-weight: 700; color: #FCD34D; background: rgba(245, 158, 11, 0.2); padding: 2px 7px; border-radius: 6px; border: 1px solid rgba(245, 158, 11, 0.4);">💥 Bullish Div</span>' if row.get("has_bull_div") else ""
-                        card_badges = f'<div style="display: flex; gap: 6px; margin-top: 4px;">{gfs_pill}{div_pill}</div>' if (gfs_pill or div_pill) else ''
-                        card_html = (
-                            f'<div class="stock-card">'
-                            f'<div style="display: flex; justify-content: space-between; align-items: flex-start;">'
-                            f'<div><div style="font-size: 22px; font-weight: 800; color: #FFFFFF; font-family: monospace; letter-spacing: -0.5px;">{row["Symbol"]}</div><div style="font-size: 11px; color: #94A3B8; font-weight: 500;">NSE • Equity Segment</div>{card_badges}</div>'
-                            f'<div style="text-align: right;"><div style="font-size: 20px; font-weight: 800; color: #F8FAFC; font-family: monospace;">₹{row["Price (₹)"]:.2f}</div><span style="font-size: 12px; font-weight: 700; color: {chg_color}; background: {chg_bg}; padding: 2px 8px; border-radius: 6px;">{chg_arrow} {chg:+.2f}%</span></div>'
-                            f'</div>'
-                            f'<div style="margin: 12px 0 10px 0; display: flex; justify-content: space-between; align-items: center;"><span class="signal-pill {pill_cls}">{row["Signal"]}</span><span style="font-size: 12px; font-weight: 700; color: #E2E8F0; background: rgba(255,255,255,0.06); padding: 3px 10px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.08);">Confluence: <span style="color: #38BDF8;">{row["Score"]}%</span></span></div>'
+                    gfs_badge_str = row.get("gfs_badge", "")
+                    gfs_pill = f'<span style="font-size: 10px; font-weight: 700; color: #34D399; background: rgba(16, 185, 129, 0.15); padding: 2px 7px; border-radius: 6px; border: 1px solid rgba(16, 185, 129, 0.3);">{gfs_badge_str}</span>' if gfs_badge_str and "NEUTRAL" not in gfs_badge_str else ""
+                    div_pill = '<span style="font-size: 10px; font-weight: 700; color: #FCD34D; background: rgba(245, 158, 11, 0.2); padding: 2px 7px; border-radius: 6px; border: 1px solid rgba(245, 158, 11, 0.4);">💥 Bullish Div</span>' if row.get("has_bull_div") else ""
+                    card_badges = f'<div style="display: flex; gap: 6px; margin-top: 4px;">{gfs_pill}{div_pill}</div>' if (gfs_pill or div_pill) else ''
+                    card_html = (
+                        f'<div class="stock-card">'
+                        f'<div style="display: flex; justify-content: space-between; align-items: flex-start;">'
+                        f'<div><div style="font-size: 22px; font-weight: 800; color: #FFFFFF; font-family: monospace; letter-spacing: -0.5px;">{row["Symbol"]}</div><div style="font-size: 11px; color: #94A3B8; font-weight: 500;">NSE • Equity Segment</div>{card_badges}</div>'
+                        f'<div style="text-align: right;"><div style="font-size: 20px; font-weight: 800; color: #F8FAFC; font-family: monospace;">₹{row["Price (₹)"]:.2f}</div><span style="font-size: 12px; font-weight: 700; color: {chg_color}; background: {chg_bg}; padding: 2px 8px; border-radius: 6px;">{chg_arrow} {chg:+.2f}%</span></div>'
+                        f'</div>'
+                        f'<div style="margin: 12px 0 10px 0; display: flex; justify-content: space-between; align-items: center;"><span class="signal-pill {pill_cls}">{row["Signal"]}</span><span style="font-size: 12px; font-weight: 700; color: #E2E8F0; background: rgba(255,255,255,0.06); padding: 3px 10px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.08);">Confluence: <span style="color: #38BDF8;">{row["Score"]}%</span></span></div>'
                         f'<div style="display: flex; flex-wrap: wrap; gap: 8px; font-size: 11px; color: #94A3B8; margin-bottom: 8px;">'
                         f'<span style="background: rgba(15,23,42,0.8); padding: 4px 8px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.05);">🚀 Daily HM: <b style="color: #F1F5F9;">{row.get("Daily HM", "-")}</b></span>'
                         f'<span style="background: rgba(15,23,42,0.8); padding: 4px 8px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.05);">⚡ 1H Trigger: <b style="color: #F1F5F9;">{row["1H Trigger"]}</b></span>'
