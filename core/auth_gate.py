@@ -229,7 +229,7 @@ def render_login_screen():
                     "🔑 તમારો 4-આંકડાનો સિક્યોરિટી PIN દાખલ કરો:",
                     type="password",
                     max_chars=8,
-                    placeholder="દા.ત. 4082",
+                    placeholder="••••",
                     key="input_login_pin"
                 )
                 submit_btn = st.form_submit_button("🚀 Unlock Terminal", use_container_width=True, type="primary")
@@ -275,9 +275,9 @@ def render_login_screen():
 
             # Verify OTP & Set New PIN
             with st.form("verify_otp_form"):
-                entered_otp = st.text_input("🔢 પ્રાપ્ત થયેલ 6-આંકડાનો OTP:", max_chars=6, placeholder="દા.ત. 584920")
-                new_pin_1 = st.text_input("🆕 નવો 4-આંકડાનો PIN સેટ કરો:", type="password", max_chars=8, placeholder="નવો PIN")
-                new_pin_2 = st.text_input("🔁 નવો PIN ફરીથી દાખલ કરો:", type="password", max_chars=8, placeholder="કન્ફર્મ PIN")
+                entered_otp = st.text_input("🔢 પ્રાપ્ત થયેલ 6-આંકડાનો OTP:", max_chars=6, placeholder="••••••")
+                new_pin_1 = st.text_input("🆕 નવો 4-આંકડાનો PIN સેટ કરો:", type="password", max_chars=8, placeholder="••••")
+                new_pin_2 = st.text_input("🔁 નવો PIN ફરીથી દાખલ કરો:", type="password", max_chars=8, placeholder="••••")
                 
                 reset_submit = st.form_submit_button("💾 Save New PIN & Unlock", type="primary", use_container_width=True)
                 
