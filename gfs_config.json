@@ -1,0 +1,12 @@
+{
+  "paper_trading_enabled": true,
+  "auto_trade_enabled": false,
+  "capital_per_trade": 50000.0,
+  "max_active_trades": 10,
+  "target1_pct": 8.0,
+  "target2_pct": 15.0,
+  "target3_pct": 25.0,
+  "stoploss_pct": 4.5,
+  "trailing_sl_enabled": true,
+  "telegram_alerts": true
+}
