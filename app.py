@@ -2525,34 +2525,34 @@ if selected_module == "🤖 Fyers Auto-Algo Cockpit (ઓટો-આલ્ગો �
                 new_risk_trade = st.number_input(
                     "ટ્રેડ દીઠ મહત્તમ રિસ્ક (₹):",
                     min_value=200.0,
-                    max_value=25000.0,
+                    max_value=1000000.0,
                     value=float(algo_cfg.get("max_risk_per_trade", 1500.0)),
-                    step=250.0,
+                    step=500.0,
                     help="મૂડીના ૧-૧.૫% થી વધુ રિસ્ક ક્યારેય ન લેવું."
                 )
             with c_r2:
                 new_cap_trade = st.number_input(
                     "ટ્રેડ દીઠ મહત્તમ મૂડી (₹):",
                     min_value=1000.0,
-                    max_value=100000.0,
+                    max_value=10000000.0,
                     value=float(algo_cfg.get("max_capital_per_trade", 15000.0)),
-                    step=1000.0,
-                    help="એક ઓપ્શન ટ્રેડમાં મહત્તમ કેટલા રૂપિયા વાપરવા."
+                    step=5000.0,
+                    help="એક ઓપ્શન ટ્રેડમાં મહત્તમ કેટલા રૂપિયા વાપરવા (₹1 કરોડ સુધી મુક્ત)."
                 )
             with c_r3:
                 new_daily_loss = st.number_input(
                     "Daily Kill-Switch Max Loss (₹):",
                     min_value=500.0,
-                    max_value=50000.0,
+                    max_value=5000000.0,
                     value=float(algo_cfg.get("daily_max_loss", 3000.0)),
-                    step=500.0,
+                    step=1000.0,
                     help="જો દિવસનો કુલ લોસ આ રકમ વટાવે તો આલ્ગો તાત્કાલિક ફ્રીઝ થઈ જશે!"
                 )
             with c_r4:
                 new_max_pos = st.number_input(
                     "મહત્તમ એકસાથે પોઝિશન:",
                     min_value=1,
-                    max_value=10,
+                    max_value=25,
                     value=int(algo_cfg.get("max_open_positions", 2)),
                     step=1,
                     help="એક જ સમયે મહત્તમ કેટલી ખુલ્લી પોઝિશન રાખવી."
@@ -3521,7 +3521,7 @@ if selected_module == "🏔️ GFS Multi-Timeframe Swing (ગ્રાન્ડ�
                 new_gfs_capital = st.number_input(
                     "💰 Capital Per Trade (₹):",
                     min_value=5000.0,
-                    max_value=1000000.0,
+                    max_value=10000000.0,
                     value=float(gfs_cfg.get("capital_per_trade", 50000.0)),
                     step=5000.0,
                     key="input_gfs_capital"
