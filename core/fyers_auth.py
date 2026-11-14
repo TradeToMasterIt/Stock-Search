@@ -316,14 +316,27 @@ def test_fyers_connection() -> tuple[bool, dict | str]:
 # -------------------------------------------------------------
 _fyers_rate_lock = threading.Lock()
 _last_fyers_req_ts = 0.0
+_daily_history_cache = {}  # Daily candles don't change intra-day: (symbol, resolution, from, to) -> res
+_quotes_cache = {}          # Short-lived quotes cache (15s): symbols_str -> (timestamp, res)
 
 def safe_fyers_history(fyers_client, data: dict, retries: int = 2) -> dict:
     """
     Thread-safe history caller with strict rate-limiting (max 4.5 req/sec).
     Prevents 'Standard plan limit of 5 requests/second' errors.
     Automatically retries with backoff if rate-limited.
+    Caches completed daily candles to eliminate thousands of duplicate requests per day.
     """
-    global _last_fyers_req_ts
+    global _last_fyers_req_ts, _daily_history_cache
+    sym = data.get("symbol", "")
+    res_code = str(data.get("resolution", "")).upper()
+    range_from = str(data.get("range_from", ""))
+    range_to = str(data.get("range_to", ""))
+
+    # Daily candle cache key
+    cache_key = (sym, res_code, range_from, range_to)
+    if res_code in ["D", "1D"] and cache_key in _daily_history_cache:
+        return _daily_history_cache[cache_key]
+
     for attempt in range(retries + 1):
         with _fyers_rate_lock:
             now = time.time()
@@ -339,6 +352,9 @@ def safe_fyers_history(fyers_client, data: dict, retries: int = 2) -> dict:
                 if "requests/second" in msg or "limit" in msg or res.get("code") in [-99, 429]:
                     time.sleep(0.4 + attempt * 0.25)
                     continue
+                # Cache successful daily history
+                if res.get("s") == "ok" and res_code in ["D", "1D"]:
+                    _daily_history_cache[cache_key] = res
             return res
         except Exception as e:
             if attempt < retries:
@@ -349,9 +365,19 @@ def safe_fyers_history(fyers_client, data: dict, retries: int = 2) -> dict:
 
 def safe_fyers_quotes(fyers_client, data: dict, retries: int = 2) -> dict:
     """
-    Thread-safe quotes caller with strict rate-limiting.
+    Thread-safe quotes caller with strict rate-limiting and 15s in-memory cache
+    to protect against token rate limit exhaustion during rapid multi-stock scans.
     """
-    global _last_fyers_req_ts
+    global _last_fyers_req_ts, _quotes_cache
+    syms = str(data.get("symbols", ""))
+    now_ts = time.time()
+
+    # If quoted within last 15 seconds, return cached value to protect Fyers API limits
+    if syms in _quotes_cache:
+        c_ts, c_val = _quotes_cache[syms]
+        if (now_ts - c_ts) < 15.0:
+            return c_val
+
     for attempt in range(retries + 1):
         with _fyers_rate_lock:
             now = time.time()
@@ -367,6 +393,8 @@ def safe_fyers_quotes(fyers_client, data: dict, retries: int = 2) -> dict:
                 if "requests/second" in msg or "limit" in msg or res.get("code") in [-99, 429]:
                     time.sleep(0.4 + attempt * 0.25)
                     continue
+                if res.get("s") == "ok":
+                    _quotes_cache[syms] = (now_ts, res)
             return res
         except Exception as e:
             if attempt < retries:

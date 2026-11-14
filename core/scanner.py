@@ -1170,23 +1170,9 @@ def run_scan_cycle(force=False, watchlist=None):
             state[r3_alert_key] = True
             new_alerts.append(f"{s_name}: R3 OPTION RADAR")
 
-        # 0.2 Heikin Ashi Reversal Buy
-        ha_alert_key = f"{s_name}_HA_REVERSAL_{today_str}"
-        if res.get('ha_reversal_buy') and not state.get(ha_alert_key):
-            ha_alert_text = format_ha_reversal_alert(res)
-            print(f"Sending HEIKIN ASHI REVERSAL alert for {s_name}")
-            send_telegram_alert(ha_alert_text)
-            state[ha_alert_key] = True
-            new_alerts.append(f"{s_name}: HEIKIN ASHI REVERSAL")
-
-        # 0.3 GFS Swing Multibagger Dip Alert (Grandfather-Father-Son 3-TF Confluence)
-        gfs_alert_key = f"{s_name}_GFS_SWING_{today_str}"
-        if res.get('is_gfs_high_confidence') and not state.get(gfs_alert_key):
-            gfs_alert_text = format_gfs_swing_alert(res)
-            print(f"Sending GFS SWING MULTIBAGGER alert for {s_name}")
-            send_telegram_alert(gfs_alert_text)
-            state[gfs_alert_key] = True
-            new_alerts.append(f"{s_name}: GFS SWING MULTIBAGGER")
+        # Note: Heikin Ashi & GFS alerts are strictly on-demand (scanned via their dedicated module buttons)
+        # to ensure the background auto-scanner focuses 100% on the Call & Put R2/R3 + Bollinger Squeeze setup
+        # and completely protects Fyers API tokens.
 
         # 1. Confirmed Sniper Buy (Includes exact OTM Call Strike & Option R3 level)
         if is_sniper_buy and (prev_sig != curr_sig) and not state.get(r3_confirmed_key):

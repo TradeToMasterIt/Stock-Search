@@ -1585,7 +1585,7 @@ if nifty_data:
 else:
     nifty_html = '<div class="ticker-chip"><span>🏛️ <b>NIFTY 50:</b> Connecting...</span></div>'
 
-telegram_html = '<div class="ticker-chip ticker-chip-bot"><div class="pulse-dot"></div><span><b>TELEGRAM BOT:</b> @patel_stock_bot</span><span style="opacity: 0.5">•</span><span>⚡ 5-Min Auto-Scanner Active</span></div>' 
+telegram_html = '<div class="ticker-chip ticker-chip-bot"><div class="pulse-dot"></div><span><b>TELEGRAM BOT:</b> @patel_stock_bot</span><span style="opacity: 0.5">•</span><span>⚡ R2/R3 & Bollinger Squeeze Auto-Scanner Active (Index + F&O)</span></div>' 
 
 if fyers_connected:
     fyers_html = f'<div class="ticker-chip" style="background: rgba(16, 185, 129, 0.15); border: 1px solid rgba(16, 185, 129, 0.4);"><div class="pulse-dot" style="background: #10B981;"></div><span>⚡ <b>FYERS API v3:</b> LIVE ({fyers_user_name})</span></div>'
@@ -1664,11 +1664,11 @@ if selected_module == "📊 Market Screener (ઓટોમેટિક સ્ક�
             st.markdown("<div style='height: 6px;'></div>", unsafe_allow_html=True)
             auto_col1, auto_col2 = st.columns([1.05, 1.35])
             with auto_col1:
-                auto_default = True if market_is_open else False
+                auto_default = False
                 auto_help = (
-                    "ઓટોમેટિક લાઈવ ડેટા અપડેટ ચાલુ/બંધ કરો" 
+                    "સ્ક્રીન લાઈવ ડેટા અને કેશ અપડેટ. ૧૮૦ શેરોનું સંપૂર્ણ સ્કેન કરવા માટે '🚀 Scan Market Now' વાપરો જેથી Fyers API ટોકન બચે."
                     if market_is_open 
-                    else f"🌙 હાલ બજાર બંધ છે ({market_status_msg}). ઓટો-અપડેટ માત્ર સોમ-શુક્ર (09:15 થી 15:30 IST) દરમિયાન જ સક્રિય રહેશે."
+                    else f"🌙 હાલ બજાર બંધ છે ({market_status_msg})."
                 )
                 auto_update_enabled = st.toggle("🔄 Auto-Update", value=auto_default, help=auto_help)
             with auto_col2:
@@ -1736,13 +1736,14 @@ if selected_module == "📊 Market Screener (ઓટોમેટિક સ્ક�
             should_scan = True
             is_auto_scan = False
         elif market_is_open:
-            # Active market hours: allow basket change or interval timer to refresh
+            # Active market hours: full basket scan only runs on explicit basket change or manual scan button!
+            # Auto-refresh keeps display updated from cache without repeatedly hammering 180 stocks.
             if basket_changed:
                 should_scan = True
                 is_auto_scan = False
             elif auto_update_enabled and (time_since_last_scan >= (interval_sec - 2)):
-                should_scan = True
-                is_auto_scan = True
+                should_scan = False
+                is_auto_scan = False
         else:
             # Outside market hours (Night / Weekend / Holiday):
             # NEVER auto-scan or scan on basket change. Only cached data is shown.
@@ -2818,6 +2819,8 @@ if selected_module == "🚀 Heikin Ashi Trend Rider (બ્રિજેશ ભ�
         '🚀 BRIJESH BHATIA HEIKIN ASHI REVERSAL & DONCHIAN TREND RIDER'
         '<span style="font-size: 11px; font-weight: 700; background: rgba(56, 189, 248, 0.2); color: #38BDF8; '
         'border: 1px solid #38BDF8; padding: 3px 10px; border-radius: 9999px;">PODCAST PRO SYSTEM</span>'
+        '<span style="font-size: 11px; font-weight: 700; background: rgba(245, 158, 11, 0.2); color: #F59E0B; '
+        'border: 1px solid rgba(245, 158, 11, 0.4); padding: 3px 10px; border-radius: 9999px;">🔘 SEPARATE ON-DEMAND SCAN</span>'
         '</div>'
         '<div style="font-size: 13.5px; color: #94A3B8; margin-top: 6px;">'
         '૫-૮ લાલ કેન્ડલ પછી તળિયે ડોજી પોઝ • પ્રથમ ફ્લેટ બોટમ ગ્રીન કેન્ડલ એન્ટ્રી • ડોન્ચિયન ચેનલ ટ્રેઇલિંગ સ્ટોપલોસ (નો ફિક્સ ટાર્ગેટ - રાઇડ ધ ટ્રેન્ડ)'
@@ -3435,6 +3438,8 @@ if selected_module == "🏔️ GFS Multi-Timeframe Swing (ગ્રાન્ડ�
         '🏔️ GFS MULTI-TIMEFRAME SWING & POSITIONAL SCANNER'
         '<span style="font-size: 11px; font-weight: 700; background: rgba(56, 189, 248, 0.2); color: #38BDF8; '
         'border: 1px solid #38BDF8; padding: 3px 10px; border-radius: 9999px;">GRANDFATHER • FATHER • SON</span>'
+        '<span style="font-size: 11px; font-weight: 700; background: rgba(16, 185, 129, 0.2); color: #10B981; '
+        'border: 1px solid rgba(16, 185, 129, 0.4); padding: 3px 10px; border-radius: 9999px;">🔘 SEPARATE ON-DEMAND SCAN</span>'
         '</div>'
         '<div style="font-size: 13.5px; color: #94A3B8; margin-top: 6px;">'
         'Monthly & Weekly RSI >= 60 ટ્રેન્ડ ફિલ્ટર • Daily RSI 37-49 સસ્તો પુલબેક સપોર્ટ • Scipy RSI Bullish Divergence • Bollinger Bands 20 SMA બાઉન્સ'
@@ -4811,6 +4816,8 @@ if selected_module == "🎯 Melting Straddles (ડૉ. ગાંગુલી 0DT
         '<span style="font-size: 11px; font-weight: 700; background: linear-gradient(135deg, #10B981, #059669); '
         'color: #FFFFFF; padding: 4px 12px; border-radius: 9999px; box-shadow: 0 0 14px rgba(16, 185, 129, 0.4);">'
         'DR. GANGULY 0DTE STRATEGY</span>'
+        '<span style="font-size: 11px; font-weight: 700; background: rgba(56, 189, 248, 0.2); color: #38BDF8; '
+        'border: 1px solid rgba(56, 189, 248, 0.4); padding: 4px 12px; border-radius: 9999px;">🔘 SEPARATE ON-DEMAND SCAN</span>'
         '</div>'
         '<div style="font-size: 13px; color: #94A3B8; margin-top: 6px;">'
         'ઇન્ટ્રાડે ATM કમ્બાઈન્ડ સ્ટ્રેડલ ડીકે • દૈનિક <b>૧૦-પોઇન્ટ્સ નિયમ</b> • <b>Camarilla S3/R3</b> બાઉન્ડ્રી ફિલ્ટર • <b>3-Straddle</b> કોકપિટ રડાર'
