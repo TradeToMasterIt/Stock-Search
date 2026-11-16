@@ -216,25 +216,27 @@ def get_current_weekly_expiry(symbol: str, ref_date = None):
 def get_accurate_strike_step(symbol: str, spot_price: float) -> int:
     """
     Returns the exchange-calibrated strike step for Indian Indices & F&O Equities.
+    Calibrated strictly to true NSE ATM strike intervals (never skips to far OTM).
     """
     clean = symbol.replace(".NS", "").replace(".BO", "").replace("^", "").strip().upper()
     if clean in INDEX_STRIKE_STEPS:
         return INDEX_STRIKE_STEPS[clean]
     
-    # Calibrated stock strike intervals
+    # Calibrated stock strike intervals (Strictly ATM-aligned)
     if spot_price < 150:
         return 2.5 if spot_price < 75 else 5
-    elif spot_price < 250:
+    elif spot_price < 350:
         return 5
-    elif spot_price < 500:
+    elif spot_price < 750:
         return 10
-    elif spot_price < 1000:
-        return 20
+    elif spot_price < 1500:
+        # NSE stocks around 1000 (like TATACONSUM, ICICIBANK, SBIN) trade at 10-point strike steps
+        return 10 if spot_price < 1100 else 20
     elif spot_price < 2500:
-        return 50
+        return 20 if spot_price < 1800 else 25
     elif spot_price < 5000:
-        return 100
-    return 200
+        return 50
+    return 100
 
 def get_current_monthly_expiry(ref_date: Optional[datetime.date] = None) -> Dict[str, Any]:
     """
@@ -291,15 +293,12 @@ def build_option_contract(symbol: str, spot_price: float, opt_type: str = "CE") 
     clean_sym, exchange, display_name = normalize_symbol_and_exchange(symbol)
     step = get_accurate_strike_step(clean_sym, spot_price)
     
-    # Calculate First Just Out-Of-The-Money (OTM) Strike
+    # Calculate Nearest ATM or First Just Out-Of-The-Money (OTM) Strike (Never far OTM)
+    atm_strike = int(round(spot_price / step) * step)
     if opt_type.upper() == "CE":
-        strike = int(math.ceil(spot_price / step) * step)
-        if strike <= spot_price:
-            strike += int(step)
+        strike = atm_strike if atm_strike >= spot_price else atm_strike + int(step)
     else:
-        strike = int(math.floor(spot_price / step) * step)
-        if strike >= spot_price:
-            strike -= int(step)
+        strike = atm_strike if atm_strike <= spot_price else atm_strike - int(step)
 
     # Use Weekly Expiry for Indices, Monthly Expiry for Stocks
     is_idx = is_index_symbol(symbol)
@@ -505,12 +504,16 @@ def analyze_option_r3_setup(
     opt_r1 = pivots["r1"]
     opt_p = pivots["p"]
 
-    # --- Golden Rule Logic: Option Leads, Future Follows ---
-    # Core Strategy: Stock Price crosses Spot R2 AND Option LTP crosses Option Daily R3
-    # When Option R3 is broken while Stock is at/above R2, explosive momentum follows towards Spot R3.
-    # Anti-FOMO Chasing Cap: Option LTP must not be > 8% above R3 (prevents late high entry)
-    is_chasing = bool(opt_r3 > 0 and opt_ltp > opt_r3 * 1.08)
-    opt_leads_r3 = bool(opt_r3 > 0 and opt_ltp >= opt_r3 and not is_chasing)
+    # --- Institutional Momentum Logic: Early Breakout with R3 as Target ---
+    # 1. Anti-FOMO Chasing Guard:
+    # If Option LTP has ALREADY reached or exceeded R3 (+2% buffer),
+    # the impulse move is already exhausted! Fresh buying is strictly BLOCKED!
+    is_chasing = bool(opt_r3 > 0 and opt_ltp >= opt_r3 * 1.02)
+    is_exhausted = bool(opt_r3 > 0 and opt_ltp >= opt_r3)
+
+    # 2. Early Breakout Zone (R2 Breakout towards R3):
+    # Enters early as Option breaks R2 moving towards R3, NEVER at the top of R3!
+    opt_in_breakout_zone = bool(opt_r2 > 0 and opt_ltp >= opt_r2 and not is_chasing)
 
     # Pre-R3 Advance Radar: Option is in Squeeze Zone (within 2% to 5% below R3)
     is_pre_r3_radar = bool(opt_r3 > 0 and (opt_r3 * 0.95 <= opt_ltp < opt_r3))
@@ -521,20 +524,21 @@ def analyze_option_r3_setup(
         (spot_r1 > 0 and spot_price >= spot_r1)
     )
     
-    # Both conditions must align: Option R3 Broken AND Spot at/above R1 or R2
-    is_option_r3_crossed = bool(opt_leads_r3 and spot_breaks_level)
+    # Both conditions must align: Early Option R2 Breakout AND Spot at/above R1 or R2
+    is_option_r3_crossed = bool(opt_in_breakout_zone and spot_breaks_level)
 
-    # 100% Confirmed Buy Condition:
-    is_100_percent_buy = bool(is_option_r3_crossed and spot_is_bullish and spot_is_1h_confirmed)
+    # 100% Confirmed Buy Condition (Early entry only, never late above R3):
+    is_100_percent_buy = bool(is_option_r3_crossed and spot_is_bullish and spot_is_1h_confirmed and not is_chasing)
 
-    # Risk-Reward for Option:
-    # Stop loss: Option's break-point level or 25% risk from entry
-    opt_sl = round(max(0.10, opt_r3 * 0.75 if opt_r3 > 0 else opt_ltp * 0.75), 2)
+    # Stop loss: Below Option R1 or 20% risk from entry (tight, controlled risk)
+    opt_sl = round(max(0.10, opt_r1 if (opt_r1 > 0 and opt_r1 < opt_ltp) else opt_ltp * 0.80), 2)
     risk_per_share = max(0.5, opt_ltp - opt_sl)
     risk_pct = round((risk_per_share / opt_ltp) * 100, 1)
 
-    opt_t1 = round(opt_ltp + (1.5 * risk_per_share), 2)
-    opt_t2 = round(opt_ltp + (2.5 * risk_per_share), 2)
+    # Target 1 is Option R3 itself! (Natural profit booking target where 50% must be booked)
+    opt_t1 = round(max(opt_r3, opt_ltp + (1.2 * risk_per_share)), 2)
+    # Target 2 is Extension above R3
+    opt_t2 = round(opt_r3 + (opt_r3 - opt_r2 if opt_r2 > 0 else 1.5 * risk_per_share), 2)
     t1_pct = round(((opt_t1 - opt_ltp) / opt_ltp) * 100, 1)
     t2_pct = round(((opt_t2 - opt_ltp) / opt_ltp) * 100, 1)
 
@@ -688,9 +692,15 @@ def analyze_put_r3_setup(
     put_r1 = pivots["r1"]
     put_p = pivots["p"]
 
-    # Anti-FOMO Chasing Cap for Put Option: Max 8% above R3
-    is_put_chasing = bool(put_r3 > 0 and opt_ltp > put_r3 * 1.08)
-    put_leads_r3 = bool(put_r3 > 0 and opt_ltp >= put_r3 and not is_put_chasing)
+    # --- Institutional Momentum Logic for Puts: Early Breakout with R3 as Target ---
+    # 1. Anti-FOMO Chasing Guard for Put Option:
+    # If Put Option has already reached or exceeded Put R3 (+2% buffer),
+    # the down-move is exhausted! Fresh buying is strictly BLOCKED!
+    is_put_chasing = bool(put_r3 > 0 and opt_ltp >= put_r3 * 1.02)
+    is_put_exhausted = bool(put_r3 > 0 and opt_ltp >= put_r3)
+
+    # 2. Early Put Breakout Zone (Put breaks R2 moving towards R3):
+    opt_put_in_breakout_zone = bool(put_r2 > 0 and opt_ltp >= put_r2 and not is_put_chasing)
 
     # Pre-R3 Advance Radar for Put: Option is within 2% to 5% below R3
     is_pre_put_r3_radar = bool(put_r3 > 0 and (put_r3 * 0.95 <= opt_ltp < put_r3))
@@ -701,16 +711,17 @@ def analyze_put_r3_setup(
         (spot_s1 > 0 and spot_price <= spot_s1)
     )
 
-    is_put_r3_crossed = bool(put_leads_r3 and spot_breaks_support)
-    is_100_percent_put_buy = bool(is_put_r3_crossed and spot_is_bearish and spot_is_1h_confirmed)
+    is_put_r3_crossed = bool(opt_put_in_breakout_zone and spot_breaks_support)
+    is_100_percent_put_buy = bool(is_put_r3_crossed and spot_is_bearish and spot_is_1h_confirmed and not is_put_chasing)
 
-    # Risk-Reward for Put Option
-    opt_sl = round(max(0.10, put_r3 * 0.75 if put_r3 > 0 else opt_ltp * 0.75), 2)
+    # Risk-Reward for Put Option: Stop loss below Put R1 or 20% risk
+    opt_sl = round(max(0.10, put_r1 if (put_r1 > 0 and put_r1 < opt_ltp) else opt_ltp * 0.80), 2)
     risk_per_share = max(0.5, opt_ltp - opt_sl)
     risk_pct = round((risk_per_share / opt_ltp) * 100, 1)
 
-    opt_t1 = round(opt_ltp + (1.5 * risk_per_share), 2)
-    opt_t2 = round(opt_ltp + (2.5 * risk_per_share), 2)
+    # Target 1 is Put R3 itself! (Natural profit booking target where 50% must be booked)
+    opt_t1 = round(max(put_r3, opt_ltp + (1.2 * risk_per_share)), 2)
+    opt_t2 = round(put_r3 + (put_r3 - put_r2 if put_r2 > 0 else 1.5 * risk_per_share), 2)
     t1_pct = round(((opt_t1 - opt_ltp) / opt_ltp) * 100, 1)
     t2_pct = round(((opt_t2 - opt_ltp) / opt_ltp) * 100, 1)
     multibagger_target = round(opt_ltp * 2.0, 2)
