@@ -130,11 +130,10 @@ DEFAULT_ALGO_CONFIG = {
     "end_time": "15:00",                # No new trades after 15:00
     "kill_switch_triggered": False,
     "last_reset_date": "",
-    "nifty_regime_filter": True,        # Minervini 75% Market Trend Alignment
     "time_stop_enabled": True,          # Larry Williams / Toby Crabel 25m Theta Stop
     "time_stop_minutes": 25,            # Max minutes to hold dormant sideways option
-    "vwap_filter_enabled": True,
-    "adx_filter_enabled": True         # Wilder & Raschke ADX 20-52 Trend Strength Golden Zone         # Institutional VWAP Confluence
+    "vwap_filter_enabled": True,        # Institutional VWAP Confluence
+    "adx_filter_enabled": True          # Wilder & Raschke ADX 20-52 Trend Strength Golden Zone
 }
 
 def load_algo_config() -> Dict[str, Any]:
@@ -703,16 +702,6 @@ def execute_algo_entry(scan_res: Dict[str, Any]) -> Tuple[bool, str]:
     max_open = int(cfg.get("max_open_positions", 10))
     if len(active_trades) >= max_open:
         return _skip(f"Max concurrent positions reached ({len(active_trades)}/{max_open})", "MAX_POSITIONS")
-
-    # Safety Check 5.1: Market Regime Alignment (Mark Minervini 75% General Market Rule)
-    if cfg.get("nifty_regime_filter", True):
-        from core.config import get_nifty_market_regime
-        nifty_regime = get_nifty_market_regime()
-        nifty_pct = float(nifty_regime.get("pct", 0.0) or 0.0)
-        if opt_type == "CE" and nifty_pct <= -0.45:
-            return _skip(f"Skipped {sym} Call: Nifty is negative ({nifty_pct:+.2f}%), blocking counter-trend Call entry", "REGIME_GUARD")
-        elif opt_type == "PE" and nifty_pct >= 0.45:
-            return _skip(f"Skipped {sym} Put: Nifty is bullish ({nifty_pct:+.2f}%), blocking counter-trend Put entry", "REGIME_GUARD")
 
     # Safety Check 5.15: ADX Trend Strength Golden Zone Guard (Wilder & Linda Raschke Rule)
     if cfg.get("adx_filter_enabled", True):

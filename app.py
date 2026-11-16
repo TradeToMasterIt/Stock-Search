@@ -2585,14 +2585,12 @@ if selected_module == "🤖 Fyers Auto-Algo Cockpit (ઓટો-આલ્ગો �
             with c_t4:
                 new_trail_cost = st.checkbox("Target 1 પર SL to Cost", value=bool(algo_cfg.get("trail_t1_to_cost", True)), help="૫૦% નફો મળ્યા પછી સ્ટોપલોસ ખરીદભાવ પર લાવવો.")
 
-            c_adv1, c_adv2, c_adv3, c_adv4 = st.columns(4)
+            c_adv1, c_adv2, c_adv3 = st.columns(3)
             with c_adv1:
-                new_nifty_filter = st.checkbox("🌐 Nifty ટ્રેન્ડ ફિલ્ટર", value=bool(algo_cfg.get("nifty_regime_filter", True)), help="Nifty -0.45% થી વધુ તૂટે ત્યારે Call અને +0.45% થી વધુ વધે ત્યારે Put બ્લોક કરે છે (Minervini 75% નિયમ).")
+                new_vwap_filter = st.checkbox("📊 VWAP સંસ્થાકીય ફિલ્ટર", value=bool(algo_cfg.get("vwap_filter_enabled", True)), help="શેર VWAP ની ઉપર હોય ત્યારે જ Call અને નીચે હોય ત્યારે જ Put માન્ય ગણાય.")
             with c_adv2:
-                new_vwap_filter = st.checkbox("📊 VWAP ફિલ્ટર", value=bool(algo_cfg.get("vwap_filter_enabled", True)), help="શેર VWAP ની ઉપર હોય ત્યારે જ Call અને નીચે હોય ત્યારે જ Put માન્ય ગણાય.")
-            with c_adv3:
                 new_adx_filter = st.checkbox("⚡ ADX ૨૦-૫૨ Trend ફિલ્ટર", value=bool(algo_cfg.get("adx_filter_enabled", True)), help="ADX < 20 (સાઇડવેઝ) અને ADX > 52 (ક્લાઇમેક્સ થાકેલા) ટ્રેડ્સ રોકે છે (Wilder & Raschke નિયમ).")
-            with c_adv4:
+            with c_adv3:
                 new_time_stop = st.checkbox("⏱️ ૨૫m Theta Time-Stop", value=bool(algo_cfg.get("time_stop_enabled", True)), help="જો ૨૫ મિનિટ સુધી મોમેન્ટમ ન મળે અને ટ્રેડ સાઇડવેઝ રહે, તો થીટા ડીકેય અટકાવવા કોસ્ટ પર એક્ઝિટ.")
 
             if st.button("💾 સેટિંગ્સ સેવ કરો (Save Algo Settings)", type="primary", key="btn_save_algo_config"):
@@ -2608,7 +2606,6 @@ if selected_module == "🤖 Fyers Auto-Algo Cockpit (ઓટો-આલ્ગો �
                 algo_cfg["end_time"] = str(new_end_time).strip()
                 algo_cfg["auto_square_off_time"] = str(new_eod_time).strip()
                 algo_cfg["trail_t1_to_cost"] = bool(new_trail_cost)
-                algo_cfg["nifty_regime_filter"] = bool(new_nifty_filter)
                 algo_cfg["vwap_filter_enabled"] = bool(new_vwap_filter)
                 algo_cfg["time_stop_enabled"] = bool(new_time_stop)
                 algo_cfg["adx_filter_enabled"] = bool(new_adx_filter)
