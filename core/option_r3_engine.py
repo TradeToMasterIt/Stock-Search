@@ -25,9 +25,9 @@ if _parent_dir not in sys.path:
     sys.path.insert(0, _parent_dir)
 
 try:
-    from .config import get_ist_now, DEFAULT_WATCHLIST
+    from .config import get_ist_now, is_market_open, DEFAULT_WATCHLIST
 except ImportError:
-    from core.config import get_ist_now, DEFAULT_WATCHLIST
+    from core.config import get_ist_now, is_market_open, DEFAULT_WATCHLIST
 
 # -------------------------------------------------------------
 # Top 35 High-Beta & Explosive Momentum F&O Stocks (Curated)
