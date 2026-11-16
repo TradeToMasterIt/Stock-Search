@@ -53,6 +53,8 @@ from core.fyers_order_engine import (
     monitor_and_manage_algo_positions,
     emergency_square_off_all_algo_trades,
     finalize_algo_trade_closure,
+    close_algo_trade_by_id,
+    purge_stale_algo_trades,
     get_lot_size
 )
 from core.indicators import (
@@ -2621,11 +2623,10 @@ if selected_module == "🤖 Fyers Auto-Algo Cockpit (ઓટો-આલ્ગો �
             time.sleep(1)
             st.rerun()
 
-        if st.button("🧹 જૂની ઘોસ્ટ પોઝિશન સાફ કરો (Purge Ghost Trades)", use_container_width=True, key="btn_purge_ghost_trades", help="જો કોઈ જૂની તારીખની પોઝિશન અટકી ગઈ હોય તો તેને કાયમ માટે સાફ/આર્કાઇવ કરો"):
-            from core.fyers_order_engine import purge_stale_algo_trades
+        if st.button("🧹 જૂની ઘોસ્ટ / નોન-FNO પોઝિશન સાફ કરો (Purge Ghost & Excluded Trades)", use_container_width=True, key="btn_purge_ghost_trades", help="જો કોઈ જૂની તારીખની કે અમાન્ય નોન-FNO પોઝિશન અટકી ગઈ હોય તો તેને કાયમ માટે સાફ/આર્કાઇવ કરો"):
             p_cnt = purge_stale_algo_trades()
-            st.success(f"✅ {p_cnt} જૂની પોઝિશન્સ કાયમ માટે સાફ કરી દેવાઈ!")
-            time.sleep(1)
+            st.success(f"✅ {p_cnt} પોઝિશન્સ કાયમ માટે સાફ કરી દેવાઈ!")
+            time.sleep(0.5)
             st.rerun()
 
     st.markdown("<div style='height: 18px;'></div>", unsafe_allow_html=True)
@@ -2692,31 +2693,21 @@ if selected_module == "🤖 Fyers Auto-Algo Cockpit (ઓટો-આલ્ગો �
                 with p_c4:
                     st.caption(f"🛑 Trailing SL: **₹{sl:.2f}**")
                 with p_c5:
-                    if st.button(f"🚪 Exit Trade", key=f"btn_exit_algo_trd_{idx}", help="આ પોઝિશન તાત્કાલિક સ્ક્વેર-ઓફ કરો"):
-                        if t_mode == "LIVE" and f_sym and rem_q > 0:
-                            place_fyers_broker_order(symbol=f_sym, qty=rem_q, side=-1, order_type=2)
-                        total_exit_trade_pnl = finalize_algo_trade_closure(
-                            tr=tr,
-                            status="CLOSED (MANUAL EXIT)",
-                            exit_price=c_price,
-                            final_slice_pnl=unrealized,
-                            closed_trades=closed_algo_trades,
-                            daily_summary=daily_summary,
-                            now_ist=get_ist_now(),
-                        )
-                        active_algo_trades.pop(idx)
-                        algo_trades_state["active_trades"] = active_algo_trades
-                        algo_trades_state["closed_trades"] = closed_algo_trades
-                        algo_trades_state["daily_summary"] = daily_summary
-                        save_algo_trades(algo_trades_state)
-                        exit_alert_text = (
-                            f"🚪 <b>ALGO MANUAL EXIT!</b>\n"
-                            f"• {c_name} બજારભાવે (₹{c_price:.2f}) સ્ક્વેર-ઓફ કરાયો!\n"
-                            f"• <b>P&L:</b> ₹{total_exit_trade_pnl:+.2f}"
-                        )
-                        send_telegram_alert(exit_alert_text)
-                        st.success(f"✅ {c_name} સફળતાપૂર્વક બંધ કરાયો!")
-                        st.rerun()
+                    tr_id = str(tr.get("id") or tr.get("symbol") or idx)
+                    if st.button(f"🚪 Exit Trade", key=f"btn_exit_algo_trd_{tr_id}", help="આ પોઝિશન તાત્કાલિક સ્ક્વેર-ઓફ કરો"):
+                        ok_exit, exit_msg, exit_pnl = close_algo_trade_by_id(trade_id=tr_id, exit_reason="CLOSED (MANUAL EXIT)")
+                        if ok_exit:
+                            exit_alert_text = (
+                                f"🚪 <b>ALGO MANUAL EXIT!</b>\n"
+                                f"• {c_name} બજારભાવે સ્ક્વેર-ઓફ કરાયો!\n"
+                                f"• <b>P&L:</b> ₹{exit_pnl:+.2f}"
+                            )
+                            send_telegram_alert(exit_alert_text)
+                            st.success(f"✅ {c_name} સફળતાપૂર્વક બંધ કરાયો (P&L: ₹{exit_pnl:+.2f})!")
+                            time.sleep(0.5)
+                            st.rerun()
+                        else:
+                            st.error(f"⚠️ {exit_msg}")
 
     st.markdown("<div style='height: 14px;'></div>", unsafe_allow_html=True)
 
