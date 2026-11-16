@@ -423,6 +423,9 @@ def analyze_option_r3_setup(
                 "cont_flag": "1"
             }
             hist_res = safe_fyers_history(fyers_client, d_hist)
+            if isinstance(hist_res, dict) and (hist_res.get("code") == -300 or "invalid symbol" in str(hist_res.get("message", "")).lower()):
+                # Underlying stock or option contract does not exist on NSE F&O!
+                return None
             candles = hist_res.get("candles", []) if isinstance(hist_res, dict) else []
 
             if candles and len(candles) >= 1:
@@ -648,6 +651,9 @@ def analyze_put_r3_setup(
                 "cont_flag": "1"
             }
             hist_res = safe_fyers_history(fyers_client, d_hist)
+            if isinstance(hist_res, dict) and (hist_res.get("code") == -300 or "invalid symbol" in str(hist_res.get("message", "")).lower()):
+                # Underlying stock or put option contract does not exist on NSE F&O!
+                return None
             candles = hist_res.get("candles", []) if isinstance(hist_res, dict) else []
 
             if candles and len(candles) >= 1:
