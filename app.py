@@ -2621,6 +2621,13 @@ if selected_module == "🤖 Fyers Auto-Algo Cockpit (ઓટો-આલ્ગો �
             time.sleep(1)
             st.rerun()
 
+        if st.button("🧹 જૂની ઘોસ્ટ પોઝિશન સાફ કરો (Purge Ghost Trades)", use_container_width=True, key="btn_purge_ghost_trades", help="જો કોઈ જૂની તારીખની પોઝિશન અટકી ગઈ હોય તો તેને કાયમ માટે સાફ/આર્કાઇવ કરો"):
+            from core.fyers_order_engine import purge_stale_algo_trades
+            p_cnt = purge_stale_algo_trades()
+            st.success(f"✅ {p_cnt} જૂની પોઝિશન્સ કાયમ માટે સાફ કરી દેવાઈ!")
+            time.sleep(1)
+            st.rerun()
+
     st.markdown("<div style='height: 18px;'></div>", unsafe_allow_html=True)
 
     # Section: Active Algo Positions
@@ -2710,6 +2717,16 @@ if selected_module == "🤖 Fyers Auto-Algo Cockpit (ઓટો-આલ્ગો �
                         send_telegram_alert(exit_alert_text)
                         st.success(f"✅ {c_name} સફળતાપૂર્વક બંધ કરાયો!")
                         st.rerun()
+
+    st.markdown("<div style='height: 14px;'></div>", unsafe_allow_html=True)
+
+    # Section: Recent Algo Audit Decision Logs
+    algo_audit_logs = algo_trades_state.get("algo_logs", [])
+    if algo_audit_logs:
+        with st.expander("📜 છેલ્લા આલ્ગો નિર્ણયો (Recent Algo Decision Logs)", expanded=True):
+            st.caption("સ્કેનરમાં સિગ્નલ આવ્યા પછી આલ્ગોએ લીધેલા તાજેતરના નિર્ણયો (ઓર્ડર એક્ઝિક્યુટ અથવા સ્ટેન્ડબાય/સ્કિપ થવાના કારણો):")
+            df_logs = pd.DataFrame(list(reversed(algo_audit_logs)))
+            st.dataframe(df_logs, use_container_width=True, hide_index=True)
 
     st.markdown("<div style='height: 20px;'></div>", unsafe_allow_html=True)
 

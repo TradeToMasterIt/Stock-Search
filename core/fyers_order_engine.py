@@ -152,8 +152,10 @@ def save_algo_config(cfg: Dict[str, Any]):
 # Trades State Manager
 # -------------------------------------------------------------
 def load_algo_trades() -> Dict[str, Any]:
-    """Loads active and closed algo trades."""
+    """Loads active and closed algo trades with auto-purge for stale intraday trades."""
     today_str = get_ist_now().strftime("%Y-%m-%d")
+    today_display_date = get_ist_now().strftime("%d %b %Y")
+    today_compact_date = get_ist_now().strftime("%Y%m%d")
     default_data = {
         "active_trades": [],
         "closed_trades": [],
@@ -165,27 +167,62 @@ def load_algo_trades() -> Dict[str, Any]:
             "winning_trades": 0,
             "losing_trades": 0,
             "breakeven_trades": 0
-        }
+        },
+        "archived_trades": [],
+        "algo_logs": []
     }
     if not os.path.exists(ALGO_TRADES_FILE):
         return default_data
     try:
         with open(ALGO_TRADES_FILE, "r", encoding="utf-8") as f:
             data = json.load(f)
-            if data.get("daily_summary", {}).get("date") != today_str:
-                # Archive past days' closed trades and start fresh daily ledger
-                past_closed = data.get("closed_trades", [])
-                archived = data.get("archived_trades", [])
-                archived.extend(past_closed)
-                data["archived_trades"] = archived
-                data["closed_trades"] = []
-                data["daily_summary"] = default_data["daily_summary"]
-                try:
-                    with open(ALGO_TRADES_FILE, "w", encoding="utf-8") as fw:
-                        json.dump(data, fw, indent=2, ensure_ascii=False)
-                except Exception:
-                    pass
-            return data
+
+        dirty = False
+        if data.get("daily_summary", {}).get("date") != today_str:
+            # Archive past days' closed trades and start fresh daily ledger
+            past_closed = data.get("closed_trades", [])
+            archived = data.get("archived_trades", [])
+            archived.extend(past_closed)
+            data["archived_trades"] = archived
+            data["closed_trades"] = []
+            data["daily_summary"] = default_data["daily_summary"]
+            dirty = True
+
+        # Intraday Stale Position Auto-Purge:
+        # All algo options are strictly intraday positions (EOD square-off).
+        # Any trade with entry date from a previous day is automatically archived as CLOSED.
+        raw_active = data.get("active_trades", [])
+        cleaned_active = []
+        archived = data.get("archived_trades", [])
+        for tr in raw_active:
+            e_time = str(tr.get("entry_time", ""))
+            t_id = str(tr.get("id", ""))
+            is_stale = False
+            if e_time and not e_time.startswith(today_display_date):
+                is_stale = True
+            elif t_id.startswith("ALG_") and not t_id.startswith(f"ALG_{today_compact_date}"):
+                is_stale = True
+
+            if is_stale:
+                tr["status"] = "CLOSED (EOD AUTO-EXPIRED)"
+                tr["exit_time"] = tr.get("exit_time") or get_ist_now().strftime("%d %b %Y | 15:30:00 IST")
+                archived.append(tr)
+                dirty = True
+            else:
+                cleaned_active.append(tr)
+
+        data["active_trades"] = cleaned_active
+        data["archived_trades"] = archived
+        if "algo_logs" not in data:
+            data["algo_logs"] = []
+
+        if dirty:
+            try:
+                with open(ALGO_TRADES_FILE, "w", encoding="utf-8") as fw:
+                    json.dump(data, fw, indent=2, ensure_ascii=False)
+            except Exception:
+                pass
+        return data
     except Exception:
         return default_data
 
@@ -196,6 +233,60 @@ def save_algo_trades(data: Dict[str, Any]):
             json.dump(data, f, indent=2, ensure_ascii=False)
     except Exception as e:
         print(f"Error saving algo trades: {e}")
+
+def log_algo_event(symbol: str, action: str, reason: str, status: str = "INFO"):
+    """Appends an event to the persistent algo audit log (last 50 events)."""
+    try:
+        data = load_algo_trades()
+        logs = data.get("algo_logs", [])
+        now_ist = get_ist_now()
+        logs.append({
+            "timestamp": now_ist.strftime("%H:%M:%S IST"),
+            "symbol": symbol,
+            "action": action,
+            "reason": reason,
+            "status": status
+        })
+        data["algo_logs"] = logs[-50:]
+        save_algo_trades(data)
+    except Exception:
+        pass
+
+def purge_stale_algo_trades() -> int:
+    """Manually cleans up any active trades or forces active trades to empty if requested."""
+    data = load_algo_trades()
+    active = data.get("active_trades", [])
+    archived = data.get("archived_trades", [])
+    cnt = len(active)
+    now_ist = get_ist_now()
+    for tr in active:
+        tr["status"] = "CLOSED (PURGED BY USER)"
+        tr["exit_time"] = now_ist.strftime("%d %b %Y | %H:%M:%S IST")
+        tr["realized_pnl"] = 0.0
+        archived.append(tr)
+    data["active_trades"] = []
+    data["archived_trades"] = archived
+    save_algo_trades(data)
+
+    # Also clean SQLite trades table and active_trades.json
+    try:
+        from core.database import get_db_connection
+        with get_db_connection() as conn:
+            conn.execute("UPDATE trades SET status = 'CLOSED (PURGED BY USER)', exit_date = ? WHERE trade_type LIKE '%ALGO%' AND status = 'ACTIVE'", (now_ist.isoformat(),))
+            conn.commit()
+    except Exception:
+        pass
+    try:
+        from core.config import ACTIVE_TRADES_FILE
+        if os.path.exists(ACTIVE_TRADES_FILE):
+            with open(ACTIVE_TRADES_FILE, "r", encoding="utf-8") as f:
+                t_list = json.load(f)
+            t_list = [t for t in t_list if not str(t.get("trade_type", "")).startswith("ALGO")]
+            with open(ACTIVE_TRADES_FILE, "w", encoding="utf-8") as f:
+                json.dump(t_list, f, indent=2, ensure_ascii=False)
+    except Exception:
+        pass
+    return cnt
 
 # -------------------------------------------------------------
 # Position Sizing & Lot Calculator
@@ -408,6 +499,18 @@ def finalize_algo_trade_closure(
     tr["realized_pnl"] = total_trade_pnl
     closed_trades.append(tr)
 
+    # Sync closure to SQLite database
+    try:
+        from core.database import get_db_connection
+        with get_db_connection() as conn:
+            conn.execute(
+                "UPDATE trades SET status = ?, exit_price = ?, exit_date = ?, pnl = ? WHERE id = ?",
+                (status, round(float(exit_price), 2), now_ist.isoformat(), total_trade_pnl, tr.get("id"))
+            )
+            conn.commit()
+    except Exception:
+        pass
+
     # T1/T2 partial profits were already added to daily_summary['realized_pnl'] when hit,
     # so add only the closing slice here to keep daily_summary synced with trade history.
     daily_summary["realized_pnl"] = round(float(daily_summary.get("realized_pnl", 0.0) or 0.0) + final_slice, 2)
@@ -431,54 +534,58 @@ def execute_algo_entry(scan_res: Dict[str, Any]) -> Tuple[bool, str]:
     Evaluates entry conditions and automatically executes order (Paper or Live).
     Triggered when 100% Confirmed Buy (Spot R2 + Option Daily R3 + 5m RSI 58-74 + Vol >= 1.2x) fires.
     """
+    sym = scan_res.get("symbol", "")
+    opt_type = scan_res.get("opt_type", "CE")
+
+    def _skip(reason_msg: str, status_tag: str = "STANDBY"):
+        log_algo_event(sym or "SYSTEM", status_tag, reason_msg, status="STANDBY")
+        return False, reason_msg
+
     cfg = load_algo_config()
     
     # Safety Check 1: Is Algo Enabled?
     if not cfg.get("is_enabled", False):
-        return False, "Algo Trading is PAUSED in settings"
+        return _skip("Algo Trading is PAUSED in settings", "PAUSED")
         
     # Safety Check 2: Kill-Switch Check
     if cfg.get("kill_switch_triggered", False):
-        return False, "Daily Kill-Switch is ACTIVE (Max Loss Hit)"
+        return _skip("Daily Kill-Switch is ACTIVE (Max Loss Hit)", "KILL_SWITCH")
         
     # Safety Check 3: Time Window Check (09:20 to 15:00 IST)
     now_ist = get_ist_now()
     curr_time_str = now_ist.strftime("%H:%M")
     if curr_time_str < cfg.get("start_time", "09:20") or curr_time_str > cfg.get("end_time", "15:00"):
-        return False, f"Outside Algo Entry Time Window ({curr_time_str} IST)"
+        return _skip(f"Outside Algo Entry Time Window ({curr_time_str} IST)", "TIME_WINDOW")
         
     # Safety Check 4: Market Hours
     market_open, _ = is_market_open()
     if not market_open:
-        return False, "Market is Closed"
+        return _skip("Market is Closed", "MARKET_CLOSED")
         
     trades_data = load_algo_trades()
     active_trades = trades_data.get("active_trades", [])
     
     # Safety Check 5: Max Open Positions
-    max_open = int(cfg.get("max_open_positions", 2))
+    max_open = int(cfg.get("max_open_positions", 10))
     if len(active_trades) >= max_open:
-        return False, f"Max concurrent positions reached ({len(active_trades)}/{max_open})"
-        
-    sym = scan_res.get("symbol", "")
-    opt_type = scan_res.get("opt_type", "CE")
+        return _skip(f"Max concurrent positions reached ({len(active_trades)}/{max_open})", "MAX_POSITIONS")
 
     # Safety Check 5.2: Direction Filter (BOTH / CALL_ONLY / PUT_ONLY)
     trading_dir = cfg.get("trading_direction", "BOTH")
     if trading_dir == "CALL_ONLY" and opt_type == "PE":
-        return False, f"Skipped {sym}: Algo is restricted to CALL ONLY in settings"
+        return _skip(f"Skipped {sym}: Algo is restricted to CALL ONLY in settings", "DIR_FILTER")
     elif trading_dir == "PUT_ONLY" and opt_type == "CE":
-        return False, f"Skipped {sym}: Algo is restricted to PUT ONLY in settings"
+        return _skip(f"Skipped {sym}: Algo is restricted to PUT ONLY in settings", "DIR_FILTER")
 
     # Safety Check 5.3: Anti-FOMO Chasing Guard (Never chase >8% above R3)
     if scan_res.get("is_chasing", False) or (opt_type == "PE" and scan_res.get("is_put_chasing", False)):
-        return False, f"Skipped {sym}: Price is overextended (>8% above Option R3 level)"
+        return _skip(f"Skipped {sym}: Price is overextended (>8% above Option R3 level)", "CHASE_GUARD")
 
     # Safety Check 5.4: Late Session (14:15 - 15:00 IST) Volume Guard
     if curr_time_str > "14:15" and not scan_res.get("is_gamma_blast", False):
         v_rat = float(scan_res.get("vol_5m", scan_res.get("vol_ratio", 1.0)))
         if v_rat < 1.5:
-            return False, f"Skipped {sym}: Post-14:15 non-gamma trade requires >= 1.5x volume (current: {v_rat:.1f}x)"
+            return _skip(f"Skipped {sym}: Post-14:15 non-gamma trade requires >= 1.5x volume (current: {v_rat:.1f}x)", "VOL_GUARD")
 
     # Select exact Call or Put symbols and levels
     if opt_type == "PE":
@@ -639,6 +746,7 @@ def execute_algo_entry(scan_res: Dict[str, Any]) -> Tuple[bool, str]:
         f"⏰ {now_ist.strftime('%d %b %Y | %H:%M:%S IST')} | 🤖 Patel Trading Bot"
     )
     send_telegram_alert(telegram_msg)
+    log_algo_event(sym, "ORDER_EXECUTED", f"{contract_name} ({opt_type}) @ ₹{entry_price:.2f} ({lots} Lots)", status="SUCCESS")
     return True, f"Successfully executed {trade_mode} order for {sym} ({contract_name})"
 
 # -------------------------------------------------------------
