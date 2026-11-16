@@ -8,6 +8,7 @@ import os
 import json
 import time
 import math
+import threading
 from datetime import datetime, timedelta
 from typing import Dict, Any, List, Optional, Tuple
 
@@ -16,6 +17,17 @@ from core.alerts import send_telegram_alert
 
 ALGO_CONFIG_FILE = "algo_config.json"
 ALGO_TRADES_FILE = "algo_trades.json"
+
+_algo_trades_lock = threading.RLock()
+
+# NSE Derivative Exclusions (Official NSE Circulars: EXIDEIND, BSOFT, AARTIIND, etc.)
+EXCLUDED_FNO_STOCKS = {
+    "BSOFT", "EXIDEIND", "AARTIIND", "HINDCOPPER", "MGL", "PEL",
+    "CHAMBLFERT", "CUB", "ZEEL", "ESCORTS", "BALKRISIND", "CANFINHOME",
+    "INDIAMART", "METROPOLIS", "NATIONALUM", "RAMCOCEM", "SYNGENE",
+    "ATUL", "BATAINDIA", "GRANULES", "GUJGASLTD", "IPCALAB",
+    "LALPATHLAB", "LICHSGFIN"
+}
 
 # Standard NSE F&O Lot Sizes (Indexed by clean symbol)
 NSE_LOT_SIZES = {
@@ -151,8 +163,8 @@ def save_algo_config(cfg: Dict[str, Any]):
 # -------------------------------------------------------------
 # Trades State Manager
 # -------------------------------------------------------------
-def load_algo_trades() -> Dict[str, Any]:
-    """Loads active and closed algo trades with auto-purge for stale intraday trades."""
+def _load_algo_trades_unlocked() -> Dict[str, Any]:
+    """Loads active and closed algo trades with auto-purge for stale intraday trades & excluded F&O stocks."""
     today_str = get_ist_now().strftime("%Y-%m-%d")
     today_display_date = get_ist_now().strftime("%d %b %Y")
     today_compact_date = get_ist_now().strftime("%Y%m%d")
@@ -188,15 +200,32 @@ def load_algo_trades() -> Dict[str, Any]:
             data["daily_summary"] = default_data["daily_summary"]
             dirty = True
 
-        # Intraday Stale Position Auto-Purge:
-        # All algo options are strictly intraday positions (EOD square-off).
-        # Any trade with entry date from a previous day is automatically archived as CLOSED.
+        # Intraday Stale Position & Excluded F&O Auto-Purge:
         raw_active = data.get("active_trades", [])
         cleaned_active = []
         archived = data.get("archived_trades", [])
         for tr in raw_active:
             e_time = str(tr.get("entry_time", ""))
             t_id = str(tr.get("id", ""))
+            clean_sym = str(tr.get("symbol", "")).upper().replace(".NS", "").replace("NSE:", "").strip()
+            c_name = str(tr.get("contract_name", "")).upper()
+            f_sym = str(tr.get("fyers_symbol", "")).upper()
+
+            # 1. Non-FNO Excluded Stock Auto-Purge (BSOFT, EXIDEIND, etc.)
+            is_excluded = (
+                clean_sym in EXCLUDED_FNO_STOCKS or
+                any(exc == clean_sym for exc in EXCLUDED_FNO_STOCKS) or
+                any(exc in c_name for exc in EXCLUDED_FNO_STOCKS) or
+                any(exc in f_sym for exc in EXCLUDED_FNO_STOCKS)
+            )
+            if is_excluded:
+                tr["status"] = "CLOSED (NON-FNO EXCLUDED PURGE)"
+                tr["exit_time"] = tr.get("exit_time") or get_ist_now().strftime("%d %b %Y | %H:%M:%S IST")
+                archived.append(tr)
+                dirty = True
+                continue
+
+            # 2. Intraday Stale Position Auto-Purge (Any trade from a previous day)
             is_stale = False
             if e_time and not e_time.startswith(today_display_date):
                 is_stale = True
@@ -226,13 +255,23 @@ def load_algo_trades() -> Dict[str, Any]:
     except Exception:
         return default_data
 
-def save_algo_trades(data: Dict[str, Any]):
-    """Saves algo trades state to disk."""
+def _save_algo_trades_unlocked(data: Dict[str, Any]):
+    """Saves algo trades state to disk (unlocked internal helper)."""
     try:
         with open(ALGO_TRADES_FILE, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=2, ensure_ascii=False)
     except Exception as e:
         print(f"Error saving algo trades: {e}")
+
+def load_algo_trades() -> Dict[str, Any]:
+    """Thread-safe loader for algo trades state."""
+    with _algo_trades_lock:
+        return _load_algo_trades_unlocked()
+
+def save_algo_trades(data: Dict[str, Any]):
+    """Thread-safe saver for algo trades state."""
+    with _algo_trades_lock:
+        _save_algo_trades_unlocked(data)
 
 def log_algo_event(symbol: str, action: str, reason: str, status: str = "INFO"):
     """Appends an event to the persistent algo audit log (last 50 events)."""
@@ -254,19 +293,20 @@ def log_algo_event(symbol: str, action: str, reason: str, status: str = "INFO"):
 
 def purge_stale_algo_trades() -> int:
     """Manually cleans up any active trades or forces active trades to empty if requested."""
-    data = load_algo_trades()
-    active = data.get("active_trades", [])
-    archived = data.get("archived_trades", [])
-    cnt = len(active)
-    now_ist = get_ist_now()
-    for tr in active:
-        tr["status"] = "CLOSED (PURGED BY USER)"
-        tr["exit_time"] = now_ist.strftime("%d %b %Y | %H:%M:%S IST")
-        tr["realized_pnl"] = 0.0
-        archived.append(tr)
-    data["active_trades"] = []
-    data["archived_trades"] = archived
-    save_algo_trades(data)
+    with _algo_trades_lock:
+        data = _load_algo_trades_unlocked()
+        active = data.get("active_trades", [])
+        archived = data.get("archived_trades", [])
+        cnt = len(active)
+        now_ist = get_ist_now()
+        for tr in active:
+            tr["status"] = "CLOSED (PURGED BY USER)"
+            tr["exit_time"] = now_ist.strftime("%d %b %Y | %H:%M:%S IST")
+            tr["realized_pnl"] = 0.0
+            archived.append(tr)
+        data["active_trades"] = []
+        data["archived_trades"] = archived
+        _save_algo_trades_unlocked(data)
 
     # Also clean SQLite trades table and active_trades.json
     try:
@@ -526,6 +566,90 @@ def finalize_algo_trade_closure(
     return total_trade_pnl
 
 
+def close_algo_trade_by_id(trade_id: str, exit_reason: str = "CLOSED (MANUAL EXIT)") -> Tuple[bool, str, float]:
+    """
+    Safely and atomically exits an active algo position by trade ID or symbol.
+    Guarantees thread-safe atomic removal from active_trades, updates database and json.
+    """
+    with _algo_trades_lock:
+        data = _load_algo_trades_unlocked()
+        active = data.get("active_trades", [])
+        closed = data.get("closed_trades", [])
+        daily_summary = data.get("daily_summary", {})
+
+        target_idx = None
+        target_tr = None
+        search_term = str(trade_id).strip().upper()
+
+        for i, tr in enumerate(active):
+            t_id = str(tr.get("id", "")).strip().upper()
+            t_sym = str(tr.get("symbol", "")).strip().upper().replace(".NS", "")
+            t_cname = str(tr.get("contract_name", "")).strip().upper()
+            t_fsym = str(tr.get("fyers_symbol", "")).strip().upper()
+
+            if (t_id == search_term or
+                t_sym == search_term or
+                search_term in t_id or
+                search_term in t_cname or
+                search_term in t_fsym):
+                target_idx = i
+                target_tr = tr
+                break
+
+        if target_tr is None:
+            return False, f"Trade '{trade_id}' active list ma malyo nathi.", 0.0
+
+        # If LIVE mode, place market exit order with Fyers
+        mode = target_tr.get("mode", "PAPER")
+        f_sym = target_tr.get("fyers_symbol", "")
+        rem_q = int(target_tr.get("remaining_qty", target_tr.get("initial_qty", 0)))
+        if mode == "LIVE" and f_sym and rem_q > 0:
+            try:
+                place_fyers_broker_order(symbol=f_sym, qty=rem_q, side=-1, order_type=2)
+            except Exception as e:
+                print(f"Error placing live exit order for {f_sym}: {e}")
+
+        curr_p = float(target_tr.get("current_price", target_tr.get("entry_price", 0.0)) or 0.0)
+        entry_p = float(target_tr.get("entry_price", 0.0) or 0.0)
+        final_slice = round((curr_p - entry_p) * rem_q, 2)
+
+        pnl = finalize_algo_trade_closure(
+            tr=target_tr,
+            status=exit_reason,
+            exit_price=curr_p,
+            final_slice_pnl=final_slice,
+            closed_trades=closed,
+            daily_summary=daily_summary,
+            now_ist=get_ist_now(),
+        )
+
+        active.pop(target_idx)
+        data["active_trades"] = active
+        data["closed_trades"] = closed
+        data["daily_summary"] = daily_summary
+        _save_algo_trades_unlocked(data)
+
+        # Sync with SQLite trades table
+        try:
+            from core.database import get_db_connection
+            with get_db_connection() as conn:
+                conn.execute(
+                    "UPDATE trades SET status = ?, exit_price = ?, exit_date = ?, pnl = ? WHERE id = ?",
+                    (exit_reason, curr_p, get_ist_now().isoformat(), pnl, target_tr.get("id"))
+                )
+                conn.commit()
+        except Exception:
+            pass
+
+        log_algo_event(
+            target_tr.get("symbol", ""),
+            "MANUAL_EXIT",
+            f"Manual Exit: {target_tr.get('contract_name')} @ ₹{curr_p:.2f} (PnL: ₹{pnl:+.2f})",
+            status="SUCCESS"
+        )
+        return True, f"Successfully closed {target_tr.get('contract_name')}", pnl
+
+
 # -------------------------------------------------------------
 # Core Algo Entry Trigger
 # -------------------------------------------------------------
@@ -542,6 +666,11 @@ def execute_algo_entry(scan_res: Dict[str, Any]) -> Tuple[bool, str]:
         return False, reason_msg
 
     cfg = load_algo_config()
+
+    # Safety Check 0: NSE F&O Excluded Stocks Check (Triple Lock)
+    clean_sym_check = sym.upper().replace(".NS", "").replace("NSE:", "").strip()
+    if clean_sym_check in EXCLUDED_FNO_STOCKS:
+        return _skip(f"Skipped {sym}: Excluded from NSE F&O derivative trading", "NON_FNO")
     
     # Safety Check 1: Is Algo Enabled?
     if not cfg.get("is_enabled", False):
@@ -997,12 +1126,27 @@ def monitor_and_manage_algo_positions() -> List[str]:
         send_telegram_alert(kill_alert)
         actions_taken.append("Daily Kill-Switch Triggered")
 
-    # Update Trades Data
-    trades_data["active_trades"] = remaining_active
-    trades_data["closed_trades"] = closed_trades
-    trades_data["daily_summary"] = daily_summary
-    save_algo_trades(trades_data)
-    
+    # Update Trades Data with Atomic Lock & Reconciliation
+    with _algo_trades_lock:
+        fresh_data = _load_algo_trades_unlocked()
+        fresh_active_ids = {t.get("id") for t in fresh_data.get("active_trades", [])}
+
+        # Filter: ONLY keep in remaining_active trades that are STILL present in fresh_active_ids!
+        # If any position was manually exited while we fetched live quotes, it will NOT be resurrected.
+        final_remaining = [t for t in remaining_active if t.get("id") in fresh_active_ids]
+
+        fresh_closed = fresh_data.get("closed_trades", [])
+        fresh_closed_ids = {t.get("id") for t in fresh_closed}
+        for ct in closed_trades:
+            if ct.get("id") not in fresh_closed_ids:
+                fresh_closed.append(ct)
+                fresh_closed_ids.add(ct.get("id"))
+
+        fresh_data["active_trades"] = final_remaining
+        fresh_data["closed_trades"] = fresh_closed
+        fresh_data["daily_summary"] = daily_summary
+        _save_algo_trades_unlocked(fresh_data)
+
     return actions_taken
 
 # -------------------------------------------------------------
