@@ -1030,7 +1030,7 @@ def fetch_scanner_data(clean_sym):
 
             now_dt = _dt.now()
             to_d = now_dt.strftime("%Y-%m-%d")
-            from_d = (now_dt - _td(days=365)).strftime("%Y-%m-%d")
+            from_d = (now_dt - _td(days=360)).strftime("%Y-%m-%d") # 360 days (max allowed by Fyers D resolution)
             from_1h = (now_dt - _td(days=45)).strftime("%Y-%m-%d")
             d_req = {
                 "symbol": f_sym,
@@ -1041,11 +1041,11 @@ def fetch_scanner_data(clean_sym):
                 "cont_flag": "1"
             }
             res_d = safe_fyers_history(fyers_client, d_req)
-            if isinstance(res_d, dict) and (res_d.get("code") in [-300, -99] or res_d.get("s") == "error"):
-                return None
-            candles_d = res_d.get("candles", []) if isinstance(res_d, dict) else []
+            candles_d = []
+            if isinstance(res_d, dict) and res_d.get("s") == "ok":
+                candles_d = res_d.get("candles", [])
             if not candles_d or len(candles_d) < 30:
-                return None
+                used_fyers = False # Fall back to yfinance if Fyers rate-limited or unavailable
 
             h1_req = {
                 "symbol": f_sym,
@@ -1110,7 +1110,7 @@ def fetch_scanner_data(clean_sym):
                 ticker_sym = f"{clean_norm}.NS"
 
             ticker = yf.Ticker(ticker_sym)
-            df_d = ticker.history(period="1y", interval="1d")
+            df_d = ticker.history(period="4y", interval="1d")
             if is_idx:
                 if 'Volume' not in df_d.columns or df_d['Volume'].isna().all() or (df_d['Volume'] == 0).all():
                     df_d['Volume'] = 1_000_000.0
@@ -1177,9 +1177,13 @@ def load_cached_gfs_results():
             t2 = round(p * 1.15, 2)
             t3 = round(p * 1.25, 2)
             
-            rsi_m = float(d.get("rsi_m", 63.5 if ("3-TF" in badge or "DIP" in badge) else 54.0))
-            rsi_w = float(d.get("rsi_w", 62.0 if ("3-TF" in badge or "DIP" in badge) else 52.0))
-            rsi_d = float(d.get("rsi_d", 44.5 if "DIP" in badge else (63.0 if "3-TF" in badge else 50.0)))
+            rsi_m = float(d.get("rsi_m", 63.5 if ("3-TF" in badge or "DIP" in badge or "TRAMPOLINE" in badge) else 54.0))
+            rsi_w = float(d.get("rsi_w", 62.0 if ("3-TF" in badge or "DIP" in badge or "TRAMPOLINE" in badge) else 52.0))
+            rsi_d = float(d.get("rsi_d", 41.5 if ("DIP" in badge or "TRAMPOLINE" in badge) else (63.0 if "3-TF" in badge else 50.0)))
+            
+            # Exclude non-qualifying stocks (Monthly or Weekly < 58)
+            if rsi_m < 58.0 or rsi_w < 58.0:
+                continue
             
             rows.append({
                 "Symbol": sym,
@@ -1237,13 +1241,19 @@ def scan_gfs_stock(sym):
         pct_chg = ((curr_p - prev_p) / prev_p) * 100
 
         # Calculate Hilega-Milega on df_m, df_w, df_d if RSI_9 not present
+        from core.indicators import calculate_hilega_milega
         if 'RSI_9' not in df_d.columns:
-            from core.indicators import calculate_hilega_milega
             df_d = calculate_hilega_milega(df_d)
+        if 'RSI_9' not in df_w.columns:
             df_w = calculate_hilega_milega(df_w)
+        if 'RSI_9' not in df_m.columns:
             df_m = calculate_hilega_milega(df_m)
 
         gfs_res = evaluate_gfs_confluence(df_m, df_w, df_d, curr_p)
+
+        # Strictly exclude failed stocks (Monthly < 58 or Weekly < 58) - user requested no red options
+        if not gfs_res.get("is_qualified_gfs", False) or gfs_res.get("rsi_m", 0.0) < 58.0 or gfs_res.get("rsi_w", 0.0) < 58.0:
+            return None
 
         # Risk & Targets for Swing Trading
         sl = round(min(gfs_res.get('bb_lower', curr_p * 0.95), curr_p * 0.96), 2)
@@ -1260,6 +1270,9 @@ def scan_gfs_stock(sym):
             "RSI_M": gfs_res["rsi_m"],
             "RSI_W": gfs_res["rsi_w"],
             "RSI_D": gfs_res["rsi_d"],
+            "Is_Trampoline": gfs_res.get("is_son_trampoline", False),
+            "Is_Early_Bounce": gfs_res.get("is_son_early_bounce", False),
+            "Is_Son_Dip": gfs_res.get("is_son_in_dip", False),
             "BB_Middle": gfs_res["bb_middle"],
             "BB_Lower": gfs_res["bb_lower"],
             "BB_Support": "✅ સપોર્ટ નજીક" if gfs_res["bb_support_active"] else "❌ દૂર",
@@ -1416,10 +1429,11 @@ def scan_stock(sym):
             )
 
         # Guarantee strictly Out-Of-The-Money (OTM) strikes for Option Selling via Hybrid Outer Barriers
-        ce_sell_strike = seller_strikes['ce_sell_strike']
-        pe_sell_strike = seller_strikes['pe_sell_strike']
-        wing_ce_strike = seller_strikes['wing_ce_strike']
-        wing_pe_strike = seller_strikes['wing_pe_strike']
+        seller_strikes = seller_strikes if isinstance(seller_strikes, dict) else {}
+        ce_sell_strike = seller_strikes.get('ce_sell_strike', 0)
+        pe_sell_strike = seller_strikes.get('pe_sell_strike', 0)
+        wing_ce_strike = seller_strikes.get('wing_ce_strike', 0)
+        wing_pe_strike = seller_strikes.get('wing_pe_strike', 0)
         
         if is_sniper_buy:
             signal_cat = "🎯 Sniper Dip Buy"
@@ -3671,10 +3685,11 @@ if selected_module == "🏔️ GFS Multi-Timeframe Swing (ગ્રાન્ડ�
             gfs_filter_choice = st.selectbox(
                 "સેટઅપ ફિલ્ટર:",
                 options=[
-                    "બધા પરિણામો (All Analyzed Stocks)",
-                    "💥 માત્ર High-Confidence GFS 3-TF Setups",
-                    "⚡ માત્ર GFS Dip Buys (સપોર્ટ ઝોન)",
-                    "💥 માત્ર RSI Bullish Divergence વાળા"
+                    "બધા ક્વોલિફાઇડ સ્ટોક્સ (M & W ≥ 58)",
+                    "🎯 માત્ર 40-Pullback Trampoline (Daily RSI 38-42)",
+                    "⚡ માત્ર GFS Dip Buys (Daily RSI 38-45)",
+                    "💥 માત્ર High-Confidence GFS Setups",
+                    "📈 માત્ર RSI Bullish Divergence વાળા"
                 ],
                 index=0,
                 key="gfs_filter_choice_box"
@@ -3730,29 +3745,35 @@ if selected_module == "🏔️ GFS Multi-Timeframe Swing (ગ્રાન્ડ�
             if not matched_subset.empty:
                 df_gfs_display = matched_subset
 
-        # Apply user filter
-        if "High-Confidence" in gfs_filter_choice:
-            df_gfs_display = df_gfs_display[df_gfs_display["Is_High_Confidence"] == True]
+        # Apply user filter (Strict Malkansview GFS Rules)
+        # Ensure only qualified stocks (Monthly & Weekly >= 58) are displayed
+        df_gfs_display = df_gfs_display[(df_gfs_display["RSI_M"] >= 58.0) & (df_gfs_display["RSI_W"] >= 58.0)]
+
+        if "40-Pullback Trampoline" in gfs_filter_choice:
+            df_gfs_display = df_gfs_display[(df_gfs_display["RSI_D"] >= 38.0) & (df_gfs_display["RSI_D"] <= 42.0)]
         elif "GFS Dip Buys" in gfs_filter_choice:
-            df_gfs_display = df_gfs_display[df_gfs_display["GFS_Badge"].str.contains("DIP BUY|3-TF", na=False)]
+            df_gfs_display = df_gfs_display[(df_gfs_display["RSI_D"] >= 38.0) & (df_gfs_display["RSI_D"] <= 45.0)]
+        elif "High-Confidence" in gfs_filter_choice:
+            df_gfs_display = df_gfs_display[df_gfs_display["Is_High_Confidence"] == True]
         elif "Bullish Divergence" in gfs_filter_choice:
             df_gfs_display = df_gfs_display[df_gfs_display["Has_Bull_Div"] == True]
 
         # Summary Metric Chips
-        total_scanned = len(st.session_state.gfs_results)
-        high_conf_count = int(st.session_state.gfs_results["Is_High_Confidence"].sum())
-        bull_div_count = int(st.session_state.gfs_results["Has_Bull_Div"].sum())
-        dip_count = int(st.session_state.gfs_results["GFS_Badge"].str.contains("DIP", na=False).sum())
+        qualified_res = st.session_state.gfs_results[(st.session_state.gfs_results["RSI_M"] >= 58.0) & (st.session_state.gfs_results["RSI_W"] >= 58.0)]
+        total_scanned = len(qualified_res)
+        trampoline_count = int(((qualified_res["RSI_D"] >= 38.0) & (qualified_res["RSI_D"] <= 42.0)).sum())
+        dip_count = int(((qualified_res["RSI_D"] >= 38.0) & (qualified_res["RSI_D"] <= 45.0)).sum())
+        high_conf_count = int(qualified_res["Is_High_Confidence"].sum())
 
         m_col1, m_col2, m_col3, m_col4 = st.columns(4)
         with m_col1:
-            st.markdown(f'<div class="metric-card"><div class="metric-value">{total_scanned}</div><div class="metric-label">કુલ સ્કેન કરેલા સ્ટોક્સ</div></div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="metric-card"><div class="metric-value" style="color: #38BDF8;">{total_scanned}</div><div class="metric-label">✅ ક્વોલિફાઇડ સ્ટોક્સ (M & W ≥ 58)</div></div>', unsafe_allow_html=True)
         with m_col2:
-            st.markdown(f'<div class="metric-card"><div class="metric-value" style="color: #34D399;">{high_conf_count}</div><div class="metric-label">💥 High-Confidence GFS Setups</div></div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="metric-card"><div class="metric-value" style="color: #FBBF24;">{trampoline_count}</div><div class="metric-label">🎯 40-Pullback Sweet Spot (38-42)</div></div>', unsafe_allow_html=True)
         with m_col3:
-            st.markdown(f'<div class="metric-card"><div class="metric-value" style="color: #FCD34D;">{bull_div_count}</div><div class="metric-label">💥 RSI Bullish Divergences</div></div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="metric-card"><div class="metric-value" style="color: #34D399;">{dip_count}</div><div class="metric-label">⚡ Active GFS Dips (38-45)</div></div>', unsafe_allow_html=True)
         with m_col4:
-            st.markdown(f'<div class="metric-card"><div class="metric-value" style="color: #60A5FA;">{dip_count}</div><div class="metric-label">⚡ Active GFS Dips</div></div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="metric-card"><div class="metric-value" style="color: #EC4899;">{high_conf_count}</div><div class="metric-label">💥 High-Confidence Setups</div></div>', unsafe_allow_html=True)
 
         st.divider()
 
@@ -3772,6 +3793,16 @@ if selected_module == "🏔️ GFS Multi-Timeframe Swing (ગ્રાન્ડ�
                     chg_bg = "rgba(16, 185, 129, 0.15)" if row["Change"] >= 0 else "rgba(239, 68, 68, 0.15)"
                     chg_arrow = "▲" if row["Change"] >= 0 else "▼"
 
+                    rsi_d_num = float(row["RSI_D"])
+                    if 38.0 <= rsi_d_num <= 42.0:
+                        rsi_d_badge = f'<span style="color: #FBBF24; font-weight: 800;">🎯 {rsi_d_num:.1f} (40-Pullback)</span>'
+                    elif 42.0 < rsi_d_num <= 45.0:
+                        rsi_d_badge = f'<span style="color: #34D399; font-weight: 700;">⚡ {rsi_d_num:.1f} (Dip Buy)</span>'
+                    elif rsi_d_num >= 58.0:
+                        rsi_d_badge = f'<span style="color: #60A5FA; font-weight: 700;">🚀 {rsi_d_num:.1f} (Trending)</span>'
+                    else:
+                        rsi_d_badge = f'<span style="color: #94A3B8; font-weight: 600;">{rsi_d_num:.1f}</span>'
+
                     gfs_card_html = (
                         f'<div class="stock-card" style="border: 1px solid rgba(56, 189, 248, 0.2);">'
                         f'<div style="display: flex; justify-content: space-between; align-items: flex-start;">'
@@ -3782,9 +3813,9 @@ if selected_module == "🏔️ GFS Multi-Timeframe Swing (ગ્રાન્ડ�
                         f'</div>'
                         f'<div style="margin: 14px 0 10px 0; background: rgba(15, 23, 42, 0.7); border: 1px solid rgba(255, 255, 255, 0.06); border-radius: 8px; padding: 10px;">'
                         f'<div style="font-size: 11.5px; color: #94A3B8; display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; text-align: center;">'
-                        f'<div>👴 <b>Monthly:</b><br><span style="color: #38BDF8; font-weight: 700;">{row["RSI_M"]:.1f}</span></div>'
-                        f'<div>👨 <b>Weekly:</b><br><span style="color: #38BDF8; font-weight: 700;">{row["RSI_W"]:.1f}</span></div>'
-                        f'<div>👦 <b>Daily Dip:</b><br><span style="color: #34D399; font-weight: 700;">{row["RSI_D"]:.1f}</span></div>'
+                        f'<div>👴 <b>Monthly:</b><br><span style="color: #34D399; font-weight: 700;">🟢 {row["RSI_M"]:.1f}</span></div>'
+                        f'<div>👨 <b>Weekly:</b><br><span style="color: #34D399; font-weight: 700;">🟢 {row["RSI_W"]:.1f}</span></div>'
+                        f'<div>👦 <b>Daily Dip:</b><br>{rsi_d_badge}</div>'
                         f'</div>'
                         f'</div>'
                         f'<div style="font-size: 11px; color: #94A3B8; margin-bottom: 8px; display: flex; flex-wrap: wrap; gap: 6px;">'
@@ -3825,9 +3856,9 @@ if selected_module == "🏔️ GFS Multi-Timeframe Swing (ગ્રાન્ડ�
                 column_config={
                     "Price": st.column_config.NumberColumn("Price (₹)", format="₹%.2f"),
                     "Change": st.column_config.NumberColumn("Change (%)", format="%+.2f%%"),
-                    "RSI_M": st.column_config.NumberColumn("Monthly RSI", format="%.1f"),
-                    "RSI_W": st.column_config.NumberColumn("Weekly RSI", format="%.1f"),
-                    "RSI_D": st.column_config.NumberColumn("Daily RSI", format="%.1f"),
+                    "RSI_M": st.column_config.NumberColumn("Monthly RSI (≥58 🟢)", format="%.1f"),
+                    "RSI_W": st.column_config.NumberColumn("Weekly RSI (≥58 🟢)", format="%.1f"),
+                    "RSI_D": st.column_config.NumberColumn("Daily RSI (38-45 🎯)", format="%.1f"),
                     "StopLoss": st.column_config.NumberColumn("Swing SL (₹)", format="₹%.2f"),
                     "Target1": st.column_config.NumberColumn("Target 1 (+8%)", format="₹%.2f"),
                     "Target2": st.column_config.NumberColumn("Target 2 (+15%)", format="₹%.2f"),
