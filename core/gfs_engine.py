@@ -177,8 +177,30 @@ def check_bearish_divergence(df: pd.DataFrame, lookback: int = 30) -> Tuple[str,
     return "NO", None, None
 
 # -------------------------------------------------------------
-# 4. Master GFS Confluence Evaluator
+# 4. Master GFS Confluence Evaluator (Malkansview Rules)
 # -------------------------------------------------------------
+def _extract_series_rsi(df: pd.DataFrame) -> float:
+    """Helper to safely extract or compute 9-period Wilder RSI from any dataframe."""
+    if df is None or len(df) == 0:
+        return 50.0
+    for col in ['RSI_9', 'RSI_14', 'RSI']:
+        if col in df.columns:
+            s = df[col].dropna()
+            if len(s) > 0:
+                return float(s.iloc[-1])
+    if 'Close' in df.columns and len(df) >= 9:
+        delta = df['Close'].diff()
+        gain = delta.clip(lower=0)
+        loss = -delta.clip(upper=0)
+        avg_gain = gain.ewm(alpha=1/9, adjust=False).mean()
+        avg_loss = loss.ewm(alpha=1/9, adjust=False).mean()
+        rs = avg_gain / avg_loss.replace(0, np.nan)
+        rsi = 100 - (100 / (1 + rs))
+        s = rsi.dropna()
+        if len(s) > 0:
+            return float(s.iloc[-1])
+    return 50.0
+
 def evaluate_gfs_confluence(
     df_m: pd.DataFrame,
     df_w: pd.DataFrame,
@@ -187,12 +209,15 @@ def evaluate_gfs_confluence(
 ) -> Dict[str, Any]:
     """
     Combines Monthly, Weekly, and Daily RSI with Bollinger Bands and Candlestick Analysis.
-    Returns structured GFS confluence scorecard.
+    Implements pure Malkansview GFS rules:
+    - Grandfather (Monthly RSI >= 58)
+    - Father (Weekly RSI >= 58)
+    - Son (Daily RSI 38.0 - 45.0, with 38.0 - 42.0 Golden 40-Pullback Trampoline)
     """
-    # 1. Monthly & Weekly RSIs (Grandfather & Father)
-    rsi_m = float(df_m['RSI_9'].iloc[-1]) if ('RSI_9' in df_m.columns and len(df_m) > 0) else 50.0
-    rsi_w = float(df_w['RSI_9'].iloc[-1]) if ('RSI_9' in df_w.columns and len(df_w) > 0) else 50.0
-    rsi_d = float(df_d['RSI_9'].iloc[-1]) if ('RSI_9' in df_d.columns and len(df_d) > 0) else 50.0
+    # 1. Monthly, Weekly, and Daily RSIs
+    rsi_m = _extract_series_rsi(df_m)
+    rsi_w = _extract_series_rsi(df_w)
+    rsi_d = _extract_series_rsi(df_d)
 
     # 2. Bollinger Bands on Daily Chart
     df_d_bb = calculate_bollinger_bands(df_d, period=20, std=2.0)
@@ -214,37 +239,56 @@ def evaluate_gfs_confluence(
     has_bull_div = (bull_div_status != "NO")
     has_bear_div = (bear_div_status != "NO")
 
-    # 5. Core GFS Multi-Timeframe Alignment
+    # 5. Core GFS Multi-Timeframe Alignment (Malkansview 40-Pullback Rules)
     is_grandfather_bull = (rsi_m >= 58.0)
     is_father_bull = (rsi_w >= 58.0)
-    is_son_in_dip = (36.0 <= rsi_d <= 49.5)
+    is_qualified_gfs = bool(is_grandfather_bull and is_father_bull)
 
-    gfs_action = "⏳ CONSOLIDATION"
+    # Daily RSI zones:
+    # Golden 40-Pullback Trampoline: 38.0 to 42.0 (Exact 40 support floor bounce)
+    is_son_trampoline = (38.0 <= rsi_d <= 42.0)
+    # Early Bounce Confirmation: 42.1 to 45.0
+    is_son_early_bounce = (42.0 < rsi_d <= 45.0)
+    # Total Son Dip Buy Zone: 38.0 to 45.0
+    is_son_in_dip = (38.0 <= rsi_d <= 45.0)
+
+    gfs_action = "❌ NOT QUALIFIED (M < 58 or W < 58)"
     gfs_score = 0
-    gfs_badge = "⚪ NEUTRAL"
+    gfs_badge = "❌ NOT QUALIFIED"
 
-    if is_grandfather_bull and is_father_bull:
-        gfs_score += 50
-        if is_son_in_dip:
+    if is_qualified_gfs:
+        gfs_score = 50
+        if is_son_trampoline:
+            gfs_score += 35
+            is_green_candle = bool(len(df_d) >= 1 and current_price >= float(df_d['Open'].iloc[-1]))
+            if (bb_support_active or is_green_candle) and (candle_pattern in ["HAMMER 🔨", "DOJI ➕"] or has_bull_div or is_green_candle):
+                gfs_action = "💥 40-PULLBACK HIGH-CONFIDENCE ENTRY"
+                gfs_score += 15
+                gfs_badge = "🎯 40-PULLBACK TRAMPOLINE"
+            elif candle_pattern in ["HAMMER 🔨", "DOJI ➕", "STANDARD GREEN 🟢"] or is_green_candle:
+                gfs_action = "🎯 40-PULLBACK REVERSAL ACTIVE"
+                gfs_score += 10
+                gfs_badge = "🎯 40-PULLBACK DIP"
+            else:
+                gfs_action = "⏳ 40-PULLBACK (Waiting for Green Candle)"
+                gfs_score += 5
+                gfs_badge = "🎯 40-PULLBACK DIP"
+        elif is_son_early_bounce:
             gfs_score += 25
-            if bb_support_active and (candle_pattern in ["HAMMER 🔨", "DOJI ➕"] or has_bull_div):
-                gfs_action = "💥 HIGH-CONFIDENCE GFS ENTRY"
-                gfs_score += 25
-                gfs_badge = "💥 GFS 3-TF BUY"
-            elif candle_pattern in ["HAMMER 🔨", "DOJI ➕", "STANDARD GREEN 🟢"]:
-                gfs_action = "⚡ ACTIVE GFS DIP INTERSECTION"
+            if bb_support_active and (candle_pattern in ["HAMMER 🔨", "DOJI ➕", "STANDARD GREEN 🟢"] or has_bull_div):
+                gfs_action = "⚡ ACTIVE GFS DIP REVERSAL (42-45)"
                 gfs_score += 15
                 gfs_badge = "⚡ GFS DIP BUY"
             else:
-                gfs_action = "⏳ GFS DIP (Waiting for Trigger)"
+                gfs_action = "⚡ GFS DIP ZONE (Early Bounce)"
                 gfs_score += 10
-                gfs_badge = "⏳ GFS PULLBACK"
-        elif rsi_d >= 60.0:
-            gfs_action = "🚀 GFS MOMENTUM CONTINUATION"
-            gfs_score += 35
+                gfs_badge = "⚡ GFS DIP BUY"
+        elif rsi_d >= 58.0:
+            gfs_action = "🚀 GFS MOMENTUM CONTINUATION (RSI > 58)"
+            gfs_score += 25
             gfs_badge = "🚀 GFS TRENDING"
         else:
-            gfs_action = "⏳ GFS WATCHLIST (Waiting for Son Dip)"
+            gfs_action = "⏳ GFS MID-ZONE (45-58 Pullback Watch)"
             gfs_score += 15
             gfs_badge = "👀 GFS WATCH"
 
@@ -254,7 +298,10 @@ def evaluate_gfs_confluence(
         "rsi_d": round(rsi_d, 1),
         "is_grandfather_bull": is_grandfather_bull,
         "is_father_bull": is_father_bull,
+        "is_qualified_gfs": is_qualified_gfs,
         "is_son_in_dip": is_son_in_dip,
+        "is_son_trampoline": is_son_trampoline,
+        "is_son_early_bounce": is_son_early_bounce,
         "bb_middle": round(bbm, 2),
         "bb_lower": round(bbl, 2),
         "bb_upper": round(bbu, 2),
@@ -270,5 +317,5 @@ def evaluate_gfs_confluence(
         "gfs_score": min(100, gfs_score),
         "gfs_action": gfs_action,
         "gfs_badge": gfs_badge,
-        "is_gfs_high_confidence": bool("HIGH-CONFIDENCE" in gfs_action)
+        "is_gfs_high_confidence": bool("HIGH-CONFIDENCE" in gfs_action or "TRAMPOLINE" in gfs_badge)
     }

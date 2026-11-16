@@ -56,6 +56,23 @@ def calculate_trade_levels(entry_price, stop_loss, is_short=False):
 # -------------------------------------------------------------
 # Core Indicator Calculations
 # -------------------------------------------------------------
+def calculate_standard_rsi(df, period=14, column_name=None):
+    """
+    Computes standard Wilder RSI on 'Close' price for any dataframe with >= period candles.
+    """
+    if df is None or len(df) < period or 'Close' not in df.columns:
+        return df
+    col = column_name or f"RSI_{period}"
+    delta = df['Close'].diff()
+    gain = delta.clip(lower=0)
+    loss = -delta.clip(upper=0)
+    avg_gain = gain.ewm(alpha=1/period, adjust=False).mean()
+    avg_loss = loss.ewm(alpha=1/period, adjust=False).mean()
+    rs = avg_gain / avg_loss.replace(0, np.nan)
+    rsi = 100 - (100 / (1 + rs))
+    df[col] = rsi.fillna(50.0)
+    return df
+
 def calculate_hilega_milega(df, rsi_period=9, ema_period=3, wma_period=21):
     """
     Hilega Milega System:
@@ -64,7 +81,7 @@ def calculate_hilega_milega(df, rsi_period=9, ema_period=3, wma_period=21):
     - Red Line: 21-period WMA of RSI (Slow trend)
     - Water Line: 50.0 baseline
     """
-    if len(df) < (rsi_period + wma_period):
+    if df is None or len(df) < rsi_period or 'Close' not in df.columns:
         return df
 
     delta = df['Close'].diff()
@@ -74,11 +91,14 @@ def calculate_hilega_milega(df, rsi_period=9, ema_period=3, wma_period=21):
     avg_loss = loss.ewm(alpha=1/rsi_period, adjust=False).mean()
     rs = avg_gain / avg_loss.replace(0, np.nan)
     rsi = 100 - (100 / (1 + rs))
-    rsi = rsi.fillna(50)
+    rsi = rsi.fillna(50.0)
     
     green_ema3 = rsi.ewm(span=ema_period, adjust=False).mean()
-    weights = np.arange(1, wma_period + 1)
-    wma21 = rsi.rolling(wma_period).apply(lambda s: np.dot(s, weights) / weights.sum(), raw=True)
+    if len(df) >= wma_period:
+        weights = np.arange(1, wma_period + 1)
+        wma21 = rsi.rolling(wma_period).apply(lambda s: np.dot(s, weights) / weights.sum(), raw=True)
+    else:
+        wma21 = green_ema3
     
     df['RSI_9'] = rsi
     df['Green_EMA3'] = green_ema3
