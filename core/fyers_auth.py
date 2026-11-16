@@ -349,6 +349,8 @@ def safe_fyers_history(fyers_client, data: dict, retries: int = 2) -> dict:
             res = fyers_client.history(data=data)
             if isinstance(res, dict):
                 msg = str(res.get("message", "")).lower()
+                if res.get("code") == -360 or "5,000 requests/day" in msg or "standard plan limit" in msg:
+                    return res  # Daily plan quota exhausted, do not retry
                 if "requests/second" in msg or "limit" in msg or res.get("code") in [-99, 429]:
                     time.sleep(0.4 + attempt * 0.25)
                     continue
@@ -390,6 +392,8 @@ def safe_fyers_quotes(fyers_client, data: dict, retries: int = 2) -> dict:
             res = fyers_client.quotes(data=data)
             if isinstance(res, dict):
                 msg = str(res.get("message", "")).lower()
+                if res.get("code") == -360 or "5,000 requests/day" in msg or "standard plan limit" in msg:
+                    return res  # Daily plan quota exhausted, do not retry
                 if "requests/second" in msg or "limit" in msg or res.get("code") in [-99, 429]:
                     time.sleep(0.4 + attempt * 0.25)
                     continue

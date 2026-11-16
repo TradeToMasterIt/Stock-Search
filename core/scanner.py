@@ -490,12 +490,16 @@ def analyze_stock(sym):
             vol_sweet_confirmed
         )
 
-        # Deep Option R3 Analysis (Both Call & Put Option Engines)
+        # Deep Option R3 Analysis (Only query Option quotes if spot momentum or R2 proximity is confirmed)
         opt_ltp = 0.0
         opt_r3_val = 0.0
         is_option_r3_crossed = False
         opt_analysis = None
-        if is_candidate and not is_candidate_bear:
+        should_check_ce = bool(
+            is_candidate and not is_candidate_bear and
+            (is_r3_rsi_confirmed or is_stage1_pre_breakout or (r2_val > 0 and curr_p >= r2_val * 0.995))
+        )
+        if should_check_ce:
             try:
                 opt_analysis = analyze_option_r3_setup(
                     symbol=sym,
@@ -519,9 +523,13 @@ def analyze_stock(sym):
             except Exception:
                 pass
 
-        # Deep Put Option R3 Analysis (Bearish Mandi Setup)
+        # Deep Put Option R3 Analysis (Only query Option quotes if spot bearishness or S2 proximity is confirmed)
         opt_put_analysis = None
-        if is_candidate_bear or is_stage1_put_pre_breakout:
+        should_check_pe = bool(
+            (is_candidate_bear or is_stage1_put_pre_breakout) and
+            (is_put_rsi_confirmed or is_stage1_put_pre_breakout or (s2_val > 0 and curr_p <= s2_val * 1.005))
+        )
+        if should_check_pe:
             try:
                 opt_put_analysis = analyze_put_r3_setup(
                     symbol=sym,
