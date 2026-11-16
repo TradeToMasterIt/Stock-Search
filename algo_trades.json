@@ -1,33 +1,16 @@
 {
-  "active_trades": [
-    {
-      "id": "ALG_20261106141115_ICICIBANK",
-      "symbol": "ICICIBANK",
-      "opt_type": "CE",
-      "contract_name": "ICICIBANK 26-NOV-2026 1550 CE",
-      "fyers_symbol": "NSE:ICICIBANK26NOV1550CE",
-      "mode": "PAPER",
-      "entry_price": 26.1,
-      "current_price": 26.1,
-      "initial_qty": 700,
-      "remaining_qty": 700,
-      "lots": 1,
-      "lot_size": 700,
-      "stop_loss": 19.5,
-      "initial_stop_loss": 19.5,
-      "target_1": 35.2,
-      "target_2": 44.3,
-      "allocated_capital": 18270.0,
-      "entry_time": "06 Nov 2026 | 14:11:15 IST",
-      "t1_hit": false,
-      "t2_hit": false,
-      "order_id": "SIMULATED_PAPER_ORDER",
-      "status": "ACTIVE",
-      "unrealized_pnl": 0.0,
-      "pnl_pct": 0.0
-    }
-  ],
-  "closed_trades": [
+  "active_trades": [],
+  "closed_trades": [],
+  "daily_summary": {
+    "date": "2026-11-16",
+    "realized_pnl": 0.0,
+    "unrealized_pnl": 0.0,
+    "total_trades": 0,
+    "winning_trades": 0,
+    "losing_trades": 0,
+    "breakeven_trades": 0
+  },
+  "archived_trades": [
     {
       "id": "ALG_20261106140827_APOLLOTYRE",
       "symbol": "APOLLOTYRE",
@@ -114,14 +97,34 @@
       "exit_price": 4.76,
       "exit_time": "06 Nov 2026 | 14:42:44 IST",
       "realized_pnl": 0.0
+    },
+    {
+      "id": "ALG_20261106141115_ICICIBANK",
+      "symbol": "ICICIBANK",
+      "opt_type": "CE",
+      "contract_name": "ICICIBANK 26-NOV-2026 1550 CE",
+      "fyers_symbol": "NSE:ICICIBANK26NOV1550CE",
+      "mode": "PAPER",
+      "entry_price": 26.1,
+      "current_price": 26.1,
+      "initial_qty": 700,
+      "remaining_qty": 700,
+      "lots": 1,
+      "lot_size": 700,
+      "stop_loss": 19.5,
+      "initial_stop_loss": 19.5,
+      "target_1": 35.2,
+      "target_2": 44.3,
+      "allocated_capital": 18270.0,
+      "entry_time": "06 Nov 2026 | 14:11:15 IST",
+      "t1_hit": false,
+      "t2_hit": false,
+      "order_id": "SIMULATED_PAPER_ORDER",
+      "status": "CLOSED (MANUAL EXIT)",
+      "unrealized_pnl": 0.0,
+      "pnl_pct": 0.0,
+      "exit_time": "16 Nov 2026 | 13:00:00 IST",
+      "realized_pnl": 0.0
     }
-  ],
-  "daily_summary": {
-    "date": "2026-11-06",
-    "realized_pnl": 0.0,
-    "unrealized_pnl": 0.0,
-    "total_trades": 3,
-    "winning_trades": 3,
-    "losing_trades": 0
-  }
+  ]
 }
