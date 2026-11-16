@@ -588,21 +588,24 @@ def execute_algo_entry(scan_res: Dict[str, Any]) -> Tuple[bool, str]:
             return _skip(f"Skipped {sym}: Post-14:15 non-gamma trade requires >= 1.5x volume (current: {v_rat:.1f}x)", "VOL_GUARD")
 
     # Select exact Call or Put symbols and levels
-    if opt_type == "PE":
-        fyers_sym = scan_res.get("opt_put_fyers_symbol", scan_res.get("opt_fyers_symbol", ""))
-        contract_name = scan_res.get("opt_put_contract_name", scan_res.get("opt_contract_name", f"{sym} OTM Put"))
-        entry_price = float(scan_res.get("opt_put_ltp", scan_res.get("opt_ltp", 0.0)))
-        stop_loss = float(scan_res.get("opt_put_sl", entry_price * 0.80))
-        target_1 = float(scan_res.get("opt_put_t1", entry_price * 1.35))
-        target_2 = float(scan_res.get("opt_put_t2", entry_price * 1.70))
+    if opt_type == 'PE':
+        fyers_sym = scan_res.get('opt_put_fyers_symbol', scan_res.get('opt_fyers_symbol', ''))
+        contract_name = scan_res.get('opt_put_contract_name', scan_res.get('opt_contract_name', f'{sym} OTM Put'))
+        entry_price = float(scan_res.get('opt_put_ltp', scan_res.get('opt_ltp', 0.0)))
+        stop_loss = float(scan_res.get('opt_put_sl', entry_price * 0.80))
+        target_1 = float(scan_res.get('opt_put_t1', entry_price * 1.35))
+        target_2 = float(scan_res.get('opt_put_t2', entry_price * 1.70))
     else:
-        fyers_sym = scan_res.get("opt_fyers_symbol", "")
-        contract_name = scan_res.get("opt_contract_name", f"{sym} OTM Call")
-        entry_price = float(scan_res.get("opt_ltp", 0.0))
-        stop_loss = float(scan_res.get("opt_sl", entry_price * 0.75))
-        target_1 = float(scan_res.get("opt_t1", entry_price * 1.35))
-        target_2 = float(scan_res.get("opt_t2", entry_price * 1.70))
+        fyers_sym = scan_res.get('opt_fyers_symbol', '')
+        contract_name = scan_res.get('opt_contract_name', f'{sym} OTM Call')
+        entry_price = float(scan_res.get('opt_ltp', 0.0))
+        stop_loss = float(scan_res.get('opt_sl', entry_price * 0.75))
+        target_1 = float(scan_res.get('opt_t1', entry_price * 1.35))
+        target_2 = float(scan_res.get('opt_t2', entry_price * 1.70))
 
+    # Safety Guard: Reject any contract that does not exist or was excluded from NSE F&O
+    if not fyers_sym or any(fyers_sym.startswith(p) for p in ['NSE:BSOFT', 'NSE:AARTIIND', 'NSE:HINDCOPPER', 'NSE:MGL', 'NSE:PEL']):
+        return _skip(f'Skipped {sym}: Not an active NSE F&O derivative contract', 'NOT_FNO')
     if entry_price <= 0:
         entry_price = float(scan_res.get("price", 0.0))
 
