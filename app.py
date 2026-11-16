@@ -113,7 +113,7 @@ def init_cloud_telegram_scanner():
                     "🚀 <b>Streamlit Cloud Auto-Scanner Online!</b>\n"
                     "━━━━━━━━━━━━━━━━━━━━━\n"
                     "• <b>ક્લાઉડ મોડ:</b> હવે તમારા લેપટોપ વગર સીધું Streamlit Cloud માંથી ઓટોમેટિક એલર્ટ્સ ચાલુ રહેશે!\n"
-                    "• <b>સમયગાળો:</b> સોમ-શુક્ર (09:15 થી 15:30 IST દર ૫ મિનિટે સ્કેન)\n"
+                    "• <b>સમયગાળો:</b> સોમ-શુક્ર (09:15 થી 15:30 IST દર ૧ મિનિટે હાઈ-સ્પીડ સ્કેન)\n"
                     "• 🤖 Patel Trading Bot"
                 )
             except Exception:
@@ -125,7 +125,7 @@ def init_cloud_telegram_scanner():
                         run_scan_cycle(force=False)
                 except Exception as ex:
                     print(f"Cloud scanner error: {ex}")
-                time.sleep(300)
+                time.sleep(60) # High-speed 1-minute cycle to capture early breakouts without lag
 
         scanner_thread = threading.Thread(target=worker, daemon=True, name="CloudAutoScanner")
         scanner_thread.start()
@@ -1688,16 +1688,17 @@ if selected_module == "📊 Market Screener (ઓટોમેટિક સ્ક�
             with auto_col2:
                 freq_choice = st.selectbox(
                     "આવર્તન",
-                    options=["⌛ 5 Min (300s)", "⏱️ 3 Min (180s)", "⚡ 2 Min (120s)"],
+                    options=["🚀 1 Min (60s)", "⚡ 2 Min (120s)", "⏱️ 3 Min (180s)", "⌛ 5 Min (300s)"],
                     index=0,
                     label_visibility="collapsed",
                     disabled=not (auto_update_enabled and market_is_open)
                 )
 
     freq_seconds_map = {
-        "⌛ 5 Min (300s)": 300,
+        "🚀 1 Min (60s)": 60,
+        "⚡ 2 Min (120s)": 120,
         "⏱️ 3 Min (180s)": 180,
-        "⚡ 2 Min (120s)": 120
+        "⌛ 5 Min (300s)": 300
     }
     interval_sec = freq_seconds_map.get(freq_choice, 300)
     interval_ms = interval_sec * 1000

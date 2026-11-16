@@ -1001,7 +1001,7 @@ def run_scan_cycle(force=False, watchlist=None):
     print(f"[{get_ist_now().strftime('%H:%M:%S IST')}] Scanning {len(watchlist)} stocks with multi-threading...")
     new_alerts = []
     
-    with ThreadPoolExecutor(max_workers=10) as executor:
+    with ThreadPoolExecutor(max_workers=16) as executor:
         results = list(executor.map(analyze_stock, watchlist))
         
     # Monitor User's Active Trades
