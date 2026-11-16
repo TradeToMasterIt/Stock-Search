@@ -417,6 +417,21 @@ def analyze_stock(sym):
                     is_candle_green = bool(c_c >= c_o)
                     is_candle_red = bool(c_c <= c_o)
 
+                    # Intraday VWAP Calculation (Institutional Benchmark)
+                    try:
+                        typical_p = (df_intra['High'] + df_intra['Low'] + df_intra['Close']) / 3.0
+                        v_col = df_intra['Volume'].fillna(1.0)
+                        cum_v = v_col.cumsum()
+                        cum_pv = (typical_p * v_col).cumsum()
+                        vwap_series = cum_pv / cum_v.replace(0, 1.0)
+                        curr_vwap = float(vwap_series.iloc[-1])
+                        is_above_vwap = bool(c_c >= curr_vwap * 0.998)
+                        is_below_vwap = bool(c_c <= curr_vwap * 1.002)
+                    except Exception:
+                        curr_vwap = c_c
+                        is_above_vwap = True
+                        is_below_vwap = True
+
                     # Stage-1 Early Squeeze (Call & Put) + Climax Exhaustion Guards
                     s1_eval = _evaluate_intraday_stage1_and_exhaustion(
                         df_intra=df_intra,
@@ -479,7 +494,8 @@ def analyze_stock(sym):
             (m_rsi_slope >= -0.5) and
             (not is_wick_rejected) and
             is_candle_green and
-            vol_sweet_confirmed
+            vol_sweet_confirmed and
+            is_above_vwap
         )
         # Bearish Sweet Spot Filter (26 to 42 with Downward Momentum, Red Candle & Strict Volume)
         is_put_rsi_confirmed = bool(
@@ -487,7 +503,8 @@ def analyze_stock(sym):
             (m_rsi_slope <= 0.5) and
             (not is_lower_wick_rejected) and
             is_candle_red and
-            vol_sweet_confirmed
+            vol_sweet_confirmed and
+            is_below_vwap
         )
 
         # Deep Option R3 Analysis (Only query Option quotes if spot momentum or R2 proximity is confirmed)

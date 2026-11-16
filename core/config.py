@@ -1,6 +1,7 @@
 import os
 import sys
 import datetime
+import json
 
 # Fix Windows console UTF-8 output if needed
 try:
@@ -88,6 +89,22 @@ def is_market_open():
         return False, f"પોસ્ટ-માર્કેટ બપોરના 03:30 પછી ({curr_time.strftime('%H:%M:%S')} IST)"
         
     return True, "Market is Open"
+
+def get_nifty_market_regime() -> dict:
+    """
+    Returns cached or live Nifty sentiment: {price, change, pct, is_bullish}.
+    Uses nifty_last_quote.json cache with fallback.
+    """
+    cache_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "nifty_last_quote.json")
+    if os.path.exists(cache_path):
+        try:
+            with open(cache_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                if isinstance(data, dict) and "pct" in data:
+                    return data
+        except Exception:
+            pass
+    return {"price": 0.0, "change": 0.0, "pct": 0.0, "is_bullish": True}
 
 # Major Indian Indices (Nifty 50, Bank Nifty, Sensex, FinNifty)
 INDEX_WATCHLIST = [

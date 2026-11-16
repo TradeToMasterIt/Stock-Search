@@ -129,7 +129,11 @@ DEFAULT_ALGO_CONFIG = {
     "start_time": "09:20",              # Skip first 5 mins opening volatility
     "end_time": "15:00",                # No new trades after 15:00
     "kill_switch_triggered": False,
-    "last_reset_date": ""
+    "last_reset_date": "",
+    "nifty_regime_filter": True,        # Minervini 75% Market Trend Alignment
+    "time_stop_enabled": True,          # Larry Williams / Toby Crabel 25m Theta Stop
+    "time_stop_minutes": 25,            # Max minutes to hold dormant sideways option
+    "vwap_filter_enabled": True         # Institutional VWAP Confluence
 }
 
 def load_algo_config() -> Dict[str, Any]:
@@ -699,6 +703,16 @@ def execute_algo_entry(scan_res: Dict[str, Any]) -> Tuple[bool, str]:
     if len(active_trades) >= max_open:
         return _skip(f"Max concurrent positions reached ({len(active_trades)}/{max_open})", "MAX_POSITIONS")
 
+    # Safety Check 5.1: Market Regime Alignment (Mark Minervini 75% General Market Rule)
+    if cfg.get("nifty_regime_filter", True):
+        from core.config import get_nifty_market_regime
+        nifty_regime = get_nifty_market_regime()
+        nifty_pct = float(nifty_regime.get("pct", 0.0) or 0.0)
+        if opt_type == "CE" and nifty_pct <= -0.45:
+            return _skip(f"Skipped {sym} Call: Nifty is negative ({nifty_pct:+.2f}%), blocking counter-trend Call entry", "REGIME_GUARD")
+        elif opt_type == "PE" and nifty_pct >= 0.45:
+            return _skip(f"Skipped {sym} Put: Nifty is bullish ({nifty_pct:+.2f}%), blocking counter-trend Put entry", "REGIME_GUARD")
+
     # Safety Check 5.2: Direction Filter (BOTH / CALL_ONLY / PUT_ONLY)
     trading_dir = cfg.get("trading_direction", "BOTH")
     if trading_dir == "CALL_ONLY" and opt_type == "PE":
@@ -1003,7 +1017,51 @@ def monitor_and_manage_algo_positions() -> List[str]:
             remaining_active.append(tr)
             continue
             
-        # Case B: Stop Loss Hit
+        # Case B: Time-Based Stop-Loss (Larry Williams & Toby Crabel Theta Preservation Rule)
+        time_stop_enabled = bool(cfg.get("time_stop_enabled", True))
+        time_stop_minutes = int(cfg.get("time_stop_minutes", 25))
+        is_time_stopped = False
+
+        if time_stop_enabled and not tr.get("t1_hit", False):
+            e_time_str = str(tr.get("entry_time", ""))
+            try:
+                raw_ts = e_time_str.replace(" IST", "").strip()
+                entry_dt = datetime.strptime(raw_ts, "%d %b %Y | %H:%M:%S")
+                entry_dt = entry_dt.replace(tzinfo=IST_TZ)
+                minutes_held = (now_ist - entry_dt).total_seconds() / 60.0
+
+                if minutes_held >= time_stop_minutes and -10.0 <= pnl_pct <= 3.0:
+                    is_time_stopped = True
+            except Exception:
+                pass
+
+        if is_time_stopped:
+            if trade_mode == "LIVE" and rem_qty > 0:
+                place_fyers_broker_order(symbol=fyers_sym, qty=rem_qty, side=-1, order_type=2)
+            time_status = f"CLOSED (TIME-STOP {time_stop_minutes}M THETA PRESERVATION)"
+            realized_total = finalize_algo_trade_closure(
+                tr=tr,
+                status=time_status,
+                exit_price=current_ltp,
+                final_slice_pnl=unrealized,
+                closed_trades=closed_trades,
+                daily_summary=daily_summary,
+                now_ist=now_ist,
+            )
+            msg = (
+                f"⏱️ <b>ALGO TIME-STOP EXECUTED (Theta Protection)!</b> ⏱️\n"
+                f"━━━━━━━━━━━━━━━━━━━━━\n"
+                f"• <b>Instrument:</b> {contract_name}\n"
+                f"• <b>સમાપ્તિ કારણ:</b> {time_stop_minutes} મિનિટ સુધી મોમેન્ટમ ન મળવાથી થીટા બચાવવા માટે પોઝિશન સ્ક્વેર-ઓફ!\n"
+                f"• <b>LTP:</b> ₹{current_ltp:.2f} (ખરીદ ભાવ: ₹{entry_price:.2f})\n"
+                f"• <b>P&L:</b> ₹{realized_total:+.2f} ({pnl_pct:+.2f}%)\n"
+                f"• ⏰ {now_ist.strftime('%d %b %Y | %H:%M:%S IST')}"
+            )
+            send_telegram_alert(msg)
+            actions_taken.append(f"{sym} Time-Stop Hit")
+            continue
+
+        # Case C: Stop Loss Hit
         if current_ltp <= stop_loss:
             if trade_mode == "LIVE" and rem_qty > 0:
                 place_fyers_broker_order(symbol=fyers_sym, qty=rem_qty, side=-1, order_type=2)
