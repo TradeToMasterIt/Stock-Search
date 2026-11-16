@@ -604,8 +604,28 @@ def execute_algo_entry(scan_res: Dict[str, Any]) -> Tuple[bool, str]:
         target_2 = float(scan_res.get('opt_t2', entry_price * 1.70))
 
     # Safety Guard: Reject any contract that does not exist or was excluded from NSE F&O
-    if not fyers_sym or any(fyers_sym.startswith(p) for p in ['NSE:BSOFT', 'NSE:AARTIIND', 'NSE:HINDCOPPER', 'NSE:MGL', 'NSE:PEL']):
-        return _skip(f'Skipped {sym}: Not an active NSE F&O derivative contract', 'NOT_FNO')
+    if not fyers_sym or any(fyers_sym.startswith(p) for p in [
+        'NSE:BSOFT', 'NSE:EXIDEIND', 'NSE:AARTIIND', 'NSE:HINDCOPPER', 'NSE:MGL', 
+        'NSE:PEL', 'NSE:CHAMBLFERT', 'NSE:CUB', 'NSE:ZEEL', 'NSE:ESCORTS', 'NSE:BALKRISIND'
+    ]):
+        return _skip(f"Skipped {sym}: Excluded from NSE F&O derivatives segment", "NOT_FNO")
+
+    # Double-Lock Verification: Live quote verification with Fyers broker
+    try:
+        from core.fyers_auth import get_fyers_client, safe_fyers_quotes
+        ok_f, cl_f = get_fyers_client()
+        if ok_f and cl_f:
+            fyers_quote = safe_fyers_quotes(cl_f, {"symbols": fyers_sym})
+            if isinstance(fyers_quote, dict):
+                if fyers_quote.get("code") == -300 or "invalid symbol" in str(fyers_quote.get("message", "")).lower():
+                    return _skip(f"Skipped {sym}: Contract {fyers_sym} does not exist on NSE", "NOT_FNO")
+                if "d" in fyers_quote and len(fyers_quote["d"]) > 0:
+                    v_quote = fyers_quote["d"][0].get("v", {})
+                    live_lp = float(v_quote.get("lp", 0.0) or 0.0)
+                    if live_lp > 0:
+                        entry_price = round(live_lp, 2)
+    except Exception:
+        pass
     if entry_price <= 0:
         entry_price = float(scan_res.get("price", 0.0))
 

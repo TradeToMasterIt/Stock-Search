@@ -465,8 +465,12 @@ def analyze_option_r3_setup(
             pass
 
     # 2. Resilient Analytical Fallback (Calibrated to Spot HLC & Delta Model)
-    # Used when market is closed, Fyers is offline, or pre-market simulation
+    # Strictly reject non-existent F&O contracts during market hours!
     if opt_ltp <= 0 or opt_prev_h <= 0:
+        market_open, _ = is_market_open()
+        if market_open:
+            # No real option contract found on NSE exchange! Do not synthesize phantom trade!
+            return None
         p_close = spot_prev_close if spot_prev_close > 0 else (spot_price / (1.0 + (spot_pct_change / 100.0)))
         p_high = spot_prev_high if spot_prev_high > 0 else max(p_close * 1.015, spot_price)
         p_low = spot_prev_low if spot_prev_low > 0 else (p_close * 0.985)
@@ -671,7 +675,12 @@ def analyze_put_r3_setup(
             pass
 
     # 2. Resilient Analytical Fallback for Put Options
+    # Strictly reject non-existent F&O contracts during market hours!
     if opt_ltp <= 0 or opt_prev_h <= 0:
+        market_open, _ = is_market_open()
+        if market_open:
+            # No real put option contract found on NSE exchange! Do not synthesize phantom trade!
+            return None
         p_close = spot_prev_close if spot_prev_close > 0 else (spot_price / (1.0 + (spot_pct_change / 100.0)))
         p_high = spot_prev_high if spot_prev_high > 0 else max(p_close * 1.015, spot_price)
         p_low = spot_prev_low if spot_prev_low > 0 else (p_close * 0.985)
