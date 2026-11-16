@@ -1128,10 +1128,16 @@ def run_scan_cycle(force=False, watchlist=None):
         spot_at_or_above_r2 = bool(spot_r2 > 0 and spot_p >= spot_r2)
 
         r3_confirmed_key = f"{s_name}_R3_CONFIRMED_{today_str}"
+        adx_val_c = float(res.get('adx_3m', 0.0) or 0.0)
+        plus_di_c = float(res.get('plus_di_3m', 0.0) or 0.0)
+        minus_di_c = float(res.get('minus_di_3m', 0.0) or 0.0)
+        adx_call_ok = bool(adx_val_c == 0.0 or (20.0 <= adx_val_c <= 52.0 and plus_di_c >= minus_di_c))
+
         is_r3_confirmed = bool(
             (spot_at_or_above_r1 or spot_at_or_above_r2 or is_sniper_buy or "STRONG BUY" in curr_sig) and
             res.get('is_option_r3_crossed') and
             res.get('is_r3_rsi_confirmed', True) and
+            adx_call_ok and
             not res.get('is_chasing', False)
         )
         if is_r3_confirmed and not state.get(r3_confirmed_key):
@@ -1159,10 +1165,13 @@ def run_scan_cycle(force=False, watchlist=None):
         spot_at_or_below_s1 = bool(spot_s1 > 0 and spot_p <= spot_s1)
         spot_at_or_below_s2 = bool(spot_s2 > 0 and spot_p <= spot_s2)
         r3_put_confirmed_key = f"{s_name}_PUT_R3_CONFIRMED_{today_str}"
+        adx_put_ok = bool(adx_val_c == 0.0 or (20.0 <= adx_val_c <= 52.0 and minus_di_c >= plus_di_c))
+
         is_put_r3_confirmed = bool(
             (spot_at_or_below_s1 or spot_at_or_below_s2 or is_sniper_short or "STRONG SELL" in curr_sig) and
             res.get('is_put_r3_crossed') and
             res.get('is_put_rsi_confirmed', True) and
+            adx_put_ok and
             not res.get('is_put_chasing', False)
         )
         if is_put_r3_confirmed and not state.get(r3_put_confirmed_key):

@@ -133,7 +133,8 @@ DEFAULT_ALGO_CONFIG = {
     "nifty_regime_filter": True,        # Minervini 75% Market Trend Alignment
     "time_stop_enabled": True,          # Larry Williams / Toby Crabel 25m Theta Stop
     "time_stop_minutes": 25,            # Max minutes to hold dormant sideways option
-    "vwap_filter_enabled": True         # Institutional VWAP Confluence
+    "vwap_filter_enabled": True,
+    "adx_filter_enabled": True         # Wilder & Raschke ADX 20-52 Trend Strength Golden Zone         # Institutional VWAP Confluence
 }
 
 def load_algo_config() -> Dict[str, Any]:
@@ -712,6 +713,21 @@ def execute_algo_entry(scan_res: Dict[str, Any]) -> Tuple[bool, str]:
             return _skip(f"Skipped {sym} Call: Nifty is negative ({nifty_pct:+.2f}%), blocking counter-trend Call entry", "REGIME_GUARD")
         elif opt_type == "PE" and nifty_pct >= 0.45:
             return _skip(f"Skipped {sym} Put: Nifty is bullish ({nifty_pct:+.2f}%), blocking counter-trend Put entry", "REGIME_GUARD")
+
+    # Safety Check 5.15: ADX Trend Strength Golden Zone Guard (Wilder & Linda Raschke Rule)
+    if cfg.get("adx_filter_enabled", True):
+        adx_val = float(scan_res.get("adx_3m", 0.0) or 0.0)
+        plus_di = float(scan_res.get("plus_di_3m", 0.0) or 0.0)
+        minus_di = float(scan_res.get("minus_di_3m", 0.0) or 0.0)
+        if adx_val > 0:
+            if adx_val < 20.0:
+                return _skip(f"Skipped {sym}: ADX ({adx_val:.1f}) < 20 (Weak sideways/choppy trend trap)", "ADX_WEAK")
+            elif adx_val > 52.0:
+                return _skip(f"Skipped {sym}: ADX ({adx_val:.1f}) > 52 (Overextended climax exhaustion risk)", "ADX_EXHAUSTED")
+            if opt_type == "CE" and plus_di < minus_di:
+                return _skip(f"Skipped {sym} Call: +DI ({plus_di:.1f}) < -DI ({minus_di:.1f}) (Sellers dominate)", "DI_BEARISH")
+            elif opt_type == "PE" and minus_di < plus_di:
+                return _skip(f"Skipped {sym} Put: -DI ({minus_di:.1f}) < +DI ({plus_di:.1f}) (Buyers dominate)", "DI_BULLISH")
 
     # Safety Check 5.2: Direction Filter (BOTH / CALL_ONLY / PUT_ONLY)
     trading_dir = cfg.get("trading_direction", "BOTH")
