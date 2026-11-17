@@ -1051,6 +1051,10 @@ def run_scan_cycle(force=False, watchlist=None):
             continue
             
         s_name = res['symbol']
+        clean_s_name = s_name.replace(".NS", "").replace(".BO", "").replace("^", "").strip().upper()
+        from .fyers_order_engine import EXCLUDED_FNO_STOCKS
+        if clean_s_name in EXCLUDED_FNO_STOCKS:
+            continue
         curr_sig = res['signal']
         prev_sig = state.get(s_name)
         
