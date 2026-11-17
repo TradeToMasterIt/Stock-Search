@@ -1612,8 +1612,8 @@ header_html = f'<div class="brand-container"><div><div style="display: flex; ali
 st.html(header_html)
 
 if not fyers_connected:
-    with st.expander("⚡ Fyers API કનેક્ટ / રી-કનેક્ટ કરો (વૈકલ્પિક)", expanded=False):
-        st.caption("જો Streamlit Cloud Secrets માં Fyers API ક્રેડેન્શિયલ્સ સેટ હોય અને ટોકન રીફ્રેશ કરવું હોય:")
+    with st.expander("⚡ Fyers API કનેક્ટ / રી-કનેક્ટ કરો", expanded=False):
+        st.caption("જો Fyers API Offline દેખાતું હોય તો નીચેના બટન પર ક્લિક કરીને લાઈવ ટોકન રીફ્રેશ કરો:")
         if st.button("🔄 Connect Fyers API Now", key="btn_manual_fyers_connect"):
             with st.spinner("🔄 Fyers API સાથે કનેક્ટ થઈ રહ્યું છે (ઓટોમેટિક TOTP લોગિન)..."):
                 from core.fyers_auth import test_fyers_connection
@@ -1626,6 +1626,7 @@ if not fyers_connected:
                     st.rerun()
                 else:
                     st.error(f"❌ Fyers કનેક્શન નિષ્ફળ: {res}")
+                    st.info("💡 જો Streamlit Cloud વાપરતા હોવ, તો Streamlit Dashboard -> App Settings -> Secrets માં FYERS_CLIENT_ID, FYERS_PIN, FYERS_TOTP_KEY, FYERS_APP_ID, FYERS_SECRET_KEY સેટ કરેલા હોવા જરૂરી છે.")
 
 # Module Navigation (Dropdown Selector)
 NAV_OPTIONS = [
