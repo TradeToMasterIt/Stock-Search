@@ -108,6 +108,15 @@ def login_and_generate_token() -> tuple[bool, str]:
     Executes automated Fyers V3 login flow using TOTP and PIN.
     Returns (True, access_token) on success, or (False, error_message).
     """
+    global FYERS_CLIENT_ID, FYERS_PIN, FYERS_TOTP_KEY, FYERS_APP_ID, FYERS_SECRET_KEY, FYERS_REDIRECT_URI
+    from core.config import get_config_val
+    FYERS_CLIENT_ID = get_config_val("FYERS_CLIENT_ID", FYERS_CLIENT_ID)
+    FYERS_PIN = get_config_val("FYERS_PIN", FYERS_PIN)
+    FYERS_TOTP_KEY = get_config_val("FYERS_TOTP_KEY", FYERS_TOTP_KEY)
+    FYERS_APP_ID = get_config_val("FYERS_APP_ID", FYERS_APP_ID)
+    FYERS_SECRET_KEY = get_config_val("FYERS_SECRET_KEY", FYERS_SECRET_KEY)
+    FYERS_REDIRECT_URI = get_config_val("FYERS_REDIRECT_URI", FYERS_REDIRECT_URI)
+
     if not all([FYERS_CLIENT_ID, FYERS_PIN, FYERS_TOTP_KEY, FYERS_APP_ID, FYERS_SECRET_KEY]):
         missing = []
         if not FYERS_CLIENT_ID: missing.append("FYERS_CLIENT_ID")
