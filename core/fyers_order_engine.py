@@ -117,16 +117,20 @@ DEFAULT_ALGO_CONFIG = {
     "trading_basket": "ALL",            # "ALL", "INDICES", or "MOMENTUM"
     "trading_direction": "BOTH",        # "BOTH", "CALL_ONLY", or "PUT_ONLY"
     "max_risk_per_trade": 1500.0,       # Risk per trade (1.5% of 1L)
-    "max_capital_per_trade": 15000.0,   # Max margin allocated per trade
-    "daily_max_loss": 3000.0,           # Daily Kill-Switch limit
-    "max_open_positions": 2,            # Max active concurrent positions
+    "max_capital_per_trade": 25000.0,   # Max margin allocated per trade
+    "daily_max_loss": 5000.0,           # Daily Kill-Switch limit
+    "max_open_positions": 4,            # Max active concurrent positions (Quality over Quantity)
+    "target_1_pct": 20.0,               # Target 1: Quick Scaler +20% (Books 50% Qty)
+    "target_2_pct": 60.0,               # Target 2: Runner +60% (Books 30% Qty)
     "target_1_ratio": 1.5,              # 1:1.5 RR (First 50% exit)
     "target_2_ratio": 2.5,              # 1:2.5 RR (Next 30% exit)
     "t1_qty_exit_pct": 50,              # Exit 50% on T1
     "t2_qty_exit_pct": 30,              # Exit 30% on T2
     "trail_t1_to_cost": True,           # Move SL to Entry price on T1 (Zero Risk)
+    "breakeven_lock_enabled": True,     # Mark Minervini +15% Zero-Risk Breakeven Lock
+    "breakeven_trigger_pct": 15.0,      # Lock SL to Cost once option reaches +15%
     "auto_square_off_time": "15:15",    # Intraday auto exit
-    "start_time": "09:20",              # Skip first 5 mins opening volatility
+    "start_time": "09:45",              # Opening Guard: Skip 09:15 - 09:45 opening noise
     "end_time": "15:00",                # No new trades after 15:00
     "kill_switch_triggered": False,
     "last_reset_date": "",
@@ -684,11 +688,15 @@ def execute_algo_entry(scan_res: Dict[str, Any]) -> Tuple[bool, str]:
     if cfg.get("kill_switch_triggered", False):
         return _skip("Daily Kill-Switch is ACTIVE (Max Loss Hit)", "KILL_SWITCH")
         
-    # Safety Check 3: Time Window Check (09:20 to 15:00 IST)
+    # Safety Check 3: Time Window Check (09:45 to 15:00 IST Opening Guard)
     now_ist = get_ist_now()
     curr_time_str = now_ist.strftime("%H:%M")
-    if curr_time_str < cfg.get("start_time", "09:20") or curr_time_str > cfg.get("end_time", "15:00"):
-        return _skip(f"Outside Algo Entry Time Window ({curr_time_str} IST)", "TIME_WINDOW")
+    start_time_limit = cfg.get("start_time", "09:45")
+    end_time_limit = cfg.get("end_time", "15:00")
+    if curr_time_str < start_time_limit:
+        return _skip(f"Opening Guard Active ({curr_time_str} IST < {start_time_limit} IST Opening Buffer)", "TIME_WINDOW")
+    if curr_time_str > end_time_limit:
+        return _skip(f"Outside Algo Entry Time Window ({curr_time_str} IST > {end_time_limit} IST)", "TIME_WINDOW")
         
     # Safety Check 4: Market Hours
     market_open, _ = is_market_open()
@@ -735,21 +743,27 @@ def execute_algo_entry(scan_res: Dict[str, Any]) -> Tuple[bool, str]:
         if v_rat < 1.5:
             return _skip(f"Skipped {sym}: Post-14:15 non-gamma trade requires >= 1.5x volume (current: {v_rat:.1f}x)", "VOL_GUARD")
 
+    # Target Multipliers calibrated to target_1_pct & target_2_pct (Institutional Calibrated Targets)
+    t1_pct = float(cfg.get("target_1_pct", 20.0))
+    t2_pct = float(cfg.get("target_2_pct", 60.0))
+    t1_factor = 1.0 + (t1_pct / 100.0)
+    t2_factor = 1.0 + (t2_pct / 100.0)
+
     # Select exact Call or Put symbols and levels
     if opt_type == 'PE':
         fyers_sym = scan_res.get('opt_put_fyers_symbol', scan_res.get('opt_fyers_symbol', ''))
         contract_name = scan_res.get('opt_put_contract_name', scan_res.get('opt_contract_name', f'{sym} OTM Put'))
         entry_price = float(scan_res.get('opt_put_ltp', scan_res.get('opt_ltp', 0.0)))
         stop_loss = float(scan_res.get('opt_put_sl', entry_price * 0.80))
-        target_1 = float(scan_res.get('opt_put_t1', entry_price * 1.35))
-        target_2 = float(scan_res.get('opt_put_t2', entry_price * 1.70))
+        target_1 = float(scan_res.get('opt_put_t1', entry_price * t1_factor))
+        target_2 = float(scan_res.get('opt_put_t2', entry_price * t2_factor))
     else:
         fyers_sym = scan_res.get('opt_fyers_symbol', '')
         contract_name = scan_res.get('opt_contract_name', f'{sym} OTM Call')
         entry_price = float(scan_res.get('opt_ltp', 0.0))
         stop_loss = float(scan_res.get('opt_sl', entry_price * 0.75))
-        target_1 = float(scan_res.get('opt_t1', entry_price * 1.35))
-        target_2 = float(scan_res.get('opt_t2', entry_price * 1.70))
+        target_1 = float(scan_res.get('opt_t1', entry_price * t1_factor))
+        target_2 = float(scan_res.get('opt_t2', entry_price * t2_factor))
 
     # Safety Guard: Reject any contract that does not exist or was excluded from NSE F&O
     if not fyers_sym or any(fyers_sym.startswith(p) for p in [
@@ -781,9 +795,9 @@ def execute_algo_entry(scan_res: Dict[str, Any]) -> Tuple[bool, str]:
     if stop_loss >= entry_price or stop_loss <= 0:
         stop_loss = round(entry_price * 0.75, 2)
     if target_1 <= entry_price or target_1 > entry_price * 2.5:
-        target_1 = round(entry_price * 1.35, 2)
+        target_1 = round(entry_price * t1_factor, 2)
     if target_2 <= target_1 or target_2 > entry_price * 3.5:
-        target_2 = round(entry_price * 1.70, 2)
+        target_2 = round(entry_price * t2_factor, 2)
 
     # Safety Check 5.5: Basket Filter (All / Indices / Momentum)
     basket_choice = cfg.get("trading_basket", "ALL")
@@ -866,6 +880,10 @@ def execute_algo_entry(scan_res: Dict[str, Any]) -> Tuple[bool, str]:
         "initial_stop_loss": round(stop_loss, 2),
         "target_1": round(target_1, 2),
         "target_2": round(target_2, 2),
+        "target_1_pct": t1_pct,
+        "target_2_pct": t2_pct,
+        "highest_pnl_pct": 0.0,
+        "breakeven_locked": False,
         "allocated_capital": allocated_capital,
         "entry_time": now_ist.strftime("%d %b %Y | %H:%M:%S IST"),
         "t1_hit": False,
@@ -905,13 +923,13 @@ def execute_algo_entry(scan_res: Dict[str, Any]) -> Tuple[bool, str]:
         f"• <b>Status:</b> {mode_icon}\n"
         f"• <b>Instrument:</b> {sym} ({contract_name})\n"
         f"• <b>Fyers Symbol:</b> <code>{fyers_sym}</code>\n"
-        f"• <b>Action:</b> BUY (Call Option / CE)\n"
+        f"• <b>Action:</b> BUY ({'Put Option / PE' if opt_type == 'PE' else 'Call Option / CE'})\n"
         f"• <b>Lots / Qty:</b> <b>{lots} Lots</b> ({total_qty} Shares)\n"
         f"• <b>Entry Price:</b> <b>₹{entry_price:.2f}</b>\n"
         f"• <b>Total Investment:</b> ₹{allocated_capital:.2f}\n"
         f"• <b>Stop Loss:</b> <b>₹{stop_loss:.2f}</b> (5m Bar Low / Option R3)\n"
-        f"• <b>Target 1 (+35%):</b> ₹{target_1:.2f} (50% Qty Exit)\n"
-        f"• <b>Target 2 (+70%):</b> ₹{target_2:.2f} (30% Qty Exit)\n"
+        f"• <b>Target 1 (+{t1_pct:.0f}%):</b> ₹{target_1:.2f} (50% Qty Exit)\n"
+        f"• <b>Target 2 (+{t2_pct:.0f}%):</b> ₹{target_2:.2f} (30% Qty Exit)\n"
         f"• <b>Order ID:</b> <code>{order_id}</code>\n"
         f"━━━━━━━━━━━━━━━━━━━━━\n"
         f"⏰ {now_ist.strftime('%d %b %Y | %H:%M:%S IST')} | 🤖 Patel Trading Bot"
@@ -985,6 +1003,18 @@ def monitor_and_manage_algo_positions() -> List[str]:
         pnl_pct = round(((current_ltp - entry_price) / entry_price) * 100, 2) if entry_price > 0 else 0.0
         tr["unrealized_pnl"] = unrealized
         tr["pnl_pct"] = pnl_pct
+
+        # Track High Water Mark (Peak Gain %)
+        prev_highest = float(tr.get("highest_pnl_pct", pnl_pct))
+        highest_pnl_pct = max(prev_highest, pnl_pct)
+        tr["highest_pnl_pct"] = highest_pnl_pct
+
+        # Dynamic Calibration: If Target 1 was configured lower (e.g. +20%), align active trade's target_1
+        t1_pct_target = float(cfg.get("target_1_pct", 20.0))
+        configured_t1 = round(entry_price * (1.0 + t1_pct_target / 100.0), 2)
+        if target_1 > configured_t1 and not tr.get("t1_hit", False):
+            target_1 = configured_t1
+            tr["target_1"] = target_1
         
         # Case A: EOD Auto Square-off (15:15 IST)
         if is_eod_square_off:
@@ -1021,7 +1051,26 @@ def monitor_and_manage_algo_positions() -> List[str]:
         if not quote_ok:
             remaining_active.append(tr)
             continue
-            
+
+        # Case B0: Breakeven Lock at +15% Gain (Mark Minervini Zero-Risk Rule)
+        breakeven_enabled = bool(cfg.get("breakeven_lock_enabled", True))
+        breakeven_trigger = float(cfg.get("breakeven_trigger_pct", 15.0))
+        if breakeven_enabled and highest_pnl_pct >= breakeven_trigger and stop_loss < entry_price:
+            stop_loss = entry_price
+            tr["stop_loss"] = entry_price
+            tr["breakeven_locked"] = True
+            msg = (
+                f"🛡️ <b>ALGO ZERO-RISK BREAKEVEN LOCK!</b> 🛡️\n"
+                f"━━━━━━━━━━━━━━━━━━━━━\n"
+                f"• <b>Instrument:</b> {contract_name}\n"
+                f"• <b>Peak Gain:</b> <b>+{highest_pnl_pct:.1f}%</b> (≥ +{breakeven_trigger:.0f}% શરત પૂર્ણ)\n"
+                f"• <b>Action:</b> <b>સ્ટોપલોસ ખસેડીને ખરીદ કિંમત (₹{entry_price:.2f}) પર લોક કર્યો!</b>\n"
+                f"• <b>સુરક્ષા:</b> આ ટ્રેડ હવે સંપૂર્ણ <b>ZERO RISK</b> બની ગયો છે (નફો ઘટશે તો પણ નુકસાન ₹0 થશે)!\n"
+                f"• <b>Current LTP:</b> ₹{current_ltp:.2f} ({pnl_pct:+.1f}%)"
+            )
+            send_telegram_alert(msg)
+            actions_taken.append(f"{sym} Breakeven Locked at ₹{entry_price:.2f}")
+
         # Case B: Time-Based Stop-Loss (Larry Williams & Toby Crabel Theta Preservation Rule)
         time_stop_enabled = bool(cfg.get("time_stop_enabled", True))
         time_stop_minutes = int(cfg.get("time_stop_minutes", 25))
@@ -1066,13 +1115,17 @@ def monitor_and_manage_algo_positions() -> List[str]:
             actions_taken.append(f"{sym} Time-Stop Hit")
             continue
 
-        # Case C: Stop Loss Hit
+        # Case C: Stop Loss Hit (or Breakeven Exit)
         if current_ltp <= stop_loss:
             if trade_mode == "LIVE" and rem_qty > 0:
                 place_fyers_broker_order(symbol=fyers_sym, qty=rem_qty, side=-1, order_type=2)
+            
+            is_be_exit = bool(tr.get("breakeven_locked", False) or stop_loss >= entry_price)
+            exit_status = "CLOSED (BREAKEVEN EXIT - ZERO LOSS)" if is_be_exit else "CLOSED (STOP LOSS HIT)"
+
             realized_total = finalize_algo_trade_closure(
                 tr=tr,
-                status="CLOSED (STOP LOSS HIT)",
+                status=exit_status,
                 exit_price=current_ltp,
                 final_slice_pnl=unrealized,
                 closed_trades=closed_trades,
@@ -1080,16 +1133,26 @@ def monitor_and_manage_algo_positions() -> List[str]:
                 now_ist=now_ist,
             )
                 
-            msg = (
-                f"🛑 <b>ALGO STOP LOSS EXECUTED!</b>\n"
-                f"━━━━━━━━━━━━━━━━━━━━━\n"
-                f"• <b>Instrument:</b> {contract_name}\n"
-                f"• <b>Exit Price:</b> ₹{current_ltp:.2f} (SL: ₹{stop_loss:.2f})\n"
-                f"• <b>Realized P&L:</b> <b>₹{realized_total:+.2f} ({pnl_pct:+.1f}%)</b>\n"
-                f"• <b>Capital Protected:</b> શિસ્તબદ્ધ એક્ઝિટ પૂર્ણ!"
-            )
+            if is_be_exit:
+                msg = (
+                    f"🛡️ <b>ALGO BREAKEVEN EXIT (Capital Protected)!</b> 🛡️\n"
+                    f"━━━━━━━━━━━━━━━━━━━━━\n"
+                    f"• <b>Instrument:</b> {contract_name}\n"
+                    f"• <b>Exit Price:</b> ₹{current_ltp:.2f} (Entry: ₹{entry_price:.2f})\n"
+                    f"• <b>Realized P&L:</b> <b>₹{realized_total:+.2f} ({pnl_pct:+.1f}%)</b>\n"
+                    f"• <b>Capital Protected:</b> નુકસાન વિના સુરક્ષિત એક્ઝિટ!"
+                )
+            else:
+                msg = (
+                    f"🛑 <b>ALGO STOP LOSS EXECUTED!</b>\n"
+                    f"━━━━━━━━━━━━━━━━━━━━━\n"
+                    f"• <b>Instrument:</b> {contract_name}\n"
+                    f"• <b>Exit Price:</b> ₹{current_ltp:.2f} (SL: ₹{stop_loss:.2f})\n"
+                    f"• <b>Realized P&L:</b> <b>₹{realized_total:+.2f} ({pnl_pct:+.1f}%)</b>\n"
+                    f"• <b>Capital Protected:</b> શિસ્તબદ્ધ એક્ઝિટ પૂર્ણ!"
+                )
             send_telegram_alert(msg)
-            actions_taken.append(f"{sym} Stop Loss Hit")
+            actions_taken.append(f"{sym} {'Breakeven Exit' if is_be_exit else 'Stop Loss Hit'}")
             continue
             
         # Case C: Target 1 Hit (Book 50% & Trail SL to Cost)
@@ -1112,8 +1175,9 @@ def monitor_and_manage_algo_positions() -> List[str]:
             unrealized = round((current_ltp - entry_price) * rem_qty, 2)
             tr["unrealized_pnl"] = unrealized
             
+            t1_display_pct = int(cfg.get("target_1_pct", 20))
             msg = (
-                f"🎯 <b>ALGO TARGET 1 ACHIEVED (+35%)!</b> 🚀\n"
+                f"🎯 <b>ALGO TARGET 1 ACHIEVED (+{t1_display_pct}%)!</b> 🚀\n"
                 f"━━━━━━━━━━━━━━━━━━━━━\n"
                 f"• <b>Instrument:</b> {contract_name}\n"
                 f"• <b>LTP:</b> ₹{current_ltp:.2f} (Target 1: ₹{target_1:.2f})\n"

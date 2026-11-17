@@ -2577,20 +2577,22 @@ if selected_module == "🤖 Fyers Auto-Algo Cockpit (ઓટો-આલ્ગો �
 
             c_t1, c_t2, c_t3, c_t4 = st.columns(4)
             with c_t1:
-                new_start_time = st.text_input("એન્ટ્રી શરૂ સમય (IST):", value=str(algo_cfg.get("start_time", "09:20")))
+                new_start_time = st.text_input("એન્ટ્રી શરૂ સમય (IST):", value=str(algo_cfg.get("start_time", "09:45")), help="સવારની અસ્થિરતા (09:15-09:45) થી બચવા માટે 09:45 શ્રેષ્ઠ છે.")
             with c_t2:
                 new_end_time = st.text_input("નવી એન્ટ્રી બંધ સમય (IST):", value=str(algo_cfg.get("end_time", "15:00")))
             with c_t3:
                 new_eod_time = st.text_input("Auto Square-off સમય (IST):", value=str(algo_cfg.get("auto_square_off_time", "15:15")))
             with c_t4:
-                new_trail_cost = st.checkbox("Target 1 પર SL to Cost", value=bool(algo_cfg.get("trail_t1_to_cost", True)), help="૫૦% નફો મળ્યા પછી સ્ટોપલોસ ખરીદભાવ પર લાવવો.")
+                new_target_1_pct = st.number_input("Target 1 (+% Scaler):", min_value=10.0, max_value=80.0, value=float(algo_cfg.get("target_1_pct", 20.0)), step=5.0, help="૫૦% ક્વોન્ટિટી પર નફો બુક કરવાનો ટકાવારી ટાર્ગેટ (ઇન્ટ્રાડે માટે ૨૦% શ્રેષ્ઠ છે).")
 
-            c_adv1, c_adv2, c_adv3 = st.columns(3)
+            c_adv1, c_adv2, c_adv3, c_adv4 = st.columns(4)
             with c_adv1:
-                new_vwap_filter = st.checkbox("📊 VWAP સંસ્થાકીય ફિલ્ટર", value=bool(algo_cfg.get("vwap_filter_enabled", True)), help="શેર VWAP ની ઉપર હોય ત્યારે જ Call અને નીચે હોય ત્યારે જ Put માન્ય ગણાય.")
+                new_breakeven_lock = st.checkbox("🛡️ +15% Breakeven Lock", value=bool(algo_cfg.get("breakeven_lock_enabled", True)), help="જો ઓપ્શન +૧૫% નફો ટચ કરે તો સ્ટોપલોસ તરત Cost (ખરીદ ભાવ) પર લોક થઈ જાય જેથી ક્યારેય ખોટ ન થાય (Minervini Zero-Risk Rule).")
             with c_adv2:
-                new_adx_filter = st.checkbox("⚡ ADX ૨૦-૫૨ Trend ફિલ્ટર", value=bool(algo_cfg.get("adx_filter_enabled", True)), help="ADX < 20 (સાઇડવેઝ) અને ADX > 52 (ક્લાઇમેક્સ થાકેલા) ટ્રેડ્સ રોકે છે (Wilder & Raschke નિયમ).")
+                new_vwap_filter = st.checkbox("📊 VWAP સંસ્થાકીય ફિલ્ટર", value=bool(algo_cfg.get("vwap_filter_enabled", True)), help="શેર VWAP ની ઉપર હોય ત્યારે જ Call અને નીચે હોય ત્યારે જ Put માન્ય ગણાય.")
             with c_adv3:
+                new_adx_filter = st.checkbox("⚡ ADX ૨૦-૫૨ Trend ફિલ્ટર", value=bool(algo_cfg.get("adx_filter_enabled", True)), help="ADX < 20 (સાઇડવેઝ) અને ADX > 52 (ક્લાઇમેક્સ થાકેલા) ટ્રેડ્સ રોકે છે (Wilder & Raschke નિયમ).")
+            with c_adv4:
                 new_time_stop = st.checkbox("⏱️ ૨૫m Theta Time-Stop", value=bool(algo_cfg.get("time_stop_enabled", True)), help="જો ૨૫ મિનિટ સુધી મોમેન્ટમ ન મળે અને ટ્રેડ સાઇડવેઝ રહે, તો થીટા ડીકેય અટકાવવા કોસ્ટ પર એક્ઝિટ.")
 
             if st.button("💾 સેટિંગ્સ સેવ કરો (Save Algo Settings)", type="primary", key="btn_save_algo_config"):
@@ -2605,7 +2607,9 @@ if selected_module == "🤖 Fyers Auto-Algo Cockpit (ઓટો-આલ્ગો �
                 algo_cfg["start_time"] = str(new_start_time).strip()
                 algo_cfg["end_time"] = str(new_end_time).strip()
                 algo_cfg["auto_square_off_time"] = str(new_eod_time).strip()
-                algo_cfg["trail_t1_to_cost"] = bool(new_trail_cost)
+                algo_cfg["target_1_pct"] = float(new_target_1_pct)
+                algo_cfg["breakeven_lock_enabled"] = bool(new_breakeven_lock)
+                algo_cfg["trail_t1_to_cost"] = True
                 algo_cfg["vwap_filter_enabled"] = bool(new_vwap_filter)
                 algo_cfg["time_stop_enabled"] = bool(new_time_stop)
                 algo_cfg["adx_filter_enabled"] = bool(new_adx_filter)
@@ -2778,12 +2782,12 @@ if selected_module == "🤖 Fyers Auto-Algo Cockpit (ઓટો-આલ્ગો �
                     "opt_put_fyers_symbol": sim_fyers_sym,
                     "opt_put_contract_name": sim_contract_name,
                     "opt_put_sl": test_sl,
-                    "opt_put_t1": test_price * 1.35,
-                    "opt_put_t2": test_price * 1.70,
+                    "opt_put_t1": test_price * 1.20,
+                    "opt_put_t2": test_price * 1.60,
                     "price": test_price,
                     "stop_loss": test_sl,
-                    "t1": test_price * 1.35,
-                    "t2": test_price * 1.70
+                    "t1": test_price * 1.20,
+                    "t2": test_price * 1.60
                 }
                 ok_exec, exec_msg = execute_algo_entry(sim_res)
                 if ok_exec:
