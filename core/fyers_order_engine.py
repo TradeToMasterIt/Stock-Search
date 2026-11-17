@@ -22,11 +22,12 @@ _algo_trades_lock = threading.RLock()
 
 # NSE Derivative Exclusions (Official NSE Circulars: EXIDEIND, BSOFT, AARTIIND, etc.)
 EXCLUDED_FNO_STOCKS = {
-    "BSOFT", "EXIDEIND", "AARTIIND", "HINDCOPPER", "MGL", "PEL",
+    "ACC", "RAMCOCEM", "BSOFT", "EXIDEIND", "AARTIIND", "HINDCOPPER", "MGL", "PEL",
     "CHAMBLFERT", "CUB", "ZEEL", "ESCORTS", "BALKRISIND", "CANFINHOME",
-    "INDIAMART", "METROPOLIS", "NATIONALUM", "RAMCOCEM", "SYNGENE",
+    "INDIAMART", "METROPOLIS", "NATIONALUM", "SYNGENE",
     "ATUL", "BATAINDIA", "GRANULES", "GUJGASLTD", "IPCALAB",
-    "LALPATHLAB", "LICHSGFIN"
+    "LALPATHLAB", "LICHSGFIN", "BAJAJHLDNG", "NUVAMA", "CYIENT", "HFCL",
+    "NCC", "TITAGARH", "ABFRL", "ATGL", "CESC", "IRB", "JSL", "POONAWALLA", "SJVN"
 }
 
 # Standard NSE F&O Lot Sizes (Indexed by clean symbol)
@@ -99,8 +100,7 @@ NSE_LOT_SIZES = {
     "INDUSINDBK": 250,
     "ULTRACEMCO": 50,
     "GRASIM": 225,
-    "AMBUJACEM": 900,
-    "ACC": 150
+    "AMBUJACEM": 900
 }
 
 def get_lot_size(symbol: str) -> int:
