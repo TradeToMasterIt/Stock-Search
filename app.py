@@ -1617,7 +1617,7 @@ if not fyers_connected:
         if st.button("🔄 Connect Fyers API Now", key="btn_manual_fyers_connect"):
             with st.spinner("🔄 Fyers API સાથે કનેક્ટ થઈ રહ્યું છે (ઓટોમેટિક TOTP લોગિન)..."):
                 from core.fyers_auth import test_fyers_connection
-                ok, res = test_fyers_connection()
+                ok, res = test_fyers_connection(force_refresh=True)
                 if ok and isinstance(res, dict):
                     st.success(f"✅ Fyers API સફળતાપૂર્વક કનેક્ટ થઈ ગયું! આવકાર {res.get('name', '')}")
                     st.cache_data.clear()
