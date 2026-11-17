@@ -26,8 +26,13 @@ def get_config_val(key, default=""):
     if not val:
         try:
             import streamlit as st
-            if hasattr(st, "secrets") and key in st.secrets:
-                val = st.secrets[key]
+            if hasattr(st, "secrets"):
+                if key in st.secrets:
+                    val = st.secrets[key]
+                elif "fyers" in st.secrets and key in st.secrets["fyers"]:
+                    val = st.secrets["fyers"][key]
+                elif "FYERS" in st.secrets and key in st.secrets["FYERS"]:
+                    val = st.secrets["FYERS"][key]
         except Exception:
             pass
     return str(val).strip() if val else default

@@ -749,7 +749,7 @@ def get_nifty_sentiment():
 
     return None
 
-@st.cache_data(ttl=300, show_spinner=False)
+@st.cache_data(ttl=60, show_spinner=False)
 def get_cached_fyers_status():
     """Checks Fyers API status safely and logs in automatically if credentials are set."""
     try:
@@ -757,7 +757,7 @@ def get_cached_fyers_status():
         from core.fyers_auth import test_fyers_connection
         with concurrent.futures.ThreadPoolExecutor(max_workers=1) as ex:
             fut = ex.submit(test_fyers_connection)
-            ok_fyers, prof_fyers = fut.result(timeout=8.0)
+            ok_fyers, prof_fyers = fut.result(timeout=20.0)
             if ok_fyers and isinstance(prof_fyers, dict):
                 return True, prof_fyers.get("name", "Connected")
     except Exception:
@@ -1615,8 +1615,17 @@ if not fyers_connected:
     with st.expander("⚡ Fyers API કનેક્ટ / રી-કનેક્ટ કરો (વૈકલ્પિક)", expanded=False):
         st.caption("જો Streamlit Cloud Secrets માં Fyers API ક્રેડેન્શિયલ્સ સેટ હોય અને ટોકન રીફ્રેશ કરવું હોય:")
         if st.button("🔄 Connect Fyers API Now", key="btn_manual_fyers_connect"):
-            st.cache_data.clear()
-            st.rerun()
+            with st.spinner("🔄 Fyers API સાથે કનેક્ટ થઈ રહ્યું છે (ઓટોમેટિક TOTP લોગિન)..."):
+                from core.fyers_auth import test_fyers_connection
+                ok, res = test_fyers_connection()
+                if ok and isinstance(res, dict):
+                    st.success(f"✅ Fyers API સફળતાપૂર્વક કનેક્ટ થઈ ગયું! આવકાર {res.get('name', '')}")
+                    st.cache_data.clear()
+                    import time
+                    time.sleep(1)
+                    st.rerun()
+                else:
+                    st.error(f"❌ Fyers કનેક્શન નિષ્ફળ: {res}")
 
 # Module Navigation (Dropdown Selector)
 NAV_OPTIONS = [
