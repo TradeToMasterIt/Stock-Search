@@ -2595,15 +2595,21 @@ if selected_module == "🤖 Fyers Auto-Algo Cockpit (ઓટો-આલ્ગો �
             with c_t4:
                 new_target_1_pct = st.number_input("Target 1 (+% Scaler):", min_value=10.0, max_value=80.0, value=float(algo_cfg.get("target_1_pct", 20.0)), step=5.0, help="૫૦% ક્વોન્ટિટી પર નફો બુક કરવાનો ટકાવારી ટાર્ગેટ (ઇન્ટ્રાડે માટે ૨૦% શ્રેષ્ઠ છે).")
 
-            c_adv1, c_adv2, c_adv3, c_adv4 = st.columns(4)
+            c_adv1, c_adv2, c_adv3 = st.columns(3)
             with c_adv1:
-                new_breakeven_lock = st.checkbox("🛡️ +15% Breakeven Lock", value=bool(algo_cfg.get("breakeven_lock_enabled", True)), help="જો ઓપ્શન +૧૫% નફો ટચ કરે તો સ્ટોપલોસ તરત Cost (ખરીદ ભાવ) પર લોક થઈ જાય જેથી ક્યારેય ખોટ ન થાય (Minervini Zero-Risk Rule).")
+                new_nifty_filter = st.checkbox("🌐 NIFTY ટ્રેન્ડ ફિલ્ટર (Minervini Rule)", value=bool(algo_cfg.get("nifty_regime_filter", True)), help="માર્કેટ ટ્રેન્ડ નિયમ: નિફ્ટી તેજીમાં (+0.25%) હોય ત્યારે PUT બ્લોક, મંદીમાં (-0.25%) હોય ત્યારે CALL બ્લોક.")
             with c_adv2:
-                new_vwap_filter = st.checkbox("📊 VWAP સંસ્થાકીય ફિલ્ટર", value=bool(algo_cfg.get("vwap_filter_enabled", True)), help="શેર VWAP ની ઉપર હોય ત્યારે જ Call અને નીચે હોય ત્યારે જ Put માન્ય ગણાય.")
+                new_climax_guard = st.checkbox("🛑 Anti-Climax Exhaustion Guard", value=bool(algo_cfg.get("exhaustion_climax_guard", True)), help="ઓપ્શન ૫૫% થી વધુ ઉછળી ચૂક્યો હોય કે શેરમાં ઓવરબોટ/ઓવરસોલ્ડ એક્ઝોશ્ન હોય ત્યારે ટોપ પર ખરીદી અટકાવે છે.")
             with c_adv3:
-                new_adx_filter = st.checkbox("⚡ ADX ૨૦-૫૨ Trend ફિલ્ટર", value=bool(algo_cfg.get("adx_filter_enabled", True)), help="ADX < 20 (સાઇડવેઝ) અને ADX > 52 (ક્લાઇમેક્સ થાકેલા) ટ્રેડ્સ રોકે છે (Wilder & Raschke નિયમ).")
+                new_breakeven_lock = st.checkbox("🛡️ +15% Breakeven Lock", value=bool(algo_cfg.get("breakeven_lock_enabled", True)), help="જો ઓપ્શન +૧૫% નફો ટચ કરે તો સ્ટોપલોસ તરત Cost (ખરીદ ભાવ) પર લોક થઈ જાય જેથી ક્યારેય ખોટ ન થાય (Minervini Zero-Risk Rule).")
+
+            c_adv4, c_adv5, c_adv6 = st.columns(3)
             with c_adv4:
-                new_time_stop = st.checkbox("⏱️ ૨૫m Theta Time-Stop", value=bool(algo_cfg.get("time_stop_enabled", True)), help="જો ૨૫ મિનિટ સુધી મોમેન્ટમ ન મળે અને ટ્રેડ સાઇડવેઝ રહે, તો થીટા ડીકેય અટકાવવા કોસ્ટ પર એક્ઝિટ.")
+                new_vwap_filter = st.checkbox("📊 VWAP સંસ્થાકીય ફિલ્ટર", value=bool(algo_cfg.get("vwap_filter_enabled", True)), help="શેર VWAP ની ઉપર હોય ત્યારે જ Call અને નીચે હોય ત્યારે જ Put માન્ય ગણાય.")
+            with c_adv5:
+                new_adx_filter = st.checkbox("⚡ ADX ૨૦-૫૨ Trend ફિલ્ટર", value=bool(algo_cfg.get("adx_filter_enabled", True)), help="ADX < 20 (સાઇડવેઝ) અને ADX > 52 (ક્લાઇમેક્સ થાકેલા) ટ્રેડ્સ રોકે છે (Wilder & Raschke નિયમ).")
+            with c_adv6:
+                new_time_stop = st.checkbox("⏱️ ૪૫m Theta Time-Stop", value=bool(algo_cfg.get("time_stop_enabled", True)), help="૪૫ મિનિટ સુધી મોમેન્ટમ ન મળે અને ટ્રેડ ખોટમાં સાઇડવેઝ રહે ત્યારે જ એક્ઝિટ. સ્વસ્થ કોન્સોલિડેશનને સમય આપે છે.")
 
             if st.button("💾 સેટિંગ્સ સેવ કરો (Save Algo Settings)", type="primary", key="btn_save_algo_config"):
                 algo_cfg["is_enabled"] = bool(st.session_state.get("toggle_algo_master", is_algo_active))
@@ -2618,6 +2624,8 @@ if selected_module == "🤖 Fyers Auto-Algo Cockpit (ઓટો-આલ્ગો �
                 algo_cfg["end_time"] = str(new_end_time).strip()
                 algo_cfg["auto_square_off_time"] = str(new_eod_time).strip()
                 algo_cfg["target_1_pct"] = float(new_target_1_pct)
+                algo_cfg["nifty_regime_filter"] = bool(new_nifty_filter)
+                algo_cfg["exhaustion_climax_guard"] = bool(new_climax_guard)
                 algo_cfg["breakeven_lock_enabled"] = bool(new_breakeven_lock)
                 algo_cfg["trail_t1_to_cost"] = True
                 algo_cfg["vwap_filter_enabled"] = bool(new_vwap_filter)

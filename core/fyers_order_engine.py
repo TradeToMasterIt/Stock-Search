@@ -116,6 +116,9 @@ DEFAULT_ALGO_CONFIG = {
     "mode": "PAPER",                     # "PAPER" (Demo) or "LIVE" (Fyers Real Broker)
     "trading_basket": "ALL",            # "ALL", "INDICES", or "MOMENTUM"
     "trading_direction": "BOTH",        # "BOTH", "CALL_ONLY", or "PUT_ONLY"
+    "nifty_regime_filter": True,        # Mark Minervini 75% General Market Filter (Block Puts in Bull Market, Block Calls in Bear Market)
+    "nifty_regime_threshold": 0.25,     # Threshold % (+/- 0.25%) to block counter-trend trades
+    "exhaustion_climax_guard": True,    # Anti-Climax Guard: Block buying options extended >55% intraday or overbought exhaustion
     "max_risk_per_trade": 1500.0,       # Risk per trade (1.5% of 1L)
     "max_capital_per_trade": 25000.0,   # Max margin allocated per trade
     "daily_max_loss": 5000.0,           # Daily Kill-Switch limit
@@ -134,8 +137,8 @@ DEFAULT_ALGO_CONFIG = {
     "end_time": "15:00",                # No new trades after 15:00
     "kill_switch_triggered": False,
     "last_reset_date": "",
-    "time_stop_enabled": True,          # Larry Williams / Toby Crabel 25m Theta Stop
-    "time_stop_minutes": 25,            # Max minutes to hold dormant sideways option
+    "time_stop_enabled": True,          # Larry Williams / Toby Crabel Theta Stop
+    "time_stop_minutes": 45,            # Held minutes before checking stagnation (default 45m)
     "vwap_filter_enabled": True,        # Institutional VWAP Confluence
     "adx_filter_enabled": True          # Wilder & Raschke ADX 20-52 Trend Strength Golden Zone
 }
@@ -711,6 +714,57 @@ def execute_algo_entry(scan_res: Dict[str, Any]) -> Tuple[bool, str]:
     if len(active_trades) >= max_open:
         return _skip(f"Max concurrent positions reached ({len(active_trades)}/{max_open})", "MAX_POSITIONS")
 
+    # Safety Check 5.0: Nifty Market Regime Directional Guard (Mark Minervini 75% General Market Rule)
+    if cfg.get("nifty_regime_filter", True):
+        from core.config import get_nifty_market_regime
+        nifty_regime = get_nifty_market_regime()
+        nifty_pct = float(nifty_regime.get("pct", 0.0) or 0.0)
+        nifty_thresh = float(cfg.get("nifty_regime_threshold", 0.25))
+
+        # In Bullish Market (Nifty >= +thresh), block counter-trend PUT entries!
+        if opt_type == "PE" and nifty_pct >= nifty_thresh:
+            return _skip(
+                f"Skipped {sym} Put: Nifty 50 is Bullish ({nifty_pct:+.2f}% >= +{nifty_thresh:.2f}%). Minervini 75% Rule: Counter-trend Put buying strictly blocked in Bull Market!",
+                "NIFTY_REGIME_GUARD"
+            )
+        # In Bearish Market (Nifty <= -thresh), block counter-trend CALL entries!
+        elif opt_type == "CE" and nifty_pct <= -nifty_thresh:
+            return _skip(
+                f"Skipped {sym} Call: Nifty 50 is Bearish ({nifty_pct:+.2f}% <= -{nifty_thresh:.2f}%). Minervini 75% Rule: Counter-trend Call buying strictly blocked in Bear Market!",
+                "NIFTY_REGIME_GUARD"
+            )
+
+    # Safety Check 5.05: Climax Exhaustion Guard (Anti-FOMO Top Buying / Bottom Shorting)
+    if cfg.get("exhaustion_climax_guard", True):
+        if opt_type == "CE" and scan_res.get("is_bull_exhausted", False):
+            return _skip(
+                f"Skipped {sym} Call: Underlying is in Bullish Exhaustion (RSI > 78 or ADX > 52 hooking down or Day Gain >= 4%). Buying climax top is blocked!",
+                "CLIMAX_EXHAUSTION"
+            )
+        elif opt_type == "PE" and scan_res.get("is_bear_exhausted", False):
+            return _skip(
+                f"Skipped {sym} Put: Underlying is in Bearish Exhaustion (RSI < 24 or ADX > 52 hooking down or Day Drop <= -2.5%). Shorting climax bottom is blocked!",
+                "CLIMAX_EXHAUSTION"
+            )
+
+        # Check if Option itself is overextended (climax spike >= 55% from previous close)
+        opt_prev_close = float(scan_res.get("opt_prev_close", 0.0) or 0.0)
+        if opt_type == "PE":
+            opt_prev_close = float(scan_res.get("opt_put_prev_close", opt_prev_close) or 0.0)
+        if opt_prev_close > 0 and entry_price > 0:
+            opt_day_gain_pct = ((entry_price - opt_prev_close) / opt_prev_close) * 100.0
+            if opt_day_gain_pct >= 55.0:
+                return _skip(
+                    f"Skipped {sym} {opt_type}: Option LTP (₹{entry_price:.2f}) has already surged +{opt_day_gain_pct:.1f}% from previous close. Climax exhaustion risk!",
+                    "CLIMAX_EXHAUSTION"
+                )
+
+        # Rejection wick check
+        if opt_type == "CE" and scan_res.get("is_wick_rejected", False):
+            return _skip(f"Skipped {sym} Call: Upper rejection wick detected at resistance", "WICK_REJECTION")
+        elif opt_type == "PE" and scan_res.get("is_lower_wick_rejected", False):
+            return _skip(f"Skipped {sym} Put: Lower rejection wick detected at support", "WICK_REJECTION")
+
     # Safety Check 5.15: ADX Trend Strength Golden Zone Guard (Wilder & Linda Raschke Rule)
     if cfg.get("adx_filter_enabled", True):
         adx_val = float(scan_res.get("adx_3m", 0.0) or 0.0)
@@ -1071,9 +1125,9 @@ def monitor_and_manage_algo_positions() -> List[str]:
             send_telegram_alert(msg)
             actions_taken.append(f"{sym} Breakeven Locked at ₹{entry_price:.2f}")
 
-        # Case B: Time-Based Stop-Loss (Larry Williams & Toby Crabel Theta Preservation Rule)
+        # Case B: Calibrated Time-Based Stop-Loss (Larry Williams & Toby Crabel Theta Preservation Rule)
         time_stop_enabled = bool(cfg.get("time_stop_enabled", True))
-        time_stop_minutes = int(cfg.get("time_stop_minutes", 25))
+        time_stop_minutes = int(cfg.get("time_stop_minutes", 45))
         is_time_stopped = False
 
         if time_stop_enabled and not tr.get("t1_hit", False):
@@ -1084,7 +1138,13 @@ def monitor_and_manage_algo_positions() -> List[str]:
                 entry_dt = entry_dt.replace(tzinfo=IST_TZ)
                 minutes_held = (now_ist - entry_dt).total_seconds() / 60.0
 
-                if minutes_held >= time_stop_minutes and -10.0 <= pnl_pct <= 3.0:
+                # Calibrated Stagnation Check:
+                # 1. Stagnating in loss (-18% to -6%) past time_stop_minutes (default 45m)
+                # 2. Prolonged dead drift past 60m with no traction (pnl_pct <= 2%)
+                # Healthy consolidating positions near entry (-5% to +5%) with intact SL are allowed to mature!
+                if minutes_held >= time_stop_minutes and (-18.0 <= pnl_pct <= -6.0):
+                    is_time_stopped = True
+                elif minutes_held >= 60.0 and (-18.0 <= pnl_pct <= 2.0):
                     is_time_stopped = True
             except Exception:
                 pass
