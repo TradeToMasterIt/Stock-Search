@@ -98,17 +98,47 @@ def is_market_open():
 def get_nifty_market_regime() -> dict:
     """
     Returns cached or live Nifty sentiment: {price, change, pct, is_bullish}.
-    Uses nifty_last_quote.json cache with fallback.
+    Uses nifty_last_quote.json cache with fallback to live Fyers API or yfinance.
     """
     cache_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "nifty_last_quote.json")
+    cached_data = None
     if os.path.exists(cache_path):
         try:
+            mtime = os.path.getmtime(cache_path)
             with open(cache_path, "r", encoding="utf-8") as f:
-                data = json.load(f)
-                if isinstance(data, dict) and "pct" in data:
-                    return data
+                cached_data = json.load(f)
+            # If cache is fresh (< 120 seconds) and valid, return immediately
+            if isinstance(cached_data, dict) and "pct" in cached_data and cached_data.get("price", 0) > 0:
+                if (datetime.datetime.now().timestamp() - mtime) < 120:
+                    return cached_data
         except Exception:
             pass
+
+    # Try live Fyers API quote for official NSE Nifty 50 Index
+    try:
+        from core.fyers_auth import get_fyers_client, safe_fyers_quotes
+        ok_f, cl_f = get_fyers_client(force_refresh=False)
+        if ok_f and cl_f:
+            q_res = safe_fyers_quotes(cl_f, data={"symbols": "NSE:NIFTY50-INDEX"})
+            if q_res.get("s") == "ok" and "d" in q_res and len(q_res["d"]) > 0:
+                v = q_res["d"][0].get("v", {})
+                lp = float(v.get("lp", 0))
+                ch = float(v.get("ch", 0))
+                chp = float(v.get("chp", 0))
+                if lp > 0:
+                    live_data = {"price": lp, "change": ch, "pct": chp, "is_bullish": ch >= 0}
+                    try:
+                        with open(cache_path, "w", encoding="utf-8") as fw:
+                            json.dump(live_data, fw)
+                    except Exception:
+                        pass
+                    return live_data
+    except Exception:
+        pass
+
+    if isinstance(cached_data, dict) and "pct" in cached_data and cached_data.get("price", 0) > 0:
+        return cached_data
+
     return {"price": 0.0, "change": 0.0, "pct": 0.0, "is_bullish": True}
 
 # Major Indian Indices (Nifty 50, Bank Nifty, Sensex, FinNifty)
